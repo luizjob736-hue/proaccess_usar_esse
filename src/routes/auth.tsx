@@ -45,10 +45,10 @@ function AuthPage() {
       .maybeSingle();
     if (profile && !profile.senha_alterada) {
       toast.info("Primeiro acesso — troque sua senha");
-      navigate({ to: "/primeiro-acesso" });
+      window.location.href = "/primeiro-acesso";
     } else {
       toast.success("Bem-vindo!");
-      navigate({ to: "/dashboard" });
+      window.location.href = "/dashboard";
     }
   }
 

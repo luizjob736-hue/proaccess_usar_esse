@@ -11,6 +11,7 @@ import { KeyRound } from "lucide-react";
 export const Route = createFileRoute("/primeiro-acesso")({
   ssr: false,
   beforeLoad: async () => {
+    if (typeof window === "undefined") return;
     const { data } = await supabase.auth.getUser();
     if (!data.user) throw redirect({ to: "/auth" });
   },

@@ -7,7 +7,10 @@ function getStoredSession() {
   if (typeof window === "undefined") return null;
   try {
     const raw = localStorage.getItem(SESSION_KEY);
-    return raw ? JSON.parse(raw) : null;
+    if (raw) return JSON.parse(raw);
+    const match = document.cookie.match(new RegExp("(?:^|; )" + SESSION_KEY + "=([^;]*)"));
+    if (match && match[1]) return JSON.parse(decodeURIComponent(match[1]));
+    return null;
   } catch {
     return null;
   }
@@ -17,8 +20,10 @@ function setStoredSession(session: any) {
   if (typeof window === "undefined") return;
   if (session) {
     localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    document.cookie = `${SESSION_KEY}=${encodeURIComponent(JSON.stringify(session))}; path=/; max-age=604800; SameSite=Lax`;
   } else {
     localStorage.removeItem(SESSION_KEY);
+    document.cookie = `${SESSION_KEY}=; path=/; max-age=0; path=/`;
   }
 }
 

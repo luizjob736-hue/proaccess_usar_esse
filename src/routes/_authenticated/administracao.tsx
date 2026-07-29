@@ -34,6 +34,8 @@ import {
   EyeOff,
   Copy,
   KeyRound,
+  Trash2,
+  Pencil,
 } from "lucide-react";
 import { toast } from "sonner";
 import { createUserAccount, resetUserPassword } from "@/lib/admin-users.functions";
@@ -125,6 +127,19 @@ function UsuariosTab() {
     onSuccess: (r: any) => {
       toast.success(`Senha redefinida: ${r.senha}`);
       setResetFor(null);
+      qc.invalidateQueries({ queryKey: ["adm-users"] });
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const deleteUser = useMutation({
+    mutationFn: async (userId: string) => {
+      await supabase.from("user_roles").delete().eq("user_id", userId);
+      const { error } = await supabase.from("profiles").delete().eq("id", userId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Usuário excluído com sucesso");
       qc.invalidateQueries({ queryKey: ["adm-users"] });
     },
     onError: (e: any) => toast.error(e.message),
@@ -265,6 +280,19 @@ function UsuariosTab() {
               </Select>
               <Button size="sm" variant="outline" onClick={() => setResetFor(u)} className="gap-1">
                 <KeyRound className="h-3 w-3" /> Redefinir
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                title="Excluir usuário"
+                onClick={() => {
+                  if (window.confirm(`Tem certeza que deseja excluir o usuário ${u.nome}?`)) {
+                    deleteUser.mutate(u.id);
+                  }
+                }}
+              >
+                <Trash2 className="h-3 w-3" />
               </Button>
             </div>
           ))}

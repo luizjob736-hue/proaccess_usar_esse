@@ -18,6 +18,13 @@ export const Route = createFileRoute("/_authenticated")({
       const url = typeof window !== "undefined" ? window.location.pathname : "";
       if (!url.endsWith("/primeiro-acesso")) throw redirect({ to: "/primeiro-acesso" });
     }
+    // Operador / Colaborador não acessa dashboard
+    if (data.user.role === "operador") {
+      const url = typeof window !== "undefined" ? window.location.pathname : "";
+      if (url === "/dashboard" || url === "/dashboard/") {
+        throw redirect({ to: "/chamados" });
+      }
+    }
     return { userId: data.user.id, email: data.user.email };
   },
   component: LayoutComponent,

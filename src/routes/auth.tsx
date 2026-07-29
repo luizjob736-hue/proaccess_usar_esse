@@ -13,13 +13,18 @@ export const Route = createFileRoute("/auth")({
   beforeLoad: async () => {
     if (typeof window === "undefined") return;
     const { data } = await supabase.auth.getSession();
-    if (data.session) throw redirect({ to: "/dashboard" });
+    if (data.session) {
+      if (data.session.user?.role === "operador") {
+        throw redirect({ to: "/chamados" });
+      }
+      throw redirect({ to: "/dashboard" });
+    }
   },
 });
 
 function AuthPage() {
   const navigate = useNavigate();
-  const [identifier, setIdentifier] = useState("Luiz.Reis");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -27,28 +32,50 @@ function AuthPage() {
     e.preventDefault();
     setLoading(true);
 
-    const emailToUse = identifier.includes("@")
-      ? identifier.trim().toLowerCase()
-      : `${identifier.trim().toLowerCase()}@proacess.local`;
+    try {
+      const emailToUse = identifier.includes("@")
+        ? identifier.trim().toLowerCase()
+        : `${identifier.trim().toLowerCase()}@proacess.local`;
 
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: emailToUse,
-      password,
-    });
-    setLoading(false);
-    if (error) return toast.error("Credenciais inválidas", { description: error.message });
-    // Verificar se precisa trocar senha
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("senha_alterada")
-      .eq("id", data.user!.id)
-      .maybeSingle();
-    if (profile && !profile.senha_alterada) {
-      toast.info("Primeiro acesso — troque sua senha");
-      window.location.href = "/primeiro-acesso";
-    } else {
-      toast.success("Bem-vindo!");
-      window.location.href = "/dashboard";
+      const res = await supabase.auth.signInWithPassword({
+        email: emailToUse,
+        password,
+      });
+
+      if (res.error || !res.data?.user) {
+        setLoading(false);
+        return toast.error("Credenciais inválidas", {
+          description: res.error?.message || "Usuário ou senha incorretos",
+        });
+      }
+
+      // Verificar se precisa trocar senha
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("senha_alterada")
+        .eq("id", res.data.user.id)
+        .maybeSingle();
+
+      setLoading(false);
+
+      const isOperador = res.data.user.role === "operador";
+
+      if (profile && !profile.senha_alterada) {
+        toast.info("Primeiro acesso — troque sua senha");
+        window.location.href = "/primeiro-acesso";
+      } else if (isOperador) {
+        toast.success("Bem-vindo!");
+        window.location.href = "/chamados";
+      } else {
+        toast.success("Bem-vindo!");
+        window.location.href = "/dashboard";
+      }
+    } catch (err: any) {
+      console.error("Erro no login:", err);
+      setLoading(false);
+      toast.error("Erro ao realizar login", {
+        description: err?.message || "Ocorreu uma falha inesperada.",
+      });
     }
   }
 

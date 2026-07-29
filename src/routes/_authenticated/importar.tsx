@@ -278,6 +278,10 @@ async function importRows(kind: TemplateKey, rows: Record<string, string>[]) {
       }
     }
   } else if (kind === "sistemas") {
+    const { data: existentes } = await supabase
+      .from("sistemas")
+      .select("id, nome, categoria, criticidade, descricao, url, ativo");
+    const sisMap = new Map((existentes ?? []).map((s: any) => [s.nome.trim().toLowerCase(), s]));
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
       const payload: any = {
@@ -293,11 +297,29 @@ async function importRows(kind: TemplateKey, rows: Record<string, string>[]) {
         errors.push(`Linha ${i + 2}: nome é obrigatório`);
         continue;
       }
-      const { error } = await supabase.from("sistemas").insert(payload);
-      if (error) {
-        fail++;
-        errors.push(`Linha ${i + 2}: ${error.message}`);
-      } else ok++;
+      const ex = sisMap.get(payload.nome.toLowerCase());
+      if (ex) {
+        const diff: any = {};
+        for (const [k, v] of Object.entries(payload)) {
+          if (v == null || v === "") continue;
+          if ((ex as any)[k] !== v) diff[k] = v;
+        }
+        if (Object.keys(diff).length === 0) {
+          ok++;
+          continue;
+        }
+        const { error } = await supabase.from("sistemas").update(diff).eq("id", ex.id);
+        if (error) {
+          fail++;
+          errors.push(`Linha ${i + 2}: ${error.message}`);
+        } else ok++;
+      } else {
+        const { error } = await supabase.from("sistemas").insert(payload);
+        if (error) {
+          fail++;
+          errors.push(`Linha ${i + 2}: ${error.message}`);
+        } else ok++;
+      }
     }
   } else if (kind === "acessos") {
     const { data: cols } = await supabase.from("colaboradores").select("id,cpf");
@@ -332,11 +354,35 @@ async function importRows(kind: TemplateKey, rows: Record<string, string>[]) {
         concedido_por: u.user?.id ?? null,
         concedido_em: status === "ativo" ? new Date().toISOString() : null,
       };
-      const { error } = await supabase.from("acessos").insert(payload);
-      if (error) {
-        fail++;
-        errors.push(`Linha ${i + 2}: ${error.message}`);
-      } else ok++;
+
+      const { data: exAcesso } = await supabase
+        .from("acessos")
+        .select("id, login, senha, status")
+        .eq("colaborador_id", colId)
+        .eq("sistema_id", sisId)
+        .maybeSingle();
+
+      if (exAcesso) {
+        const diff: any = {};
+        if (payload.login && exAcesso.login !== payload.login) diff.login = payload.login;
+        if (payload.senha && exAcesso.senha !== payload.senha) diff.senha = payload.senha;
+        if (payload.status && exAcesso.status !== payload.status) diff.status = payload.status;
+        if (Object.keys(diff).length === 0) {
+          ok++;
+          continue;
+        }
+        const { error } = await supabase.from("acessos").update(diff).eq("id", exAcesso.id);
+        if (error) {
+          fail++;
+          errors.push(`Linha ${i + 2}: ${error.message}`);
+        } else ok++;
+      } else {
+        const { error } = await supabase.from("acessos").insert(payload);
+        if (error) {
+          fail++;
+          errors.push(`Linha ${i + 2}: ${error.message}`);
+        } else ok++;
+      }
     }
   }
 

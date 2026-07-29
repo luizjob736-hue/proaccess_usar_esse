@@ -69,8 +69,7 @@ const NAV_FULL = [
 ] as const;
 
 const NAV_OPERADOR = [
-  { to: "/minha-matriz", icon: Grid3x3, label: "Minha Matriz" },
-  { to: "/chamados", icon: LifeBuoy, label: "Meus Chamados" },
+  { to: "/chamados", icon: LifeBuoy, label: "Chamados" },
   { to: "/perfil", icon: User, label: "Perfil" },
 ] as const;
 
@@ -229,7 +228,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 </Avatar>
                 <div className="hidden text-left md:block">
                   <div className="text-xs font-medium">{me?.profile?.nome}</div>
-                  <div className="text-[10px] text-muted-foreground">{me?.roles?.[0]}</div>
+                  <div className="text-[10px] text-muted-foreground">
+                    {me?.roles?.[0] === "operador"
+                      ? "Colaborador"
+                      : me?.roles?.[0] === "admin_master"
+                        ? "Admin Master"
+                        : me?.roles?.[0] === "admin"
+                          ? "Administrador"
+                          : me?.roles?.[0] || "Usuário"}
+                  </div>
                 </div>
               </Button>
             </DropdownMenuTrigger>

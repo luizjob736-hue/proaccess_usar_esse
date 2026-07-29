@@ -34,6 +34,7 @@ import {
   UserX,
   Upload,
   Pencil,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
@@ -52,7 +53,36 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
   const [addAcessoFor, setAddAcessoFor] = useState<any | null>(null);
   const [editColab, setEditColab] = useState<any | null>(null);
   const [editAcesso, setEditAcesso] = useState<any | null>(null);
-  const createOperador = useServerFn(createOperadorFromColaborador);
+  const { data: me } = useQuery({
+    queryKey: ["me-matriz"],
+    queryFn: async () => {
+      const { data: u } = await supabase.auth.getUser();
+      if (!u.user) return null;
+      const { data: roles } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", u.user.id);
+      return { user: u.user, roles: roles?.map((r) => r.role) ?? [] };
+    },
+  });
+
+  const isMaster =
+    (me?.roles ?? []).includes("admin_master") ||
+    (me?.roles ?? []).includes("admin") ||
+    me?.user?.role === "admin_master";
+
+  const excluirColab = useMutation({
+    mutationFn: async (id: string) => {
+      await supabase.from("acessos").delete().eq("colaborador_id", id);
+      const { error } = await supabase.from("colaboradores").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Colaborador excluído com sucesso");
+      qc.invalidateQueries();
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
 
   const { data: acessos = [] } = useQuery({
     queryKey: ["matriz-acessos-full"],
@@ -208,7 +238,9 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
       .sort((a, b) => a.nome.localeCompare(b.nome));
     const linhas = Array.from(colabMap.values())
       .filter((c: any) =>
-        onlyInativos ? c.status === "inativo" || c.status === "desligado" : true,
+        onlyInativos
+          ? c.status === "inativo" || c.status === "desligado"
+          : c.status !== "inativo" && c.status !== "desligado",
       )
       .sort((a, b) => a.nome.localeCompare(b.nome));
     return { sistemas, linhas };
@@ -568,6 +600,21 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
                           }
                         />
                       </Button>
+                      {isMaster && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          title="Excluir colaborador"
+                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                          onClick={() => {
+                            if (window.confirm(`Tem certeza que deseja excluir ${r.nome}?`)) {
+                              excluirColab.mutate(r.id);
+                            }
+                          }}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      )}
                     </div>
                   </td>
                   {sistemas.map((s) => {
@@ -684,6 +731,7 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
                   cargo: (fd.get("cargo") as string) || null,
                   operacao_id: (fd.get("operacao_id") as string) || null,
                   admissao_em: (fd.get("admissao_em") as string) || null,
+                  status: (fd.get("status") as string) || "ativo",
                 });
               }}
               className="grid grid-cols-2 gap-3"
@@ -734,6 +782,19 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
               <div>
                 <Label>Admissão</Label>
                 <Input name="admissao_em" type="date" defaultValue={editColab.admissao_em ?? ""} />
+              </div>
+              <div>
+                <Label>Status</Label>
+                <Select name="status" defaultValue={editColab.status ?? "ativo"}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ativo">Ativo</SelectItem>
+                    <SelectItem value="inativo">Inativo</SelectItem>
+                    <SelectItem value="desligado">Desligado</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <DialogFooter className="col-span-2">
                 <Button type="submit" disabled={editarColab.isPending}>

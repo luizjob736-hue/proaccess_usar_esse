@@ -62,16 +62,18 @@ export const neonAuthServerFn = createServerFn({ method: "POST" })
           ? ident.toLowerCase()
           : `${ident.toLowerCase()}@proacess.local`;
 
+        const usernameToUse = ident.split("@")[0].toLowerCase();
+
         // Busca no auth.users por email ou username
         const res = await client.query(
           `SELECT u.id, u.email, u.raw_user_meta_data, u.created_at, p.nome, p.senha_alterada,
                   (SELECT role FROM public.user_roles WHERE user_id = u.id LIMIT 1) as role
            FROM auth.users u
            LEFT JOIN public.profiles p ON p.id = u.id
-           WHERE (lower(u.email) = lower($1) OR lower(u.raw_user_meta_data->>'username') = lower($2) OR lower(p.email) = lower($1))
+           WHERE (lower(u.email) = lower($1) OR lower(u.raw_user_meta_data->>'username') = lower($2) OR lower(p.email) = lower($1) OR lower(u.raw_user_meta_data->>'username') = lower($1))
              AND u.encrypted_password = crypt($3, u.encrypted_password)
            LIMIT 1`,
-          [emailToUse, ident, pass],
+          [emailToUse, usernameToUse, pass],
         );
 
         if (res.rows.length === 0) {
@@ -100,7 +102,23 @@ export const neonAuthServerFn = createServerFn({ method: "POST" })
       }
 
       if (data.action === "getUser") {
-        const token = data.token;
+        let token = data.token;
+        if (!token || !token.startsWith("neon_token_")) {
+          try {
+            const { getRequest } = await import("@tanstack/react-start/server");
+            const req = getRequest();
+            const cookieHeader = req?.headers?.get("cookie");
+            if (cookieHeader) {
+              const match = cookieHeader.match(/proaccess_neon_session=([^;]+)/);
+              if (match && match[1]) {
+                const sess = JSON.parse(decodeURIComponent(match[1]));
+                token = sess?.access_token;
+              }
+            }
+          } catch (_e) {
+            // ignore SSR cookie parsing error
+          }
+        }
         if (!token || !token.startsWith("neon_token_")) {
           return { data: { user: null }, error: null };
         }

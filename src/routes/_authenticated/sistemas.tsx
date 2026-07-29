@@ -23,7 +23,7 @@ import {
   DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Plus, Server, AlertTriangle } from "lucide-react";
+import { Plus, Server, AlertTriangle, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/sistemas")({ component: Sistemas });
@@ -31,6 +31,8 @@ export const Route = createFileRoute("/_authenticated/sistemas")({ component: Si
 function Sistemas() {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [editSis, setEditSis] = useState<any | null>(null);
+
   const { data: list = [] } = useQuery({
     queryKey: ["sistemas"],
     queryFn: async () =>
@@ -51,6 +53,33 @@ function Sistemas() {
     onSuccess: () => {
       toast.success("Sistema criado");
       setOpen(false);
+      qc.invalidateQueries({ queryKey: ["sistemas"] });
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const update = useMutation({
+    mutationFn: async (payload: any) => {
+      const { id, ...rest } = payload;
+      const { error } = await supabase.from("sistemas").update(rest).eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Sistema atualizado");
+      setEditSis(null);
+      qc.invalidateQueries({ queryKey: ["sistemas"] });
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const remove = useMutation({
+    mutationFn: async (id: string) => {
+      await supabase.from("acessos").delete().eq("sistema_id", id);
+      const { error } = await supabase.from("sistemas").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Sistema excluído");
       qc.invalidateQueries({ queryKey: ["sistemas"] });
     },
     onError: (e: any) => toast.error(e.message),
@@ -176,10 +205,106 @@ function Sistemas() {
                 </span>
                 <span className="text-muted-foreground">{s.categoria || "—"}</span>
               </div>
+              <div className="mt-4 flex justify-end gap-2 border-t pt-2">
+                <Button size="sm" variant="ghost" onClick={() => setEditSis(s)}>
+                  <Pencil className="h-3.5 w-3.5 mr-1" /> Editar
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                  onClick={() => {
+                    if (window.confirm(`Tem certeza que deseja excluir o sistema ${s.nome}?`)) {
+                      remove.mutate(s.id);
+                    }
+                  }}
+                >
+                  <Trash2 className="h-3.5 w-3.5 mr-1" /> Excluir
+                </Button>
+              </div>
             </CardContent>
           </Card>
         ))}
       </div>
+
+      <Dialog open={!!editSis} onOpenChange={(o) => !o && setEditSis(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar sistema — {editSis?.nome}</DialogTitle>
+          </DialogHeader>
+          {editSis && (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const fd = new FormData(e.currentTarget);
+                update.mutate({
+                  id: editSis.id,
+                  nome: fd.get("nome"),
+                  descricao: fd.get("descricao"),
+                  categoria: fd.get("categoria"),
+                  criticidade: fd.get("criticidade"),
+                  responsavel_id: (fd.get("responsavel_id") as string) || null,
+                  url: fd.get("url"),
+                });
+              }}
+              className="space-y-3"
+            >
+              <div>
+                <Label>Nome</Label>
+                <Input name="nome" defaultValue={editSis.nome} required />
+              </div>
+              <div>
+                <Label>Descrição</Label>
+                <Textarea name="descricao" defaultValue={editSis.descricao ?? ""} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>Categoria</Label>
+                  <Input name="categoria" defaultValue={editSis.categoria ?? ""} />
+                </div>
+                <div>
+                  <Label>Criticidade</Label>
+                  <Select name="criticidade" defaultValue={editSis.criticidade ?? "media"}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="baixa">Baixa</SelectItem>
+                      <SelectItem value="media">Média</SelectItem>
+                      <SelectItem value="alta">Alta</SelectItem>
+                      <SelectItem value="critica">Crítica</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div>
+                <Label>Responsável</Label>
+                <Select name="responsavel_id" defaultValue={editSis.responsavel_id ?? undefined}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {profiles.map((p: any) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.nome}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>URL</Label>
+                <Input name="url" defaultValue={editSis.url ?? ""} placeholder="https://..." />
+              </div>
+              <DialogFooter>
+                <Button type="submit" disabled={update.isPending}>
+                  Salvar
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

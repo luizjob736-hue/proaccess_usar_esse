@@ -1,0 +1,6 @@
+{
+  "name": "ProAccess",
+  "description": "ProAccess - Sistema de Gestão de Acessos e Perfis de Colaboradores",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

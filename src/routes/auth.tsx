@@ -9,11 +9,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/auth")({
+  ssr: false,
   component: AuthPage,
   beforeLoad: async () => {
     if (typeof window === "undefined") return;
     const { data } = await supabase.auth.getSession();
-    if (data.session) {
+    if (data?.session) {
       if (data.session.user?.role === "operador") {
         throw redirect({ to: "/chamados" });
       }

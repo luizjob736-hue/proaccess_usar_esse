@@ -1,4 +1,4 @@
-import { createFileRoute, redirect } from "@tanstack/react-router";
+import { createFileRoute, useNavigate, redirect } from "@tanstack/react-router";
 import { useState } from "react";
 import { Shield, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -11,10 +11,9 @@ import { toast } from "sonner";
 export const Route = createFileRoute("/auth")({
   component: AuthPage,
   beforeLoad: async () => {
-    if (typeof window === "undefined") return;
-    const { data } = await supabase.auth.getSession();
-    if (data?.session) {
-      if (data.session.user?.role === "operador") {
+    const { data } = await supabase.auth.getUser();
+    if (data?.user) {
+      if (data.user.role === "operador") {
         throw redirect({ to: "/chamados" });
       }
       throw redirect({ to: "/dashboard" });
@@ -23,6 +22,7 @@ export const Route = createFileRoute("/auth")({
 });
 
 function AuthPage() {
+  const navigate = useNavigate();
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -52,26 +52,34 @@ function AuthPage() {
         });
       }
 
-      // Verificar se precisa trocar senha
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("senha_alterada")
-        .eq("id", res.data.user.id)
-        .maybeSingle();
-
       setLoading(false);
-
       const isOperador = res.data.user.role === "operador";
+      const senhaAlterada = res.data.user.user_metadata?.senha_alterada;
 
-      if (profile && profile.senha_alterada === false) {
+      toast.success("Login realizado com sucesso!");
+
+      if (senhaAlterada === false) {
         toast.info("Primeiro acesso — troque sua senha");
-        window.location.replace("/primeiro-acesso");
+        navigate({ to: "/primeiro-acesso", replace: true });
+        setTimeout(() => {
+          if (window.location.pathname.includes("/auth")) {
+            window.location.href = "/primeiro-acesso";
+          }
+        }, 150);
       } else if (isOperador) {
-        toast.success("Bem-vindo ao ProAccess!");
-        window.location.replace("/chamados");
+        navigate({ to: "/chamados", replace: true });
+        setTimeout(() => {
+          if (window.location.pathname.includes("/auth")) {
+            window.location.href = "/chamados";
+          }
+        }, 150);
       } else {
-        toast.success("Bem-vindo ao ProAccess!");
-        window.location.replace("/dashboard");
+        navigate({ to: "/dashboard", replace: true });
+        setTimeout(() => {
+          if (window.location.pathname.includes("/auth")) {
+            window.location.href = "/dashboard";
+          }
+        }, 150);
       }
     } catch (err: any) {
       console.error("Erro no login:", err);
@@ -140,4 +148,5 @@ function AuthPage() {
     </div>
   );
 }
+
 

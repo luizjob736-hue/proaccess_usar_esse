@@ -4,27 +4,30 @@ import { AppShell } from "@/components/layout/AppShell";
 
 export const Route = createFileRoute("/_authenticated")({
   beforeLoad: async () => {
-    if (typeof window === "undefined") return;
     const { data, error } = await supabase.auth.getUser();
-    if (error || !data.user) throw redirect({ to: "/auth" });
-    // checar primeiro acesso
-    const { data: prof } = await supabase
-      .from("profiles")
-      .select("senha_alterada")
-      .eq("id", data.user.id)
-      .maybeSingle();
-    if (prof && !prof.senha_alterada) {
-      const url = typeof window !== "undefined" ? window.location.pathname : "";
-      if (!url.endsWith("/primeiro-acesso")) throw redirect({ to: "/primeiro-acesso" });
+    if (error || !data?.user) {
+      throw redirect({ to: "/auth" });
     }
-    // Operador / Colaborador não acessa dashboard
-    if (data.user.role === "operador") {
-      const url = typeof window !== "undefined" ? window.location.pathname : "";
-      if (url === "/dashboard" || url === "/dashboard/") {
+
+    const user = data.user;
+    const isOperador = user.role === "operador";
+    const senhaAlterada = user.user_metadata?.senha_alterada;
+
+    if (senhaAlterada === false) {
+      const pathname = typeof window !== "undefined" ? window.location.pathname : "";
+      if (!pathname.includes("/primeiro-acesso")) {
+        throw redirect({ to: "/primeiro-acesso" });
+      }
+    }
+
+    if (isOperador) {
+      const pathname = typeof window !== "undefined" ? window.location.pathname : "";
+      if (pathname === "/dashboard" || pathname === "/dashboard/") {
         throw redirect({ to: "/chamados" });
       }
     }
-    return { userId: data.user.id, email: data.user.email };
+
+    return { userId: user.id, email: user.email };
   },
   component: LayoutComponent,
 });

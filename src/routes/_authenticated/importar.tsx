@@ -6,20 +6,48 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Upload, FileDown, CheckCircle2, AlertCircle } from "lucide-react";
+import {
+  Upload,
+  FileDown,
+  CheckCircle2,
+  AlertCircle,
+  Users,
+  Building2,
+  Laptop,
+  ShieldCheck,
+  KeyRound,
+  ClipboardList,
+  LifeBuoy,
+} from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/importar")({ component: Importar });
 
-type TemplateKey = "colaboradores" | "sistemas" | "acessos";
+type TemplateKey =
+  | "colaboradores"
+  | "operacoes"
+  | "sistemas"
+  | "perfis_acesso"
+  | "acessos"
+  | "pendencias"
+  | "chamados";
+
+type TabGroup = "cadastro" | "sistemas" | "seguranca" | "processos";
 
 const TEMPLATES: Record<
   TemplateKey,
-  { title: string; desc: string; headers: string[]; sample: Record<string, string>[] }
+  {
+    title: string;
+    desc: string;
+    headers: string[];
+    sample: Record<string, string>[];
+    icon: any;
+  }
 > = {
   colaboradores: {
     title: "Colaboradores",
-    desc: "Importe colaboradores em lote. Campos aceitos abaixo. A coluna 'operacao' é opcional e será vinculada pelo nome.",
+    desc: "Importe ou atualize colaboradores em lote. A operação é opcional e será vinculada pelo nome. Formato de data: AAAA-MM-DD.",
+    icon: Users,
     headers: [
       "nome",
       "cpf",
@@ -38,53 +66,170 @@ const TEMPLATES: Record<
         cpf: "123.456.789-00",
         matricula: "M001",
         email: "joao@empresa.com",
-        email_senha: "senhaSegura123",
+        email_senha: "SenhaTemporaria123",
         telefone: "11999999999",
-        cargo: "Analista",
-        operacao: "Operação A",
+        cargo: "Analista de Suporte",
+        operacao: "Operação São Paulo",
         admissao_em: "2025-01-15",
         status: "ativo",
       },
     ],
   },
-  sistemas: {
-    title: "Sistemas",
-    desc: "Importe sistemas em lote.",
-    headers: ["nome", "categoria", "criticidade", "descricao", "url", "ativo"],
+  operacoes: {
+    title: "Operações",
+    desc: "Importe ou atualize operações/setores da empresa em lote.",
+    icon: Building2,
+    headers: ["nome", "descricao", "ativo"],
     sample: [
       {
-        nome: "SAP",
-        categoria: "ERP",
-        criticidade: "alta",
-        descricao: "Sistema ERP",
-        url: "https://sap.empresa.com",
+        nome: "Operação São Paulo",
+        descricao: "Central de Atendimento SP",
         ativo: "true",
       },
     ],
   },
+  sistemas: {
+    title: "Sistemas",
+    desc: "Importe ou atualize sistemas homologados em lote.",
+    icon: Laptop,
+    headers: ["nome", "categoria", "criticidade", "descricao", "url", "ativo"],
+    sample: [
+      {
+        nome: "SAP ERP",
+        categoria: "Sistemas Core",
+        criticidade: "alta",
+        descricao: "Sistema ERP principal da empresa",
+        url: "https://sap.empresa.local",
+        ativo: "true",
+      },
+    ],
+  },
+  perfis_acesso: {
+    title: "Perfis de Acesso",
+    desc: "Importe perfis de acesso vinculados aos sistemas. O sistema correspondente é localizado pelo nome.",
+    icon: ShieldCheck,
+    headers: ["nome", "sistema", "descricao"],
+    sample: [
+      {
+        nome: "Administrador SAP",
+        sistema: "SAP ERP",
+        descricao: "Perfil com privilégios administrativos no módulo SAP FI/CO",
+      },
+    ],
+  },
   acessos: {
-    title: "Acessos (com credenciais)",
-    desc: "Importe acessos em lote. Vinculação pelo CPF do colaborador e nome do sistema.",
-    headers: ["cpf_colaborador", "sistema", "login", "senha", "status"],
+    title: "Acessos (Credenciais)",
+    desc: "Vincule logins e senhas de sistemas aos colaboradores. Localização automática por CPF do colaborador, nome do sistema e nome do perfil de acesso (opcional).",
+    icon: KeyRound,
+    headers: ["cpf_colaborador", "sistema", "perfil_acesso", "login", "senha", "status"],
     sample: [
       {
         cpf_colaborador: "123.456.789-00",
-        sistema: "SAP",
+        sistema: "SAP ERP",
+        perfil_acesso: "Administrador SAP",
         login: "joao.silva",
-        senha: "MinhaSenha!23",
+        senha: "MinhaSenhaForte123",
         status: "ativo",
+      },
+    ],
+  },
+  pendencias: {
+    title: "Processos (Pendências)",
+    desc: "Importe pendências e fluxos de trabalho de acessos. Vinculação opcional do colaborador por CPF, sistema por nome e responsável administrativo por e-mail.",
+    icon: ClipboardList,
+    headers: [
+      "titulo",
+      "tipo",
+      "prioridade",
+      "status",
+      "descricao",
+      "cpf_colaborador",
+      "sistema",
+      "email_responsavel",
+      "data_inicio",
+      "sla_em",
+    ],
+    sample: [
+      {
+        titulo: "Criar Acesso SAP - João",
+        tipo: "solicitacao_acesso",
+        prioridade: "media",
+        status: "em_andamento",
+        descricao: "Realizar a criação de credencial do novo colaborador",
+        cpf_colaborador: "123.456.789-00",
+        sistema: "SAP ERP",
+        email_responsavel: "suporte@empresa.com",
+        data_inicio: "2026-07-30",
+        sla_em: "2026-08-05",
+      },
+    ],
+  },
+  chamados: {
+    title: "Chamados de Suporte",
+    desc: "Importe tíquetes e chamados de suporte técnico de acessos em lote. Vinculação automática do sistema por nome, operador (usuário) e tratador técnico por e-mail.",
+    icon: LifeBuoy,
+    headers: [
+      "titulo",
+      "tipo",
+      "status",
+      "descricao",
+      "sistema",
+      "email_operador",
+      "email_tratador",
+      "resposta",
+    ],
+    sample: [
+      {
+        titulo: "Senha do SAP expirada",
+        tipo: "erro",
+        status: "aberto",
+        descricao: "Usuário reporta bloqueio de login por tentativas incorretas",
+        sistema: "SAP ERP",
+        email_operador: "joao@empresa.com",
+        email_tratador: "tecnico@empresa.com",
+        resposta: "Solicitada redefinição provisória de senha",
       },
     ],
   },
 };
 
+const TAB_GROUPS: { value: TabGroup; label: string; keys: TemplateKey[] }[] = [
+  {
+    value: "cadastro",
+    label: "Pessoas e Estrutura",
+    keys: ["colaboradores", "operacoes"],
+  },
+  {
+    value: "sistemas",
+    label: "Sistemas e Perfis",
+    keys: ["sistemas", "perfis_acesso"],
+  },
+  {
+    value: "seguranca",
+    label: "Acessos e Segurança",
+    keys: ["acessos"],
+  },
+  {
+    value: "processos",
+    label: "Processos e Chamados",
+    keys: ["pendencias", "chamados"],
+  },
+];
+
 function downloadCSV(key: TemplateKey) {
   const t = TEMPLATES[key];
-  const csv = Papa.unparse({
-    fields: t.headers,
-    data: t.sample.map((r) => t.headers.map((h) => r[h] ?? "")),
-  });
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const csv = Papa.unparse(
+    {
+      fields: t.headers,
+      data: t.sample.map((r) => t.headers.map((h) => r[h] ?? "")),
+    },
+    {
+      delimiter: ";", // Force semicolon delimiter so it opens as clean columns in Excel PT-BR!
+    }
+  );
+  
+  // Add UTF-8 BOM so Excel opens with proper accents and special characters
+  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -94,23 +239,46 @@ function downloadCSV(key: TemplateKey) {
 }
 
 function Importar() {
+  const [activeTab, setActiveTab] = useState<TabGroup>("cadastro");
+
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Importar CSV</h1>
-        <p className="text-muted-foreground">
-          Baixe o modelo, preencha e faça upload para importação em lote.
+        <h1 className="text-3xl font-bold tracking-tight text-neutral-900 dark:text-white">Importar CSV</h1>
+        <p className="text-muted-foreground mt-1">
+          Baixe os modelos CSV com colunas pré-definidas (delimitadas por ponto e vírgula), preencha no Excel e faça o envio para importação direta no banco de dados.
         </p>
       </div>
-      {(Object.keys(TEMPLATES) as TemplateKey[]).map((k) => (
-        <ImportCard key={k} kind={k} />
-      ))}
+
+      {/* Modern custom tab navigation */}
+      <div className="flex border-b border-neutral-200 dark:border-neutral-800 space-x-1 overflow-x-auto pb-px">
+        {TAB_GROUPS.map((g) => (
+          <button
+            key={g.value}
+            onClick={() => setActiveTab(g.value)}
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 whitespace-nowrap transition-all duration-200 ${
+              activeTab === g.value
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-neutral-900 dark:hover:text-white"
+            }`}
+          >
+            {g.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 gap-6">
+        {TAB_GROUPS.find((g) => g.value === activeTab)?.keys.map((k) => (
+          <ImportCard key={k} kind={k} />
+        ))}
+      </div>
     </div>
   );
 }
 
 function ImportCard({ kind }: { kind: TemplateKey }) {
   const t = TEMPLATES[kind];
+  const Icon = t.icon;
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ ok: number; fail: number; errors: string[] } | null>(null);
 
@@ -120,52 +288,62 @@ function ImportCard({ kind }: { kind: TemplateKey }) {
     Papa.parse<Record<string, string>>(file, {
       header: true,
       skipEmptyLines: true,
+      // No explicit delimiter set, PapaParse will automatically detect between semicolon (;) and comma (,)
       complete: async (res) => {
         try {
           const rows = res.data.filter((r) => Object.values(r).some((v) => v && String(v).trim()));
           if (rows.length === 0) {
-            toast.warning("CSV vazio");
+            toast.warning("Arquivo CSV está vazio ou sem linhas de dados");
             setBusy(false);
             return;
           }
           const out = await importRows(kind, rows);
           setResult(out);
-          if (out.fail === 0) toast.success(`${out.ok} registro(s) importado(s)`);
-          else toast.warning(`${out.ok} importados, ${out.fail} com erro`);
+          if (out.fail === 0) {
+            toast.success(`${out.ok} registros importados com sucesso!`);
+          } else {
+            toast.warning(`${out.ok} importados, ${out.fail} falhas encontradas.`);
+          }
         } catch (e: any) {
-          toast.error(e.message ?? "Erro ao importar");
+          toast.error(e.message ?? "Erro interno ao processar importação");
         } finally {
           setBusy(false);
         }
       },
       error: (err) => {
-        toast.error(err.message);
+        toast.error(`Falha ao ler o arquivo CSV: ${err.message}`);
         setBusy(false);
       },
     });
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Upload className="h-4 w-4" /> {t.title}
+    <Card className="border border-neutral-200 dark:border-neutral-800 shadow-sm">
+      <CardHeader className="space-y-1">
+        <CardTitle className="flex items-center gap-2.5 text-lg font-semibold text-neutral-950 dark:text-neutral-50">
+          <Icon className="h-5 w-5 text-primary" /> {t.title}
         </CardTitle>
-        <p className="text-sm text-muted-foreground">{t.desc}</p>
+        <p className="text-sm text-muted-foreground leading-relaxed">{t.desc}</p>
       </CardHeader>
-      <CardContent className="space-y-3">
-        <div className="flex flex-wrap gap-2">
-          {t.headers.map((h) => (
-            <Badge key={h} variant="outline" className="font-mono text-[10px]">
-              {h}
-            </Badge>
-          ))}
+      <CardContent className="space-y-4">
+        <div>
+          <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wider block mb-1.5">
+            Colunas Esperadas (Delimitador: Semicolon / Ponto e vírgula ";")
+          </span>
+          <div className="flex flex-wrap gap-1.5">
+            {t.headers.map((h) => (
+              <Badge key={h} variant="secondary" className="font-mono text-[11px] px-2 py-0.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300">
+                {h}
+              </Badge>
+            ))}
+          </div>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={() => downloadCSV(kind)} className="gap-2">
-            <FileDown className="h-4 w-4" /> Baixar modelo CSV
+
+        <div className="flex flex-wrap items-center gap-3 pt-2">
+          <Button variant="outline" onClick={() => downloadCSV(kind)} className="gap-2 border-neutral-300 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-900">
+            <FileDown className="h-4 w-4" /> Baixar Modelo Excel (.CSV)
           </Button>
-          <label className="inline-flex">
+          <label className="inline-flex cursor-pointer">
             <Input
               type="file"
               accept=".csv,text/csv"
@@ -178,26 +356,34 @@ function ImportCard({ kind }: { kind: TemplateKey }) {
             />
             <Button asChild disabled={busy} className="gap-2">
               <span>
-                <Upload className="h-4 w-4" /> {busy ? "Importando..." : "Enviar CSV"}
+                <Upload className="h-4 w-4" /> {busy ? "Importando..." : "Selecionar e Enviar CSV"}
               </span>
             </Button>
           </label>
         </div>
+
         {result && (
-          <div className="rounded-md border p-3 text-sm space-y-1">
-            <div className="flex items-center gap-2 text-green-600">
-              <CheckCircle2 className="h-4 w-4" /> Importados: {result.ok}
+          <div className="rounded-lg border border-neutral-100 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900/50 p-4 text-sm space-y-2 mt-4 animate-fade-in">
+            <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-500 font-medium">
+              <CheckCircle2 className="h-4 w-4" /> Importados/Atualizados: {result.ok}
             </div>
             {result.fail > 0 && (
               <>
-                <div className="flex items-center gap-2 text-destructive">
-                  <AlertCircle className="h-4 w-4" /> Falhas: {result.fail}
+                <div className="flex items-center gap-2 text-destructive font-medium">
+                  <AlertCircle className="h-4 w-4" /> Erros de Validação: {result.fail}
                 </div>
-                <ul className="list-disc pl-6 text-xs text-muted-foreground max-h-40 overflow-auto">
-                  {result.errors.slice(0, 20).map((e, i) => (
-                    <li key={i}>{e}</li>
-                  ))}
-                </ul>
+                <div className="max-h-48 overflow-auto rounded-md bg-white dark:bg-neutral-950 p-3 border border-neutral-200 dark:border-neutral-800">
+                  <ul className="list-disc pl-5 text-xs text-muted-foreground space-y-1">
+                    {result.errors.slice(0, 30).map((e, i) => (
+                      <li key={i} className="text-red-500 dark:text-red-400">{e}</li>
+                    ))}
+                    {result.errors.length > 30 && (
+                      <li className="list-none text-neutral-400 pt-1">
+                        ...e mais {result.errors.length - 30} erros ocultados.
+                      </li>
+                    )}
+                  </ul>
+                </div>
               </>
             )}
           </div>
@@ -212,29 +398,39 @@ async function importRows(kind: TemplateKey, rows: Record<string, string>[]) {
   let ok = 0,
     fail = 0;
 
+  // 1. IMPORT COLABORADORES
   if (kind === "colaboradores") {
     const { data: ops } = await db.from("operacoes").select("id,nome");
-    const opMap = new Map((ops ?? []).map((o: any) => [o.nome.toLowerCase(), o.id]));
+    const opMap = new Map((ops ?? []).map((o: any) => [o.nome.toLowerCase().trim(), o.id]));
+
     const { data: existentes } = await db
       .from("colaboradores")
-      .select(
-        "id, nome, cpf, matricula, email, email_senha, telefone, cargo, operacao_id, admissao_em, status",
-      );
+      .select("id, nome, cpf, matricula, email, email_senha, telefone, cargo, operacao_id, admissao_em, status");
+
     const byKey = new Map<string, any>();
     for (const c of existentes ?? []) {
       const cpfKey = (c.cpf ?? "").replace(/\D/g, "");
-      const nomeKey = String(c.nome ?? "")
-        .trim()
-        .toLowerCase();
+      const nomeKey = String(c.nome ?? "").trim().toLowerCase();
       if (cpfKey) byKey.set(`cpf:${cpfKey}`, c);
       if (nomeKey) byKey.set(`nome:${nomeKey}`, c);
     }
+
+    const validStatuses = ["ativo", "ferias", "afastado", "inativo", "desligado"];
+
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
       const cpfKey = (r.cpf ?? "").replace(/\D/g, "");
-      const nomeKey = String(r.nome ?? "")
-        .trim()
-        .toLowerCase();
+      const nomeKey = String(r.nome ?? "").trim().toLowerCase();
+
+      const opName = r.operacao?.trim() || "";
+      const opId = opName ? (opMap.get(opName.toLowerCase()) ?? null) : null;
+
+      // Se o usuário digitou uma operação mas ela não foi encontrada no banco, avisa ou cria.
+      // Vamos tentar encontrar ou deixar nula se não existir.
+      
+      const rawStatus = (r.status ?? "").trim().toLowerCase();
+      const status = validStatuses.includes(rawStatus) ? rawStatus : "ativo";
+
       const payload: any = {
         nome: r.nome?.trim(),
         cpf: r.cpf?.trim() || null,
@@ -243,21 +439,22 @@ async function importRows(kind: TemplateKey, rows: Record<string, string>[]) {
         email_senha: r.email_senha?.trim() || null,
         telefone: r.telefone?.trim() || null,
         cargo: r.cargo?.trim() || null,
-        operacao_id: r.operacao ? (opMap.get(r.operacao.trim().toLowerCase()) ?? null) : null,
+        operacao_id: opId,
         admissao_em: r.admissao_em?.trim() || null,
-        status: (r.status?.trim() as any) || "ativo",
+        status: status as any,
       };
+
       if (!payload.nome) {
         fail++;
-        errors.push(`Linha ${i + 2}: nome é obrigatório`);
+        errors.push(`Linha ${i + 2}: O campo 'nome' é obrigatório.`);
         continue;
       }
+
       const existente = (cpfKey && byKey.get(`cpf:${cpfKey}`)) || byKey.get(`nome:${nomeKey}`);
       if (existente) {
-        // atualiza apenas campos divergentes (mantém valor existente quando novo veio vazio)
         const diff: any = {};
         for (const [k, v] of Object.entries(payload)) {
-          if (v == null || v === "") continue;
+          if (v === null || v === "") continue;
           if ((existente as any)[k] !== v) diff[k] = v;
         }
         if (Object.keys(diff).length === 0) {
@@ -267,41 +464,99 @@ async function importRows(kind: TemplateKey, rows: Record<string, string>[]) {
         const { error } = await db.from("colaboradores").update(diff).eq("id", existente.id);
         if (error) {
           fail++;
-          errors.push(`Linha ${i + 2}: ${error.message}`);
+          errors.push(`Linha ${i + 2}: Falha ao atualizar: ${error.message}`);
         } else ok++;
       } else {
         const { error } = await db.from("colaboradores").insert(payload);
         if (error) {
           fail++;
-          errors.push(`Linha ${i + 2}: ${error.message}`);
+          errors.push(`Linha ${i + 2}: Falha ao inserir: ${error.message}`);
         } else ok++;
       }
     }
-  } else if (kind === "sistemas") {
+  }
+
+  // 2. IMPORT OPERAÇÕES
+  else if (kind === "operacoes") {
+    const { data: existentes } = await db.from("operacoes").select("id, nome, descricao, ativo");
+    const opMap = new Map((existentes ?? []).map((o: any) => [o.nome.trim().toLowerCase(), o]));
+
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      const nome = r.nome?.trim();
+      const payload = {
+        nome,
+        descricao: r.descricao?.trim() || null,
+        ativo: r.ativo ? String(r.ativo).toLowerCase() !== "false" : true,
+      };
+
+      if (!nome) {
+        fail++;
+        errors.push(`Linha ${i + 2}: O campo 'nome' é obrigatório.`);
+        continue;
+      }
+
+      const ex = opMap.get(nome.toLowerCase());
+      if (ex) {
+        const diff: any = {};
+        if (payload.descricao !== ex.descricao) diff.descricao = payload.descricao;
+        if (payload.ativo !== ex.ativo) diff.ativo = payload.ativo;
+
+        if (Object.keys(diff).length === 0) {
+          ok++;
+          continue;
+        }
+
+        const { error } = await db.from("operacoes").update(diff).eq("id", ex.id);
+        if (error) {
+          fail++;
+          errors.push(`Linha ${i + 2}: Falha ao atualizar: ${error.message}`);
+        } else ok++;
+      } else {
+        const { error } = await db.from("operacoes").insert(payload);
+        if (error) {
+          fail++;
+          errors.push(`Linha ${i + 2}: Falha ao criar: ${error.message}`);
+        } else ok++;
+      }
+    }
+  }
+
+  // 3. IMPORT SISTEMAS
+  else if (kind === "sistemas") {
     const { data: existentes } = await db
       .from("sistemas")
       .select("id, nome, categoria, criticidade, descricao, url, ativo");
     const sisMap = new Map((existentes ?? []).map((s: any) => [s.nome.trim().toLowerCase(), s]));
+
+    const validCrit = ["baixa", "media", "alta"];
+
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
+      const nome = r.nome?.trim();
+      const rawCrit = (r.criticidade ?? "").trim().toLowerCase();
+      const criticidade = validCrit.includes(rawCrit) ? rawCrit : "media";
+
       const payload: any = {
-        nome: r.nome?.trim(),
+        nome,
         categoria: r.categoria?.trim() || null,
-        criticidade: (r.criticidade?.trim() as any) || "media",
+        criticidade: criticidade as any,
         descricao: r.descricao?.trim() || null,
         url: r.url?.trim() || null,
         ativo: r.ativo ? String(r.ativo).toLowerCase() !== "false" : true,
       };
-      if (!payload.nome) {
+
+      if (!nome) {
         fail++;
-        errors.push(`Linha ${i + 2}: nome é obrigatório`);
+        errors.push(`Linha ${i + 2}: O campo 'nome' é obrigatório.`);
         continue;
       }
-      const ex = sisMap.get(payload.nome.toLowerCase());
+
+      const ex = sisMap.get(nome.toLowerCase());
       if (ex) {
         const diff: any = {};
         for (const [k, v] of Object.entries(payload)) {
-          if (v == null || v === "") continue;
+          if (v === null || v === "") continue;
           if ((ex as any)[k] !== v) diff[k] = v;
         }
         if (Object.keys(diff).length === 0) {
@@ -311,53 +566,130 @@ async function importRows(kind: TemplateKey, rows: Record<string, string>[]) {
         const { error } = await db.from("sistemas").update(diff).eq("id", ex.id);
         if (error) {
           fail++;
-          errors.push(`Linha ${i + 2}: ${error.message}`);
+          errors.push(`Linha ${i + 2}: Falha ao atualizar: ${error.message}`);
         } else ok++;
       } else {
         const { error } = await db.from("sistemas").insert(payload);
         if (error) {
           fail++;
-          errors.push(`Linha ${i + 2}: ${error.message}`);
+          errors.push(`Linha ${i + 2}: Falha ao criar: ${error.message}`);
         } else ok++;
       }
     }
-  } else if (kind === "acessos") {
-    const { data: cols } = await db.from("colaboradores").select("id,cpf");
-    const { data: sis } = await db.from("sistemas").select("id,nome");
-    const colMap = new Map(
-      (cols ?? []).filter((c: any) => c.cpf).map((c: any) => [c.cpf.replace(/\D/g, ""), c.id]),
+  }
+
+  // 4. IMPORT PERFIS DE ACESSO
+  else if (kind === "perfis_acesso") {
+    const { data: sis } = await db.from("sistemas").select("id, nome");
+    const sisMap = new Map((sis ?? []).map((s: any) => [s.nome.trim().toLowerCase(), s.id]));
+
+    const { data: existentes } = await db.from("perfis_acesso").select("id, nome, sistema_id, descricao");
+    const perfMap = new Map(
+      (existentes ?? []).map((p: any) => [`${p.nome.trim().toLowerCase()}:${p.sistema_id}`, p])
     );
-    const sisMap = new Map((sis ?? []).map((s: any) => [s.nome.toLowerCase(), s.id]));
+
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      const nome = r.nome?.trim();
+      const sistemaNome = r.sistema?.trim() || "";
+      const sistemaId = sistemaNome ? sisMap.get(sistemaNome.toLowerCase()) : null;
+
+      if (!nome) {
+        fail++;
+        errors.push(`Linha ${i + 2}: O campo 'nome' é obrigatório.`);
+        continue;
+      }
+      if (!sistemaId) {
+        fail++;
+        errors.push(`Linha ${i + 2}: Sistema "${sistemaNome}" não encontrado ou não cadastrado.`);
+        continue;
+      }
+
+      const key = `${nome.toLowerCase()}:${sistemaId}`;
+      const ex = perfMap.get(key);
+      const payload = {
+        nome,
+        sistema_id: sistemaId,
+        descricao: r.descricao?.trim() || null,
+      };
+
+      if (ex) {
+        const diff: any = {};
+        if (payload.descricao !== ex.descricao) diff.descricao = payload.descricao;
+        
+        if (Object.keys(diff).length === 0) {
+          ok++;
+          continue;
+        }
+        const { error } = await db.from("perfis_acesso").update(diff).eq("id", ex.id);
+        if (error) {
+          fail++;
+          errors.push(`Linha ${i + 2}: Falha ao atualizar perfil: ${error.message}`);
+        } else ok++;
+      } else {
+        const { error } = await db.from("perfis_acesso").insert(payload);
+        if (error) {
+          fail++;
+          errors.push(`Linha ${i + 2}: Falha ao criar perfil: ${error.message}`);
+        } else ok++;
+      }
+    }
+  }
+
+  // 5. IMPORT ACESSOS / CREDENCIAIS
+  else if (kind === "acessos") {
+    const { data: cols } = await db.from("colaboradores").select("id, cpf");
+    const { data: sis } = await db.from("sistemas").select("id, nome");
+    const { data: perfis } = await db.from("perfis_acesso").select("id, nome, sistema_id");
+
+    const colMap = new Map(
+      (cols ?? []).filter((c: any) => c.cpf).map((c: any) => [c.cpf.replace(/\D/g, ""), c.id])
+    );
+    const sisMap = new Map((sis ?? []).map((s: any) => [s.nome.toLowerCase().trim(), s.id]));
+    const perfMap = new Map(
+      (perfis ?? []).map((p: any) => [`${p.nome.toLowerCase().trim()}:${p.sistema_id}`, p.id])
+    );
+
     const { data: u } = await db.auth.getUser();
+    const validStatuses = ["pendente", "ativo", "suspenso", "exclusao_pendente", "excluido"];
+
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
       const cpfKey = (r.cpf_colaborador ?? "").replace(/\D/g, "");
       const colId = colMap.get(cpfKey);
-      const sisId = sisMap.get((r.sistema ?? "").trim().toLowerCase());
+      const sisId = r.sistema ? sisMap.get(r.sistema.trim().toLowerCase()) : null;
+
       if (!colId) {
         fail++;
-        errors.push(`Linha ${i + 2}: colaborador com CPF ${r.cpf_colaborador} não encontrado`);
+        errors.push(`Linha ${i + 2}: Colaborador com CPF "${r.cpf_colaborador}" não cadastrado.`);
         continue;
       }
       if (!sisId) {
         fail++;
-        errors.push(`Linha ${i + 2}: sistema "${r.sistema}" não encontrado`);
+        errors.push(`Linha ${i + 2}: Sistema "${r.sistema}" não homologado ou não encontrado.`);
         continue;
       }
-      const status = (r.status?.trim() as any) || "pendente";
+
+      const perfilNome = r.perfil_acesso?.trim() || "";
+      const perfilId = perfilNome ? (perfMap.get(`${perfilNome.toLowerCase()}:${sisId}`) ?? null) : null;
+
+      const rawStatus = (r.status ?? "").trim().toLowerCase();
+      const status = validStatuses.includes(rawStatus) ? rawStatus : "pendente";
+
       const payload: any = {
         colaborador_id: colId,
         sistema_id: sisId,
+        perfil_acesso_id: perfilId,
         login: r.login?.trim() || null,
         senha: r.senha?.trim() || null,
-        status,
+        status: status as any,
         concedido_por: u.user?.id ?? null,
         concedido_em: status === "ativo" ? new Date().toISOString() : null,
       };
 
       const { data: exAcesso } = await db
         .from("acessos")
-        .select("id, login, senha, status")
+        .select("id, login, senha, status, perfil_acesso_id")
         .eq("colaborador_id", colId)
         .eq("sistema_id", sisId)
         .maybeSingle();
@@ -367,6 +699,10 @@ async function importRows(kind: TemplateKey, rows: Record<string, string>[]) {
         if (payload.login && exAcesso.login !== payload.login) diff.login = payload.login;
         if (payload.senha && exAcesso.senha !== payload.senha) diff.senha = payload.senha;
         if (payload.status && exAcesso.status !== payload.status) diff.status = payload.status;
+        if (payload.perfil_acesso_id && exAcesso.perfil_acesso_id !== payload.perfil_acesso_id) {
+          diff.perfil_acesso_id = payload.perfil_acesso_id;
+        }
+
         if (Object.keys(diff).length === 0) {
           ok++;
           continue;
@@ -374,13 +710,199 @@ async function importRows(kind: TemplateKey, rows: Record<string, string>[]) {
         const { error } = await db.from("acessos").update(diff).eq("id", exAcesso.id);
         if (error) {
           fail++;
-          errors.push(`Linha ${i + 2}: ${error.message}`);
+          errors.push(`Linha ${i + 2}: Falha ao atualizar credencial: ${error.message}`);
         } else ok++;
       } else {
         const { error } = await db.from("acessos").insert(payload);
         if (error) {
           fail++;
-          errors.push(`Linha ${i + 2}: ${error.message}`);
+          errors.push(`Linha ${i + 2}: Falha ao inserir credencial: ${error.message}`);
+        } else ok++;
+      }
+    }
+  }
+
+  // 6. IMPORT PENDÊNCIAS
+  else if (kind === "pendencias") {
+    const { data: cols } = await db.from("colaboradores").select("id, cpf");
+    const { data: sis } = await db.from("sistemas").select("id, nome");
+    const { data: users } = await db.from("profiles").select("id, email");
+
+    const colMap = new Map(
+      (cols ?? []).filter((c: any) => c.cpf).map((c: any) => [c.cpf.replace(/\D/g, ""), c.id])
+    );
+    const sisMap = new Map((sis ?? []).map((s: any) => [s.nome.trim().toLowerCase(), s.id]));
+    const userMap = new Map((users ?? []).map((u: any) => [u.email.trim().toLowerCase(), u.id]));
+
+    const { data: loggedIn } = await db.auth.getUser();
+
+    const validPriorities = ["baixa", "media", "alta", "critica"];
+    const validStatuses = ["backlog", "em_analise", "em_andamento", "aguardando", "concluido", "cancelado"];
+    const validTypes = ["solicitacao_acesso", "exclusao_acesso", "revisao", "alteracao", "outro"];
+
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      const titulo = r.titulo?.trim();
+
+      if (!titulo) {
+        fail++;
+        errors.push(`Linha ${i + 2}: O campo 'titulo' é obrigatório.`);
+        continue;
+      }
+
+      const rawType = (r.tipo ?? "").trim().toLowerCase();
+      const tipo = validTypes.includes(rawType) ? rawType : "outro";
+
+      const rawPriority = (r.prioridade ?? "").trim().toLowerCase();
+      const prioridade = validPriorities.includes(rawPriority) ? rawPriority : "media";
+
+      const rawStatus = (r.status ?? "").trim().toLowerCase();
+      const status = validStatuses.includes(rawStatus) ? rawStatus : "backlog";
+
+      const cpfKey = (r.cpf_colaborador ?? "").replace(/\D/g, "");
+      const colId = cpfKey ? (colMap.get(cpfKey) ?? null) : null;
+
+      const sisName = r.sistema?.trim() || "";
+      const sisId = sisName ? (sisMap.get(sisName.toLowerCase()) ?? null) : null;
+
+      const respEmail = r.email_responsavel?.trim() || "";
+      const respId = respEmail ? (userMap.get(respEmail.toLowerCase()) ?? null) : null;
+
+      const payload: any = {
+        titulo,
+        tipo: tipo as any,
+        prioridade: prioridade as any,
+        status: status as any,
+        descricao: r.descricao?.trim() || null,
+        colaborador_id: colId,
+        sistema_id: sisId,
+        responsavel_id: respId,
+        data_inicio: r.data_inicio?.trim() || new Date().toISOString().split("T")[0],
+        sla_em: r.sla_em?.trim() || null,
+        criado_por: loggedIn.user?.id ?? null,
+      };
+
+      // Check if similar task already exists for this collaborator + system
+      const query = db.from("pendencias").select("id, status, prioridade, descricao");
+      let existingPendencia: any = null;
+
+      if (colId && sisId) {
+        const { data } = await query
+          .eq("titulo", titulo)
+          .eq("colaborador_id", colId)
+          .eq("sistema_id", sisId)
+          .maybeSingle();
+        existingPendencia = data;
+      } else {
+        const { data } = await query.eq("titulo", titulo).maybeSingle();
+        existingPendencia = data;
+      }
+
+      if (existingPendencia) {
+        const diff: any = {};
+        if (payload.status !== existingPendencia.status) diff.status = payload.status;
+        if (payload.prioridade !== existingPendencia.prioridade) diff.prioridade = payload.prioridade;
+        if (payload.descricao && payload.descricao !== existingPendencia.descricao) {
+          diff.descricao = payload.descricao;
+        }
+
+        if (Object.keys(diff).length === 0) {
+          ok++;
+          continue;
+        }
+
+        const { error } = await db.from("pendencias").update(diff).eq("id", existingPendencia.id);
+        if (error) {
+          fail++;
+          errors.push(`Linha ${i + 2}: Falha ao atualizar pendência: ${error.message}`);
+        } else ok++;
+      } else {
+        const { error } = await db.from("pendencias").insert(payload);
+        if (error) {
+          fail++;
+          errors.push(`Linha ${i + 2}: Falha ao criar pendência: ${error.message}`);
+        } else ok++;
+      }
+    }
+  }
+
+  // 7. IMPORT CHAMADOS
+  else if (kind === "chamados") {
+    const { data: sis } = await db.from("sistemas").select("id, nome");
+    const { data: users } = await db.from("profiles").select("id, email");
+
+    const sisMap = new Map((sis ?? []).map((s: any) => [s.nome.trim().toLowerCase(), s.id]));
+    const userMap = new Map((users ?? []).map((u: any) => [u.email.trim().toLowerCase(), u.id]));
+
+    const { data: loggedIn } = await db.auth.getUser();
+
+    const validTypes = ["erro", "desbloqueio", "redefinicao_senha"];
+    const validStatuses = ["aberto", "em_analise", "aceito", "recusado", "concluido"];
+
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      const titulo = r.titulo?.trim();
+
+      if (!titulo) {
+        fail++;
+        errors.push(`Linha ${i + 2}: O campo 'titulo' é obrigatório.`);
+        continue;
+      }
+
+      const rawType = (r.tipo ?? "").trim().toLowerCase();
+      const tipo = validTypes.includes(rawType) ? rawType : "erro";
+
+      const rawStatus = (r.status ?? "").trim().toLowerCase();
+      const status = validStatuses.includes(rawStatus) ? rawStatus : "aberto";
+
+      const sisName = r.sistema?.trim() || "";
+      const sisId = sisName ? (sisMap.get(sisName.toLowerCase()) ?? null) : null;
+
+      const opEmail = r.email_operador?.trim() || "";
+      const opId = opEmail ? (userMap.get(opEmail.toLowerCase()) ?? loggedIn.user?.id) : loggedIn.user?.id;
+
+      const tratadorEmail = r.email_tratador?.trim() || "";
+      const tratadorId = tratadorEmail ? (userMap.get(tratadorEmail.toLowerCase()) ?? null) : null;
+
+      const payload: any = {
+        titulo,
+        tipo,
+        status,
+        descricao: r.descricao?.trim() || null,
+        sistema_id: sisId,
+        operador_id: opId,
+        tratador_id: tratadorId,
+        resposta: r.resposta?.trim() || null,
+      };
+
+      // Check if ticket already exists for the user with same title
+      const { data: exChamado } = await db
+        .from("chamados")
+        .select("id, status, resposta")
+        .eq("titulo", titulo)
+        .eq("operador_id", opId)
+        .maybeSingle();
+
+      if (exChamado) {
+        const diff: any = {};
+        if (payload.status !== exChamado.status) diff.status = payload.status;
+        if (payload.resposta && payload.resposta !== exChamado.resposta) diff.resposta = payload.resposta;
+
+        if (Object.keys(diff).length === 0) {
+          ok++;
+          continue;
+        }
+
+        const { error } = await db.from("chamados").update(diff).eq("id", exChamado.id);
+        if (error) {
+          fail++;
+          errors.push(`Linha ${i + 2}: Falha ao atualizar chamado: ${error.message}`);
+        } else ok++;
+      } else {
+        const { error } = await db.from("chamados").insert(payload);
+        if (error) {
+          fail++;
+          errors.push(`Linha ${i + 2}: Falha ao criar chamado: ${error.message}`);
         } else ok++;
       }
     }

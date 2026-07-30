@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { db } from "@/integrations/database/client";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/auth")({
   beforeLoad: async () => {
@@ -83,33 +84,38 @@ function AuthPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-950 p-4 relative overflow-hidden">
+    <div className="flex min-h-screen items-center justify-center bg-background p-4 relative overflow-hidden transition-colors duration-300">
       {/* Background decoration */}
-      <div className="absolute -top-40 -left-40 h-96 w-96 rounded-full bg-primary/20 blur-3xl pointer-events-none" />
-      <div className="absolute -bottom-40 -right-40 h-96 w-96 rounded-full bg-blue-600/10 blur-3xl pointer-events-none" />
+      <div className="absolute -top-40 -left-40 h-96 w-96 rounded-full bg-primary/10 blur-3xl pointer-events-none" />
+      <div className="absolute -bottom-40 -right-40 h-96 w-96 rounded-full bg-accent/10 blur-3xl pointer-events-none" />
 
-      <Card className="w-full max-w-md shadow-2xl border-slate-800 bg-slate-900/90 backdrop-blur text-slate-100 z-10">
+      <Card className="w-full max-w-md shadow-xl border border-border bg-card text-card-foreground z-10">
         <CardHeader className="space-y-2 text-center pb-2">
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary border border-primary/20 shadow-inner">
             <Shield className="h-7 w-7 text-primary" />
           </div>
-          <CardTitle className="text-2xl font-bold tracking-tight text-white">ProAccess</CardTitle>
-          <CardDescription className="text-slate-400 text-sm">
+          <CardTitle className="text-2xl font-bold tracking-tight text-foreground">
+            ProAccess
+          </CardTitle>
+          <CardDescription className="text-muted-foreground text-sm">
             Gestão Integrada de Acessos e Matriz de Perfis
           </CardDescription>
         </CardHeader>
 
         <CardContent className="space-y-4 pt-4">
           {errorMsg && (
-            <div className="flex items-center gap-2 rounded-lg bg-red-500/10 p-3 text-sm text-red-400 border border-red-500/20 font-medium">
-              <AlertCircle className="h-4 w-4 shrink-0" />
-              <span>{errorMsg}</span>
+            <div className="flex items-center gap-3 rounded-lg bg-destructive/10 p-4 text-sm text-destructive border border-destructive/25 font-medium animate-in fade-in slide-in-from-top-1 duration-200">
+              <AlertCircle className="h-5 w-5 shrink-0 text-destructive" />
+              <div className="flex-1 text-left">
+                <p className="font-semibold text-destructive">Falha na autenticação</p>
+                <p className="text-xs text-destructive/90 mt-0.5">{errorMsg}</p>
+              </div>
             </div>
           )}
 
           <form onSubmit={onSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="identifier" className="text-slate-200 text-sm font-medium">
+              <Label htmlFor="identifier" className="text-foreground text-sm font-medium">
                 Usuário, E-mail ou Nome
               </Label>
               <div className="relative">
@@ -123,13 +129,16 @@ function AuthPage() {
                     setIdentifier(e.target.value);
                     setErrorMsg(null);
                   }}
-                  className="bg-slate-950/80 border-slate-800 text-slate-100 placeholder:text-slate-500 focus-visible:ring-primary h-11"
+                  className={cn(
+                    "bg-background border-border text-foreground placeholder:text-muted-foreground focus-visible:ring-ring h-11 transition-all duration-200",
+                    errorMsg && "border-destructive focus-visible:ring-destructive",
+                  )}
                 />
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="password" className="text-slate-200 text-sm font-medium">
+              <Label htmlFor="password" className="text-foreground text-sm font-medium">
                 Senha
               </Label>
               <div className="relative">
@@ -143,12 +152,15 @@ function AuthPage() {
                     setPassword(e.target.value);
                     setErrorMsg(null);
                   }}
-                  className="bg-slate-950/80 border-slate-800 text-slate-100 placeholder:text-slate-500 focus-visible:ring-primary h-11 pr-10"
+                  className={cn(
+                    "bg-background border-border text-foreground placeholder:text-muted-foreground focus-visible:ring-ring h-11 pr-10 transition-all duration-200",
+                    errorMsg && "border-destructive focus-visible:ring-destructive",
+                  )}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
                 >
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
@@ -162,7 +174,7 @@ function AuthPage() {
             >
               {loading ? (
                 <div className="flex items-center gap-2">
-                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
                   <span>Autenticando...</span>
                 </div>
               ) : (
@@ -174,12 +186,15 @@ function AuthPage() {
             </Button>
           </form>
 
-          <div className="pt-2 text-center border-t border-slate-800/80 mt-4">
-            <p className="text-xs text-slate-500 flex items-center justify-center gap-1.5">
-              <Database className="h-3.5 w-3.5 text-slate-400" />
+          <div className="pt-2 text-center border-t border-border mt-4">
+            <p className="text-xs text-muted-foreground flex items-center justify-center gap-1.5">
+              <Database className="h-3.5 w-3.5 text-muted-foreground" />
               <span>
                 Autenticação segura via Neon Postgres (
-                <code className="text-slate-400 font-mono">profiles</code>)
+                <code className="text-muted-foreground font-mono bg-muted px-1.5 py-0.5 rounded">
+                  profiles
+                </code>
+                )
               </span>
             </p>
           </div>

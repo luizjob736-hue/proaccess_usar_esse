@@ -341,7 +341,29 @@ function parseSelectSpecs(table: string, selectStr: string) {
     return { cols: [`${table}.*`], joins: [] };
   }
 
-  const parts = selectStr.split(",").map((s) => s.trim());
+  // Split on commas at depth 0 only (outside parentheses)
+  const parts: string[] = [];
+  let current = "";
+  let depth = 0;
+  for (let i = 0; i < selectStr.length; i++) {
+    const char = selectStr[i];
+    if (char === "(") {
+      depth++;
+      current += char;
+    } else if (char === ")") {
+      depth--;
+      current += char;
+    } else if (char === "," && depth === 0) {
+      parts.push(current.trim());
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  if (current.trim()) {
+    parts.push(current.trim());
+  }
+
   const cols: string[] = [];
   const joins: { joinTable: string; alias: string; fkCol: string; fields: string[] }[] = [];
 

@@ -11,15 +11,33 @@ export const requireDatabaseAuth = createMiddleware({ type: "function" }).server
     }
 
     const authHeader = request.headers.get("authorization");
-
-    let userId = "3c5fc7e9-39ce-4f7d-9076-30acaa0df902"; // default fallback master user ID
+    let token = "";
 
     if (authHeader && authHeader.startsWith("Bearer ")) {
-      const token = authHeader.replace("Bearer ", "");
-      if (token.startsWith("neon_token_")) {
-        userId = token.replace("neon_token_", "");
+      token = authHeader.replace("Bearer ", "");
+    }
+
+    // Fallback to cookie
+    if (!token || !token.startsWith("neon_token_")) {
+      const cookieHeader = request.headers.get("cookie");
+      if (cookieHeader) {
+        const match = cookieHeader.match(/proaccess_neon_session=([^;]+)/);
+        if (match && match[1]) {
+          try {
+            const sess = JSON.parse(decodeURIComponent(match[1]));
+            token = sess?.access_token || "";
+          } catch {
+            // ignore
+          }
+        }
       }
     }
+
+    if (!token || !token.startsWith("neon_token_")) {
+      throw new Error("Unauthorized: Sessão de usuário não encontrada ou inválida.");
+    }
+
+    const userId = token.replace("neon_token_", "");
 
     return next({
       context: {

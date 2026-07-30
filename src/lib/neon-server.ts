@@ -399,6 +399,114 @@ function parseSelectSpecs(table: string, selectStr: string) {
   return { cols, joins };
 }
 
+async function getCurrentUser(client: any): Promise<NeonUser | null> {
+  try {
+    const { getRequest } = await import("@tanstack/react-start/server");
+    const req = getRequest();
+    if (!req?.headers) return null;
+
+    // 1. Get from Authorization header
+    const authHeader = req.headers.get("authorization");
+    let token = "";
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      token = authHeader.replace("Bearer ", "");
+    }
+
+    // 2. Get from cookie
+    if (!token || !token.startsWith("neon_token_")) {
+      const cookieHeader = req.headers.get("cookie");
+      if (cookieHeader) {
+        const match = cookieHeader.match(/proaccess_neon_session=([^;]+)/);
+        if (match && match[1]) {
+          try {
+            const sess = JSON.parse(decodeURIComponent(match[1]));
+            token = sess?.access_token || "";
+          } catch {
+            // ignore
+          }
+        }
+      }
+    }
+
+    if (!token || !token.startsWith("neon_token_")) {
+      return null;
+    }
+
+    const userId = token.replace("neon_token_", "");
+
+    const res = await client.query(
+      `SELECT p.id, p.nome, p.email as profile_email, p.ativo, p.senha_alterada,
+              (SELECT role FROM public.user_roles WHERE user_id = p.id::text OR user_id::text = p.id::text LIMIT 1) as role
+       FROM public.profiles p
+       WHERE p.id::text = $1 OR lower(p.email) = lower($1) LIMIT 1`,
+      [userId],
+    );
+    const row = res.rows[0];
+    if (!row || row.ativo === false) {
+      return null;
+    }
+
+    const userEmail = row.profile_email || `${row.id}@proacess.local`;
+    return {
+      id: String(row.id),
+      email: userEmail,
+      role: row.role || "operador",
+      created_at: new Date().toISOString(),
+      user_metadata: {
+        nome: row.nome || userEmail.split("@")[0],
+        senha_alterada: row.senha_alterada ?? true,
+      },
+    };
+  } catch (err) {
+    console.error("Error in getCurrentUser:", err);
+    return null;
+  }
+}
+
+async function getColaboradorIdForUser(client: any, user: NeonUser): Promise<string | null> {
+  const email = (user.email || "").trim().toLowerCase();
+
+  // Query auth.users encrypted metadata if possible
+  const profileRes = await client
+    .query(`SELECT raw_user_meta_data FROM auth.users WHERE id::text = $1`, [user.id])
+    .catch(() => ({ rows: [] }));
+
+  let cpf = "";
+  try {
+    const meta = profileRes.rows[0]?.raw_user_meta_data;
+    if (meta && typeof meta === "object") {
+      cpf = String(meta.cpf || "").replace(/\D/g, "");
+    }
+  } catch {
+    // ignore
+  }
+
+  // Fallback to public.profiles
+  if (!cpf) {
+    const dbProfileRes = await client
+      .query(`SELECT cpf FROM public.profiles WHERE id::text = $1`, [user.id])
+      .catch(() => ({ rows: [] }));
+    cpf = String(dbProfileRes.rows[0]?.cpf || "").replace(/\D/g, "");
+  }
+
+  if (!email && !cpf) return null;
+
+  let queryStr = `SELECT id FROM public.colaboradores WHERE FALSE`;
+  const params: any[] = [];
+
+  if (email) {
+    params.push(email);
+    queryStr += ` OR lower(email) = $${params.length}`;
+  }
+  if (cpf) {
+    params.push(cpf);
+    queryStr += ` OR replace(replace(cpf, '.', ''), '-', '') = $${params.length}`;
+  }
+
+  const res = await client.query(queryStr, params);
+  return res.rows[0]?.id || null;
+}
+
 // 2. Query Server Function
 export const neonQueryServerFn = createServerFn({ method: "POST" })
   .inputValidator(
@@ -423,6 +531,75 @@ export const neonQueryServerFn = createServerFn({ method: "POST" })
       const p = await getNeonPool();
       client = await p.connect();
       const table = data.table;
+
+      const currentUser = await getCurrentUser(client);
+      if (!currentUser) {
+        throw new Error("Não autorizado: É necessário fazer login.");
+      }
+
+      const isWrite = data.action !== "select";
+
+      // Role-based Access Controls
+      if (currentUser.role === "operador") {
+        if (isWrite) {
+          throw new Error(
+            "Não autorizado: Operadores não possuem permissão para realizar alterações.",
+          );
+        }
+
+        const allowedTables = [
+          "acessos",
+          "colaboradores",
+          "profiles",
+          "sistemas",
+          "perfis_acesso",
+          "chamados",
+          "chamado_comentarios",
+        ];
+        if (!allowedTables.includes(table)) {
+          throw new Error(
+            `Não autorizado: Operadores não possuem permissão de leitura na tabela ${table}.`,
+          );
+        }
+
+        // Apply Row Level Security filters for operators
+        if (table === "acessos") {
+          const colId = await getColaboradorIdForUser(client, currentUser);
+          if (!colId) {
+            return { data: data.single || data.maybeSingle ? null : [], error: null };
+          }
+          data.whereClauses = (data.whereClauses || []).filter((w) => w.col !== "colaborador_id");
+          data.whereClauses.push({ col: "colaborador_id", op: "eq", val: colId });
+        } else if (table === "colaboradores") {
+          const colId = await getColaboradorIdForUser(client, currentUser);
+          if (!colId) {
+            return { data: data.single || data.maybeSingle ? null : [], error: null };
+          }
+          data.whereClauses = (data.whereClauses || []).filter((w) => w.col !== "id");
+          data.whereClauses.push({ col: "id", op: "eq", val: colId });
+        } else if (table === "profiles") {
+          data.whereClauses = (data.whereClauses || []).filter((w) => w.col !== "id");
+          data.whereClauses.push({ col: "id", op: "eq", val: currentUser.id });
+        } else if (table === "chamados") {
+          data.whereClauses = (data.whereClauses || []).filter((w) => w.col !== "operador_id");
+          data.whereClauses.push({ col: "operador_id", op: "eq", val: currentUser.id });
+        }
+      } else if (currentUser.role === "consulta") {
+        if (isWrite) {
+          throw new Error(
+            "Não autorizado: Usuários com perfil de consulta não possuem permissão para realizar alterações.",
+          );
+        }
+      } else {
+        // Only admin_master and admin can write to user_roles or profiles
+        if (isWrite && (table === "user_roles" || table === "profiles")) {
+          if (currentUser.role !== "admin_master" && currentUser.role !== "admin") {
+            throw new Error(
+              `Não autorizado: Apenas administradores podem alterar a tabela ${table}.`,
+            );
+          }
+        }
+      }
 
       if (data.action === "select") {
         const { cols, joins } = parseSelectSpecs(table, data.selectCols || "*");
@@ -639,14 +816,29 @@ export const neonRpcServerFn = createServerFn({ method: "POST" })
       const p = await getNeonPool();
       client = await p.connect();
 
+      const currentUser = await getCurrentUser(client);
+      if (!currentUser) {
+        throw new Error("Não autorizado: É necessário fazer login.");
+      }
+
+      const isAdmin = currentUser.role === "admin" || currentUser.role === "admin_master";
+
       if (data.fnName === "is_admin") {
-        const uid = data.args?._user_id;
+        let uid = data.args?._user_id;
+        // If not admin, restrict querying other user ids
+        if (!isAdmin) {
+          uid = currentUser.id;
+        }
         const res = await client.query("SELECT public.is_admin($1) as res", [uid]);
         return { data: res.rows[0]?.res ?? false, error: null };
       }
 
       if (data.fnName === "has_role") {
-        const uid = data.args?._user_id;
+        let uid = data.args?._user_id;
+        // If not admin, restrict querying other user ids
+        if (!isAdmin) {
+          uid = currentUser.id;
+        }
         const role = data.args?._role;
         const res = await client.query("SELECT public.has_role($1, $2) as res", [uid, role]);
         return { data: res.rows[0]?.res ?? false, error: null };

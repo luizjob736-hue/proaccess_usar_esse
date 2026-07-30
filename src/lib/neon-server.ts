@@ -477,6 +477,19 @@ export const neonQueryServerFn = createServerFn({ method: "POST" })
           sql += ` OFFSET ${data.offsetVal}`;
         }
 
+        if (data.headOnly) {
+          let totalCount = 0;
+          let countSql = `SELECT COUNT(*) FROM public."${table}" "${table}"`;
+          if (whereParts.length > 0) countSql += ` WHERE ${whereParts.join(" AND ")}`;
+          try {
+            const cRes = await client.query(countSql, params);
+            totalCount = parseInt(cRes.rows[0].count, 10);
+          } catch (_e) {
+            totalCount = 0;
+          }
+          return { data: [], error: null, count: totalCount };
+        }
+
         const res = await client.query(sql, params);
         const rows = res.rows;
 
@@ -484,8 +497,12 @@ export const neonQueryServerFn = createServerFn({ method: "POST" })
         if (data.countExact) {
           let countSql = `SELECT COUNT(*) FROM public."${table}" "${table}"`;
           if (whereParts.length > 0) countSql += ` WHERE ${whereParts.join(" AND ")}`;
-          const cRes = await client.query(countSql, params);
-          totalCount = parseInt(cRes.rows[0].count, 10);
+          try {
+            const cRes = await client.query(countSql, params);
+            totalCount = parseInt(cRes.rows[0].count, 10);
+          } catch (_e) {
+            totalCount = rows.length;
+          }
         }
 
         if (data.single || data.maybeSingle) {

@@ -117,14 +117,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     },
   });
 
-  const { data: notifCount } = useQuery({
+  const { data: notifCount = 0 } = useQuery({
     queryKey: ["notif-count"],
     queryFn: async () => {
-      const { count } = await supabase
-        .from("notificacoes")
-        .select("*", { count: "exact", head: true })
-        .eq("lida", false);
-      return count ?? 0;
+      try {
+        const res = await supabase
+          .from("notificacoes")
+          .select("*", { count: "exact", head: true })
+          .eq("lida", false);
+        return res?.count ?? 0;
+      } catch (_err) {
+        return 0;
+      }
     },
     refetchInterval: 30_000,
   });

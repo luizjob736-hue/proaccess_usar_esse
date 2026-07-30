@@ -12,9 +12,17 @@ function Notif() {
   const qc = useQueryClient();
   const { data = [] } = useQuery({
     queryKey: ["notif-list"],
-    queryFn: async () =>
-      (await supabase.from("notificacoes").select("*").order("criado_em", { ascending: false }))
-        .data ?? [],
+    queryFn: async () => {
+      try {
+        const res = await supabase
+          .from("notificacoes")
+          .select("*")
+          .order("criado_em", { ascending: false });
+        return res?.data ?? [];
+      } catch (_err) {
+        return [];
+      }
+    },
   });
   const markRead = useMutation({
     mutationFn: async (id: string) => {

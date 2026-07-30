@@ -3,7 +3,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { AppShell } from "@/components/layout/AppShell";
 
 export const Route = createFileRoute("/_authenticated")({
-  ssr: false,
   beforeLoad: async () => {
     if (typeof window === "undefined") return;
     const { data, error } = await supabase.auth.getUser();

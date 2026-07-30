@@ -140,23 +140,28 @@ class QueryBuilder {
   }
 
   async execute() {
-    const res = await neonQueryServerFn({
-      data: {
-        table: this.table,
-        action: this.action,
-        selectCols: this.selectCols,
-        whereClauses: this.whereClauses,
-        orderBy: this.orderBy,
-        limitVal: this.limitVal,
-        offsetVal: this.offsetVal,
-        single: this.isSingle,
-        maybeSingle: this.isMaybeSingle,
-        payload: this.payload,
-        countExact: this.countExact,
-        headOnly: this.headOnly,
-      },
-    });
-    return res;
+    try {
+      const res = await neonQueryServerFn({
+        data: {
+          table: this.table,
+          action: this.action,
+          selectCols: this.selectCols,
+          whereClauses: this.whereClauses,
+          orderBy: this.orderBy,
+          limitVal: this.limitVal,
+          offsetVal: this.offsetVal,
+          single: this.isSingle,
+          maybeSingle: this.isMaybeSingle,
+          payload: this.payload,
+          countExact: this.countExact,
+          headOnly: this.headOnly,
+        },
+      });
+      return res || { data: null, error: { message: "Erro de consulta" } };
+    } catch (err: any) {
+      console.error(`Erro ao consultar ${this.table}:`, err);
+      return { data: null, error: { message: err?.message || "Erro de conexão com o banco" } };
+    }
   }
 
   then(onfulfilled?: (value: any) => any, onrejected?: (reason: any) => any) {
@@ -167,18 +172,26 @@ class QueryBuilder {
 export const supabase = {
   auth: {
     async signInWithPassword({ email, password }: { email?: string; password?: string }) {
-      const res = await neonAuthServerFn({
-        data: {
-          action: "signInWithPassword",
-          identifier: email,
-          password,
-        },
-      });
-      if (res.data?.session) {
-        setStoredSession(res.data.session);
-        notifyAuthChange("SIGNED_IN", res.data.session);
+      try {
+        const res = await neonAuthServerFn({
+          data: {
+            action: "signInWithPassword",
+            identifier: email,
+            password,
+          },
+        });
+        if (res?.data?.session) {
+          setStoredSession(res.data.session);
+          notifyAuthChange("SIGNED_IN", res.data.session);
+        }
+        return res || { data: null, error: { message: "Servidor não respondeu" } };
+      } catch (err: any) {
+        console.error("Erro no signInWithPassword:", err);
+        return {
+          data: null,
+          error: { message: err?.message || "Erro de comunicação com o servidor" },
+        };
       }
-      return res;
     },
 
     async getUser() {
@@ -186,18 +199,31 @@ export const supabase = {
       if (!session) {
         return { data: { user: null }, error: null };
       }
-      const res = await neonAuthServerFn({
-        data: {
-          action: "getUser",
-          token: session.access_token,
-        },
-      });
-      if (res.data?.user) {
-        return { data: { user: res.data.user }, error: null };
+
+      try {
+        const res = await neonAuthServerFn({
+          data: {
+            action: "getUser",
+            token: session.access_token,
+          },
+        });
+
+        if (res?.data?.user) {
+          // Update stored session with fresh user data
+          session.user = res.data.user;
+          setStoredSession(session);
+          return { data: { user: res.data.user }, error: null };
+        }
+      } catch (err) {
+        console.error("Erro ao verificar sessão no servidor:", err);
       }
+
       if (session.user) {
         return { data: { user: session.user }, error: null };
       }
+
+      // Session invalid or expired
+      setStoredSession(null);
       return { data: { user: null }, error: null };
     },
 
@@ -213,22 +239,29 @@ export const supabase = {
     },
 
     async updateUser({ password }: { password?: string }) {
-      const session = getStoredSession();
-      const res = await neonAuthServerFn({
-        data: {
-          action: "updateUser",
-          token: session?.access_token,
-          password,
-        },
-      });
-      if (res.data?.user && session) {
-        session.user.user_metadata = {
-          ...session.user.user_metadata,
-          senha_alterada: true,
+      try {
+        const session = getStoredSession();
+        const res = await neonAuthServerFn({
+          data: {
+            action: "updateUser",
+            token: session?.access_token,
+            password,
+          },
+        });
+        if (res?.data?.user && session) {
+          session.user.user_metadata = {
+            ...session.user.user_metadata,
+            senha_alterada: true,
+          };
+          setStoredSession(session);
+        }
+        return res || { data: null, error: { message: "Servidor não respondeu" } };
+      } catch (err: any) {
+        return {
+          data: null,
+          error: { message: err?.message || "Erro de comunicação com o servidor" },
         };
-        setStoredSession(session);
       }
-      return res;
     },
 
     onAuthStateChange(callback: (event: string, session: any) => void) {
@@ -250,6 +283,15 @@ export const supabase = {
   },
 
   async rpc(fnName: string, args?: any) {
-    return await neonRpcServerFn({ data: { fnName, args } });
+    try {
+      const res = await neonRpcServerFn({ data: { fnName, args } });
+      return res || { data: null, error: { message: "Erro na chamada RPC" } };
+    } catch (err: any) {
+      console.error(`Erro ao executar RPC ${fnName}:`, err);
+      return {
+        data: null,
+        error: { message: err?.message || "Erro de comunicação com o servidor" },
+      };
+    }
   },
 };

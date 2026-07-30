@@ -12,9 +12,10 @@ export const supabaseAdmin = {
         email_confirm?: boolean;
         user_metadata?: any;
       }) {
-        const pool = getNeonPool();
-        const client = await pool.connect();
+        let client: any = null;
         try {
+          const pool = await getNeonPool();
+          client = await pool.connect();
           await client.query("CREATE EXTENSION IF NOT EXISTS pgcrypto");
           const pass = params.password || "123456";
           const res = await client.query(
@@ -44,14 +45,21 @@ export const supabaseAdmin = {
           console.error("Error creating user in Neon:", err);
           return { data: null, error: { message: err.message } };
         } finally {
-          client.release();
+          if (client) {
+            try {
+              client.release();
+            } catch (_err) {
+              // ignore release error
+            }
+          }
         }
       },
 
       async updateUserById(userId: string, params: { password?: string }) {
-        const pool = getNeonPool();
-        const client = await pool.connect();
+        let client: any = null;
         try {
+          const pool = await getNeonPool();
+          client = await pool.connect();
           if (params.password) {
             await client.query("CREATE EXTENSION IF NOT EXISTS pgcrypto");
             await client.query(
@@ -64,7 +72,13 @@ export const supabaseAdmin = {
           console.error("Error updating user in Neon:", err);
           return { data: null, error: { message: err.message } };
         } finally {
-          client.release();
+          if (client) {
+            try {
+              client.release();
+            } catch (_err) {
+              // ignore release error
+            }
+          }
         }
       },
     },

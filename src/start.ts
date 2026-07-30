@@ -1,3 +1,4 @@
+import "@/lib/polyfill";
 import { createStart, createMiddleware } from "@tanstack/react-start";
 import { isRedirect, isNotFound } from "@tanstack/react-router";
 

@@ -1,3 +1,4 @@
+import "@/lib/polyfill";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   Outlet,
@@ -7,20 +8,8 @@ import {
   useRouter,
 } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
-import { Buffer } from "buffer";
 import { Toaster } from "@/components/ui/sonner";
 import { supabase } from "@/integrations/supabase/client";
-
-if (typeof window !== "undefined") {
-  if (typeof (window as any).Buffer === "undefined") {
-    (window as any).Buffer = Buffer;
-  }
-}
-if (typeof globalThis !== "undefined") {
-  if (typeof (globalThis as any).Buffer === "undefined") {
-    (globalThis as any).Buffer = Buffer;
-  }
-}
 
 import appCss from "../styles.css?url";
 

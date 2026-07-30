@@ -4,8 +4,15 @@ import { AppShell } from "@/components/layout/AppShell";
 
 export const Route = createFileRoute("/_authenticated")({
   beforeLoad: async () => {
-    const { data, error } = await supabase.auth.getUser();
-    if (error || !data?.user) {
+    let data: any = null;
+    try {
+      const res = await supabase.auth.getUser();
+      data = res.data;
+    } catch (err: any) {
+      if (err?.to) throw err;
+    }
+
+    if (!data?.user) {
       throw redirect({ to: "/auth" });
     }
 

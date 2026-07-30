@@ -140,7 +140,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     await qc.cancelQueries();
     qc.clear();
     await supabase.auth.signOut();
-    navigate({ to: "/auth", replace: true });
+    window.location.href = "/auth";
   }
 
   const initials = (me?.profile?.nome ?? "?")

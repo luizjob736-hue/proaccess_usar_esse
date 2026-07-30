@@ -26,14 +26,14 @@ import { toast } from "sonner";
 export const Route = createFileRoute("/_authenticated/importar")({ component: Importar });
 
 type TemplateKey =
-  | "colaboradores"
   | "operacoes"
   | "sistemas"
   | "perfis_acesso"
   | "acessos"
   | "pendencias"
   | "chamados"
-  | "matriz";
+  | "matriz"
+  | "inativos";
 
 type TabGroup = "cadastro" | "sistemas" | "seguranca" | "processos";
 
@@ -47,34 +47,20 @@ const TEMPLATES: Record<
     icon: any;
   }
 > = {
-  colaboradores: {
-    title: "Colaboradores",
-    desc: "Importe ou atualize colaboradores em lote. A operação é opcional e será vinculada pelo nome. Formato de data: AAAA-MM-DD.",
+  inativos: {
+    title: "Usuários Inativos",
+    desc: "Importe ou atualize usuários inativos (desligados/afastados) usando o mesmo layout da Matriz unificada.",
     icon: Users,
-    headers: [
-      "nome",
-      "cpf",
-      "matricula",
-      "email",
-      "email_senha",
-      "telefone",
-      "cargo",
-      "operacao",
-      "admissao_em",
-      "status",
-    ],
+    headers: ["nome", "cpf", "email", "telefone", "cargo", "status", "data inativação"],
     sample: [
       {
-        nome: "João da Silva",
-        cpf: "123.456.789-00",
-        matricula: "M001",
-        email: "joao@empresa.com",
-        email_senha: "SenhaTemporaria123",
-        telefone: "11999999999",
-        cargo: "Analista de Suporte",
-        operacao: "Operação São Paulo",
-        admissao_em: "2025-01-15",
-        status: "ativo",
+        nome: "Maria Oliveira",
+        cpf: "987.654.321-00",
+        email: "maria@empresa.com",
+        telefone: "11988888888",
+        cargo: "Operador",
+        status: "inativo",
+        "data inativação": "2026-07-30",
       },
     ],
   },
@@ -217,7 +203,7 @@ const TAB_GROUPS: { value: TabGroup; label: string; keys: TemplateKey[] }[] = [
   {
     value: "cadastro",
     label: "Pessoas e Estrutura",
-    keys: ["colaboradores", "operacoes"],
+    keys: ["matriz", "inativos", "operacoes"],
   },
   {
     value: "sistemas",
@@ -227,7 +213,7 @@ const TAB_GROUPS: { value: TabGroup; label: string; keys: TemplateKey[] }[] = [
   {
     value: "seguranca",
     label: "Acessos e Segurança",
-    keys: ["acessos", "matriz"],
+    keys: ["acessos"],
   },
   {
     value: "processos",
@@ -240,20 +226,31 @@ function downloadCSV(key: TemplateKey, sistemasAll: any[] = []) {
   let headers: string[];
   let sample: Record<string, string>[];
 
-  if (key === "matriz") {
+  if (key === "matriz" || key === "inativos") {
     headers = ["nome", "cpf", "email", "telefone", "cargo", "status", "data inativação"];
-    const baseSample: Record<string, string> = {
-      nome: "João da Silva",
-      cpf: "123.456.789-00",
-      email: "joao@empresa.com",
-      telefone: "11999999999",
-      cargo: "Analista de Suporte",
-      status: "ativo",
-      "data inativação": "",
-    };
+    const baseSample: Record<string, string> =
+      key === "matriz"
+        ? {
+            nome: "João da Silva",
+            cpf: "123.456.789-00",
+            email: "joao@empresa.com",
+            telefone: "11999999999",
+            cargo: "Analista de Suporte",
+            status: "ativo",
+            "data inativação": "",
+          }
+        : {
+            nome: "Maria Oliveira",
+            cpf: "987.654.321-00",
+            email: "maria@empresa.com",
+            telefone: "11988888888",
+            cargo: "Operador",
+            status: "inativo",
+            "data inativação": "2026-07-30",
+          };
     for (const s of sistemasAll) {
-      baseSample[`${s.nome} - Usuário`] = "joao.silva";
-      baseSample[`${s.nome} - Senha`] = "SenhaTemporaria123";
+      baseSample[`${s.nome} - Usuário`] = key === "matriz" ? "joao.silva" : "maria.oliveira";
+      baseSample[`${s.nome} - Senha`] = key === "matriz" ? "SenhaTemporaria123" : "";
     }
     headers = [
       ...headers,
@@ -337,7 +334,7 @@ function Importar() {
 
 function ImportCard({ kind, sistemasAll = [] }: { kind: TemplateKey; sistemasAll?: any[] }) {
   let t;
-  if (kind === "matriz") {
+  if (kind === "matriz" || kind === "inativos") {
     const headers = [
       "nome",
       "cpf",
@@ -349,10 +346,13 @@ function ImportCard({ kind, sistemasAll = [] }: { kind: TemplateKey; sistemasAll
       ...sistemasAll.flatMap((s: any) => [`${s.nome} - Usuário`, `${s.nome} - Senha`]),
     ];
     t = {
-      title: "Matriz de Acessos Unificada",
-      desc: "Importe ou atualize todos os colaboradores, seus dados cadastrais, status (ativo/inativo) e todas as suas credenciais de acesso de uma só vez usando um único arquivo de planilha unificado.",
+      title: kind === "matriz" ? "Matriz de Acessos Unificada" : "Usuários Inativos",
+      desc:
+        kind === "matriz"
+          ? "Importe ou atualize todos os colaboradores, seus dados cadastrais, status (ativo/inativo) e todas as suas credenciais de acesso de uma só vez usando um único arquivo de planilha unificado."
+          : "Importe ou atualize usuários inativos (desligados/afastados) usando o mesmo layout da Matriz unificada.",
       headers,
-      icon: Grid3x3,
+      icon: kind === "matriz" ? Grid3x3 : Users,
     };
   } else {
     t = TEMPLATES[kind];
@@ -554,155 +554,8 @@ async function importRows(kind: TemplateKey, rows: Record<string, string>[]) {
     return String(existing).trim() !== String(incoming).trim();
   };
 
-  // 1. IMPORT COLABORADORES
-  if (kind === "colaboradores") {
-    const { data: ops } = await db.from("operacoes").select("id,nome");
-    const opMap = new Map((ops ?? []).map((o: any) => [o.nome.toLowerCase().trim(), o.id]));
-
-    const { data: existentes } = await db
-      .from("colaboradores")
-      .select(
-        "id, nome, cpf, matricula, email, email_senha, telefone, cargo, operacao_id, admissao_em, status",
-      );
-
-    const byKey = new Map<string, any>();
-    for (const c of existentes ?? []) {
-      const cpfKey = (c.cpf ?? "").replace(/\D/g, "");
-      const nomeKey = String(c.nome ?? "")
-        .trim()
-        .toLowerCase();
-      if (cpfKey) byKey.set(`cpf:${cpfKey}`, c);
-      if (nomeKey) byKey.set(`nome:${nomeKey}`, c);
-    }
-
-    const validStatuses = ["ativo", "ferias", "afastado", "inativo", "desligado"];
-
-    for (let i = 0; i < rows.length; i++) {
-      const r = rows[i];
-      const nome = getRowVal(r, ["nome", "nome completo", "colaborador"]);
-      const cpf = getRowVal(r, ["cpf", "documento"]);
-      const matricula = getRowVal(r, ["matricula", "registro"]);
-      const email = getRowVal(r, ["email", "e-mail"]);
-      const email_senha = getRowVal(r, [
-        "email_senha",
-        "email senha",
-        "senha do email",
-        "senha email",
-        "senha e-mail",
-        "senha_email",
-      ]);
-      const telefone = getRowVal(r, ["telefone", "celular", "fone"]);
-      const cargo = getRowVal(r, ["cargo", "funcao", "função"]);
-      const operacao = getRowVal(r, ["operacao", "operação", "setor", "operacao_id"]);
-      const admissao_em = getRowVal(r, [
-        "admissao_em",
-        "admissao",
-        "admissão",
-        "data de admissao",
-        "data de admissão",
-        "data_admissao",
-        "data_de_admissao",
-      ]);
-      const rawStatus = getRowVal(r, ["status", "situacao", "situação"]);
-
-      const cpfKey = cpf.replace(/\D/g, "");
-      const nomeKey = nome.toLowerCase().trim();
-
-      const opName = operacao;
-      const opId = opName ? (opMap.get(opName.toLowerCase()) ?? null) : null;
-
-      // Se o usuário digitou uma operação mas ela não foi encontrada no banco, avisa ou cria.
-      // Vamos tentar encontrar ou deixar nula se não existir.
-
-      const status = validStatuses.includes(rawStatus.toLowerCase())
-        ? rawStatus.toLowerCase()
-        : "ativo";
-
-      const payload: any = {
-        nome: nome || null,
-        cpf: cpf || null,
-        matricula: matricula || null,
-        email: email || null,
-        email_senha: email_senha || null,
-        telefone: telefone || null,
-        cargo: cargo || null,
-        operacao_id: opId,
-        admissao_em: admissao_em || null,
-        status: status as any,
-      };
-
-      if (!payload.nome) {
-        fail++;
-        errors.push(`Linha ${i + 2}: O campo 'nome' é obrigatório.`);
-        continue;
-      }
-
-      const existente = (cpfKey && byKey.get(`cpf:${cpfKey}`)) || byKey.get(`nome:${nomeKey}`);
-      if (existente) {
-        const diff: any = {};
-        for (const [k, v] of Object.entries(payload)) {
-          if (isFieldDifferent(k, existente[k], v)) {
-            diff[k] = v;
-          }
-        }
-        if (Object.keys(diff).length === 0) {
-          const isOperadorCargo =
-            (payload.cargo || existente.cargo || "").toLowerCase().trim() === "operador";
-          if (isOperadorCargo && (payload.cpf || existente.cpf)) {
-            try {
-              const { createOperadorFromColaborador } = await import("@/lib/admin-users.functions");
-              await createOperadorFromColaborador({ data: { colaborador_id: existente.id } });
-            } catch (err) {
-              console.error("Erro ao garantir acesso de operador atualizado:", err);
-            }
-          }
-          ok++;
-          continue;
-        }
-        const { error } = await db.from("colaboradores").update(diff).eq("id", existente.id);
-        if (error) {
-          fail++;
-          errors.push(`Linha ${i + 2}: Falha ao atualizar: ${error.message}`);
-        } else {
-          ok++;
-          const isOperadorCargo =
-            (payload.cargo || existente.cargo || "").toLowerCase().trim() === "operador";
-          if (isOperadorCargo && (payload.cpf || existente.cpf)) {
-            try {
-              const { createOperadorFromColaborador } = await import("@/lib/admin-users.functions");
-              await createOperadorFromColaborador({ data: { colaborador_id: existente.id } });
-            } catch (err) {
-              console.error("Erro ao criar acesso de operador atualizado:", err);
-            }
-          }
-        }
-      } else {
-        const { data: inserted, error } = await db
-          .from("colaboradores")
-          .insert(payload)
-          .select("id")
-          .maybeSingle();
-        if (error) {
-          fail++;
-          errors.push(`Linha ${i + 2}: Falha ao inserir: ${error.message}`);
-        } else {
-          ok++;
-          const isOperadorCargo = (payload.cargo || "").toLowerCase().trim() === "operador";
-          if (isOperadorCargo && inserted?.id && payload.cpf) {
-            try {
-              const { createOperadorFromColaborador } = await import("@/lib/admin-users.functions");
-              await createOperadorFromColaborador({ data: { colaborador_id: inserted.id } });
-            } catch (err) {
-              console.error("Erro ao criar acesso de operador importado:", err);
-            }
-          }
-        }
-      }
-    }
-  }
-
   // 2. IMPORT OPERAÇÕES
-  else if (kind === "operacoes") {
+  if (kind === "operacoes") {
     const { data: existentes } = await db.from("operacoes").select("id, nome, descricao, ativo");
     const opMap = new Map((existentes ?? []).map((o: any) => [o.nome.trim().toLowerCase(), o]));
 
@@ -1149,7 +1002,7 @@ async function importRows(kind: TemplateKey, rows: Record<string, string>[]) {
   }
 
   // 8. IMPORT MATRIZ DE ACESSOS UNIFICADA
-  else if (kind === "matriz") {
+  else if (kind === "matriz" || kind === "inativos") {
     const { data: sis } = await db.from("sistemas").select("id, nome");
     const sistemasList = sis ?? [];
 

@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/database/client";
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -50,12 +50,9 @@ function Chamados() {
   const { data: me } = useQuery({
     queryKey: ["me-chamados"],
     queryFn: async () => {
-      const { data: u } = await supabase.auth.getUser();
+      const { data: u } = await db.auth.getUser();
       if (!u.user) return null;
-      const { data: roles } = await supabase
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", u.user.id);
+      const { data: roles } = await db.from("user_roles").select("role").eq("user_id", u.user.id);
       const isAdmin = (roles ?? []).some((r) => r.role === "admin" || r.role === "admin_master");
       return { user: u.user, isAdmin };
     },
@@ -63,14 +60,13 @@ function Chamados() {
 
   const { data: sistemas = [] } = useQuery({
     queryKey: ["sistemas-lite"],
-    queryFn: async () =>
-      (await supabase.from("sistemas").select("id,nome").order("nome")).data ?? [],
+    queryFn: async () => (await db.from("sistemas").select("id,nome").order("nome")).data ?? [],
   });
 
   const { data: chamados = [] } = useQuery({
     queryKey: ["chamados"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("chamados")
         .select("*, sistema:sistemas(nome)")
         .order("criado_em", { ascending: false });
@@ -81,23 +77,23 @@ function Chamados() {
 
   const create = useMutation({
     mutationFn: async (payload: any) => {
-      const { data: u } = await supabase.auth.getUser();
+      const { data: u } = await db.auth.getUser();
       if (!u.user) throw new Error("Sem sessão");
       let print_url: string | null = null;
       const file: File | null = payload._file;
       if (file) {
         const path = `${u.user.id}/${Date.now()}-${file.name}`;
-        const { error: upErr } = await supabase.storage
+        const { error: upErr } = await db.storage
           .from("chamados")
           .upload(path, file, { upsert: false });
         if (upErr) throw upErr;
-        const { data: signed } = await supabase.storage
+        const { data: signed } = await db.storage
           .from("chamados")
           .createSignedUrl(path, 60 * 60 * 24 * 30);
         print_url = signed?.signedUrl ?? path;
       }
       const { _file, ...rest } = payload;
-      const { error } = await supabase
+      const { error } = await db
         .from("chamados")
         .insert({ ...rest, operador_id: u.user.id, print_url });
       if (error) throw error;
@@ -125,7 +121,7 @@ function Chamados() {
       if (status === "concluido" || status === "recusado" || status === "aceito")
         patch.resolvido_em = new Date().toISOString();
       if (me?.isAdmin) patch.tratador_id = me.user.id;
-      const { error } = await supabase.from("chamados").update(patch).eq("id", id);
+      const { error } = await db.from("chamados").update(patch).eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -332,7 +328,7 @@ function Comentarios({ chamadoId }: { chamadoId: string }) {
     queryKey: ["chamado-comentarios", chamadoId],
     queryFn: async () =>
       (
-        await supabase
+        await db
           .from("chamado_comentarios")
           .select("*")
           .eq("chamado_id", chamadoId)
@@ -341,9 +337,9 @@ function Comentarios({ chamadoId }: { chamadoId: string }) {
   });
   const add = useMutation({
     mutationFn: async (msg: string) => {
-      const { data: u } = await supabase.auth.getUser();
+      const { data: u } = await db.auth.getUser();
       if (!u.user) throw new Error("Sem sessão");
-      const { error } = await supabase
+      const { error } = await db
         .from("chamado_comentarios")
         .insert({ chamado_id: chamadoId, autor_id: u.user.id, mensagem: msg });
       if (error) throw error;

@@ -1,17 +1,17 @@
 import { createServerFn } from "@tanstack/react-start";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requireDatabaseAuth } from "@/integrations/database/auth-middleware";
 
 const GATEWAY = "https://ai.gateway.lovable.dev/v1";
 
-async function fetchContext(supabase: any) {
+async function fetchContext(db: any) {
   const [c, s, a, p] = await Promise.all([
-    supabase.from("colaboradores").select("nome,cargo,status,operacao:operacoes(nome)").limit(200),
-    supabase.from("sistemas").select("nome,criticidade,responsavel:profiles(nome)").limit(200),
-    supabase
+    db.from("colaboradores").select("nome,cargo,status,operacao:operacoes(nome)").limit(200),
+    db.from("sistemas").select("nome,criticidade,responsavel:profiles(nome)").limit(200),
+    db
       .from("acessos")
       .select("status,colaborador:colaboradores(nome,status),sistema:sistemas(nome)")
       .limit(300),
-    supabase.from("pendencias").select("titulo,status,prioridade,tipo").limit(200),
+    db.from("pendencias").select("titulo,status,prioridade,tipo").limit(200),
   ]);
   const orfaos = (a.data ?? [])
     .filter((x: any) => x.status === "ativo" && x.colaborador?.status === "desligado")
@@ -33,12 +33,12 @@ async function fetchContext(supabase: any) {
 }
 
 export const iaChat = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireDatabaseAuth])
   .inputValidator((d: { messages: { role: string; content: string }[] }) => d)
   .handler(async ({ data, context }) => {
     const key = process.env.LOVABLE_API_KEY;
     if (!key) throw new Error("LOVABLE_API_KEY não configurada");
-    const ctx = await fetchContext(context.supabase);
+    const ctx = await fetchContext(context.db);
     const system = `Você é o assistente do ProAccess, sistema de gestão de acessos. Responda em português (Brasil), de forma direta e útil.
 Você tem acesso ao contexto ATUAL da base de dados abaixo em JSON. Use-o para responder perguntas, detectar inconsistências, sugerir acessos, gerar relatórios/resumos, apontar acessos órfãos (colaborador desligado com acesso ativo), sistemas sem responsável e riscos.
 

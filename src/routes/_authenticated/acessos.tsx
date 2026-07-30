@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/database/client";
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -35,7 +35,7 @@ function Acessos() {
   const { data: list = [] } = useQuery({
     queryKey: ["acessos", statusFilter],
     queryFn: async () => {
-      let q = supabase
+      let q = db
         .from("acessos")
         .select(
           "*, colaborador:colaboradores(nome,status), sistema:sistemas(nome), perfil:perfis_acesso(nome)",
@@ -48,19 +48,18 @@ function Acessos() {
   const { data: colabs = [] } = useQuery({
     queryKey: ["colabs-simple"],
     queryFn: async () =>
-      (await supabase.from("colaboradores").select("id,nome").eq("status", "ativo").order("nome"))
-        .data ?? [],
+      (await db.from("colaboradores").select("id,nome").eq("status", "ativo").order("nome")).data ??
+      [],
   });
   const { data: sistemas = [] } = useQuery({
     queryKey: ["sistemas-simple"],
-    queryFn: async () =>
-      (await supabase.from("sistemas").select("id,nome").order("nome")).data ?? [],
+    queryFn: async () => (await db.from("sistemas").select("id,nome").order("nome")).data ?? [],
   });
 
   const create = useMutation({
     mutationFn: async (form: any) => {
-      const { data: u } = await supabase.auth.getUser();
-      const { error } = await supabase.from("acessos").insert({
+      const { data: u } = await db.auth.getUser();
+      const { error } = await db.from("acessos").insert({
         ...form,
         concedido_por: u.user?.id,
         concedido_em: form.status === "ativo" ? new Date().toISOString() : null,
@@ -81,7 +80,7 @@ function Acessos() {
       if (status === "ativo") {
         patch.concedido_em = new Date().toISOString();
       }
-      const { error } = await supabase.from("acessos").update(patch).eq("id", id);
+      const { error } = await db.from("acessos").update(patch).eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {

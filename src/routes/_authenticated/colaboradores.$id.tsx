@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/database/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -27,19 +27,14 @@ function ColabDetalhe() {
   const { data: c } = useQuery({
     queryKey: ["colab", id],
     queryFn: async () =>
-      (
-        await supabase
-          .from("colaboradores")
-          .select("*, operacao:operacoes(nome)")
-          .eq("id", id)
-          .single()
-      ).data,
+      (await db.from("colaboradores").select("*, operacao:operacoes(nome)").eq("id", id).single())
+        .data,
   });
   const { data: acessos = [] } = useQuery({
     queryKey: ["acessos-colab", id],
     queryFn: async () =>
       (
-        await supabase
+        await db
           .from("acessos")
           .select("*, sistema:sistemas(nome), perfil:perfis_acesso(nome)")
           .eq("colaborador_id", id)
@@ -50,7 +45,7 @@ function ColabDetalhe() {
     queryKey: ["hist-colab", id],
     queryFn: async () =>
       (
-        await supabase
+        await db
           .from("historico")
           .select("*")
           .eq("entidade", "colaboradores")
@@ -64,7 +59,7 @@ function ColabDetalhe() {
     mutationFn: async (status: any) => {
       const patch: any = { status };
       if (status === "desligado") patch.desligamento_em = new Date().toISOString().slice(0, 10);
-      const { error } = await supabase.from("colaboradores").update(patch).eq("id", id);
+      const { error } = await db.from("colaboradores").update(patch).eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {

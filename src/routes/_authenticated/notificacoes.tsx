@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/database/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -14,7 +14,7 @@ function Notif() {
     queryKey: ["notif-list"],
     queryFn: async () => {
       try {
-        const res = await supabase
+        const res = await db
           .from("notificacoes")
           .select("*")
           .order("criado_em", { ascending: false });
@@ -26,13 +26,13 @@ function Notif() {
   });
   const markRead = useMutation({
     mutationFn: async (id: string) => {
-      await supabase.from("notificacoes").update({ lida: true }).eq("id", id);
+      await db.from("notificacoes").update({ lida: true }).eq("id", id);
     },
     onSuccess: () => qc.invalidateQueries(),
   });
   const markAll = useMutation({
     mutationFn: async () => {
-      await supabase.from("notificacoes").update({ lida: true }).eq("lida", false);
+      await db.from("notificacoes").update({ lida: true }).eq("lida", false);
     },
     onSuccess: () => qc.invalidateQueries(),
   });

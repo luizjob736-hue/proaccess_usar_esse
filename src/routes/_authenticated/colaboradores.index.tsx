@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/database/client";
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -42,10 +42,7 @@ function Colaboradores() {
   const { data: list = [] } = useQuery({
     queryKey: ["colaboradores", q, statusFilter],
     queryFn: async () => {
-      let query = supabase
-        .from("colaboradores")
-        .select("*, operacao:operacoes(nome)")
-        .order("nome");
+      let query = db.from("colaboradores").select("*, operacao:operacoes(nome)").order("nome");
       if (q) query = query.ilike("nome", `%${q}%`);
       if (statusFilter !== "todos") query = query.eq("status", statusFilter as Status);
       const { data, error } = await query;
@@ -56,15 +53,15 @@ function Colaboradores() {
 
   const { data: operacoes = [] } = useQuery({
     queryKey: ["operacoes"],
-    queryFn: async () => (await supabase.from("operacoes").select("*").order("nome")).data ?? [],
+    queryFn: async () => (await db.from("operacoes").select("*").order("nome")).data ?? [],
   });
 
   const { data: favoritos = [] } = useQuery({
     queryKey: ["favoritos"],
     queryFn: async () => {
-      const { data: u } = await supabase.auth.getUser();
+      const { data: u } = await db.auth.getUser();
       if (!u.user) return [];
-      const { data } = await supabase
+      const { data } = await db
         .from("colaborador_favoritos")
         .select("colaborador_id")
         .eq("user_id", u.user.id);
@@ -74,18 +71,16 @@ function Colaboradores() {
 
   const toggleFav = useMutation({
     mutationFn: async (id: string) => {
-      const { data: u } = await supabase.auth.getUser();
+      const { data: u } = await db.auth.getUser();
       if (!u.user) return;
       if (favoritos.includes(id)) {
-        await supabase
+        await db
           .from("colaborador_favoritos")
           .delete()
           .eq("user_id", u.user.id)
           .eq("colaborador_id", id);
       } else {
-        await supabase
-          .from("colaborador_favoritos")
-          .insert({ user_id: u.user.id, colaborador_id: id });
+        await db.from("colaborador_favoritos").insert({ user_id: u.user.id, colaborador_id: id });
       }
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["favoritos"] }),
@@ -94,7 +89,7 @@ function Colaboradores() {
   const createOperador = useServerFn(createOperadorFromColaborador);
   const create = useMutation({
     mutationFn: async (form: any) => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("colaboradores")
         .insert(form)
         .select("id, cpf")

@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/database/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useState } from "react";
@@ -21,7 +21,7 @@ function Historico() {
   const { data = [] } = useQuery({
     queryKey: ["historico", entidade, q],
     queryFn: async () => {
-      let query = supabase
+      let query = db
         .from("historico")
         .select("*, ator:profiles!historico_ator_id_fkey(nome)")
         .order("criado_em", { ascending: false })

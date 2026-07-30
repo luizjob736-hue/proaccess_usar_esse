@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/database/client";
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -36,18 +36,16 @@ function Sistemas() {
   const { data: list = [] } = useQuery({
     queryKey: ["sistemas"],
     queryFn: async () =>
-      (await supabase.from("sistemas").select("*, responsavel:profiles(nome)").order("nome"))
-        .data ?? [],
+      (await db.from("sistemas").select("*, responsavel:profiles(nome)").order("nome")).data ?? [],
   });
   const { data: profiles = [] } = useQuery({
     queryKey: ["profiles-simple"],
-    queryFn: async () =>
-      (await supabase.from("profiles").select("id,nome").order("nome")).data ?? [],
+    queryFn: async () => (await db.from("profiles").select("id,nome").order("nome")).data ?? [],
   });
 
   const create = useMutation({
     mutationFn: async (form: any) => {
-      const { error } = await supabase.from("sistemas").insert(form);
+      const { error } = await db.from("sistemas").insert(form);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -61,7 +59,7 @@ function Sistemas() {
   const update = useMutation({
     mutationFn: async (payload: any) => {
       const { id, ...rest } = payload;
-      const { error } = await supabase.from("sistemas").update(rest).eq("id", id);
+      const { error } = await db.from("sistemas").update(rest).eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -74,8 +72,8 @@ function Sistemas() {
 
   const remove = useMutation({
     mutationFn: async (id: string) => {
-      await supabase.from("acessos").delete().eq("sistema_id", id);
-      const { error } = await supabase.from("sistemas").delete().eq("id", id);
+      await db.from("acessos").delete().eq("sistema_id", id);
+      const { error } = await db.from("sistemas").delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {

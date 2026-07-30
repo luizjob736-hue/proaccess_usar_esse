@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/database/client";
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -17,10 +17,7 @@ function ListaAcessos() {
   const { data: listas = [] } = useQuery({
     queryKey: ["lista-acessos"],
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from("lista_acessos")
-        .select("*")
-        .order("posicao");
+      const { data, error } = await (db as any).from("lista_acessos").select("*").order("posicao");
       if (error) throw error;
       return (data as Lista[]) ?? [];
     },
@@ -28,7 +25,7 @@ function ListaAcessos() {
 
   const save = useMutation({
     mutationFn: async (l: Lista) => {
-      const { error } = await (supabase as any)
+      const { error } = await (db as any)
         .from("lista_acessos")
         .update({
           titulo: l.titulo,
@@ -47,7 +44,7 @@ function ListaAcessos() {
 
   const create = useMutation({
     mutationFn: async () => {
-      const { error } = await (supabase as any).from("lista_acessos").insert({
+      const { error } = await (db as any).from("lista_acessos").insert({
         titulo: "Nova lista",
         posicao: listas.length,
         colunas: ["Coluna 1", "Coluna 2"],
@@ -60,7 +57,7 @@ function ListaAcessos() {
 
   const remove = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await (supabase as any).from("lista_acessos").delete().eq("id", id);
+      const { error } = await (db as any).from("lista_acessos").delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {

@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/database/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,24 +15,17 @@ function Perfil() {
   const { data: me } = useQuery({
     queryKey: ["me-full"],
     queryFn: async () => {
-      const { data: u } = await supabase.auth.getUser();
+      const { data: u } = await db.auth.getUser();
       if (!u.user) return null;
-      const { data: prof } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", u.user.id)
-        .single();
-      const { data: roles } = await supabase
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", u.user.id);
+      const { data: prof } = await db.from("profiles").select("*").eq("id", u.user.id).single();
+      const { data: roles } = await db.from("user_roles").select("role").eq("user_id", u.user.id);
       return { profile: prof, roles: (roles ?? []).map((r) => r.role) };
     },
   });
   const [pwd, setPwd] = useState("");
   async function changePwd() {
     if (pwd.length < 8) return toast.error("Mínimo 8 caracteres");
-    const { error } = await supabase.auth.updateUser({ password: pwd });
+    const { error } = await db.auth.updateUser({ password: pwd });
     if (error) return toast.error(error.message);
     setPwd("");
     toast.success("Senha alterada");

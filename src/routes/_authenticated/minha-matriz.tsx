@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/database/client";
 import { useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,7 @@ function MinhaMatriz() {
   const { data: rows = [] } = useQuery({
     queryKey: ["minha-matriz"],
     queryFn: async () => {
-      const { data: u } = await supabase.auth.getUser();
+      const { data: u } = await db.auth.getUser();
       if (!u.user) return [];
       const email = u.user.email ?? "";
       const meta: any = u.user.user_metadata ?? {};
@@ -26,10 +26,10 @@ function MinhaMatriz() {
         : "";
       const cpf = cpfMeta || cpfFromEmail;
       if (!cpf) return [];
-      const { data: cols } = await supabase.from("colaboradores").select("id, cpf");
+      const { data: cols } = await db.from("colaboradores").select("id, cpf");
       const col = (cols ?? []).find((c: any) => String(c.cpf ?? "").replace(/\D/g, "") === cpf);
       if (!col) return [];
-      const { data } = await supabase
+      const { data } = await db
         .from("acessos")
         .select("id, login, senha, sistema:sistemas(nome)")
         .eq("colaborador_id", col.id);

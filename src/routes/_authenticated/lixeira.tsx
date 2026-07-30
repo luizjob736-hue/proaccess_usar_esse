@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/database/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Trash2, RotateCcw } from "lucide-react";
@@ -13,12 +13,11 @@ function Lixeira() {
   const { data = [] } = useQuery({
     queryKey: ["lix"],
     queryFn: async () =>
-      (await supabase.from("lixeira").select("*").order("excluido_em", { ascending: false }))
-        .data ?? [],
+      (await db.from("lixeira").select("*").order("excluido_em", { ascending: false })).data ?? [],
   });
   const purge = useMutation({
     mutationFn: async (id: string) => {
-      await supabase.from("lixeira").delete().eq("id", id);
+      await db.from("lixeira").delete().eq("id", id);
     },
     onSuccess: () => {
       toast.success("Removido definitivamente");

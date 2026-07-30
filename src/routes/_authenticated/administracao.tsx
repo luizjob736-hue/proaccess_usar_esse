@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/database/client";
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -91,8 +91,8 @@ function UsuariosTab() {
   const { data = [] } = useQuery({
     queryKey: ["adm-users"],
     queryFn: async () => {
-      const { data: profs } = await supabase.from("profiles").select("*").order("nome");
-      const { data: roles } = await supabase.from("user_roles").select("*");
+      const { data: profs } = await db.from("profiles").select("*").order("nome");
+      const { data: roles } = await db.from("user_roles").select("*");
       return (profs ?? []).map((p: any) => ({
         ...p,
         roles: (roles ?? []).filter((r) => r.user_id === p.id).map((r) => r.role),
@@ -102,8 +102,8 @@ function UsuariosTab() {
 
   const setRole = useMutation({
     mutationFn: async ({ userId, role }: any) => {
-      await supabase.from("user_roles").delete().eq("user_id", userId);
-      await supabase.from("user_roles").insert({ user_id: userId, role });
+      await db.from("user_roles").delete().eq("user_id", userId);
+      await db.from("user_roles").insert({ user_id: userId, role });
     },
     onSuccess: () => {
       toast.success("Papel atualizado");
@@ -134,8 +134,8 @@ function UsuariosTab() {
 
   const deleteUser = useMutation({
     mutationFn: async (userId: string) => {
-      await supabase.from("user_roles").delete().eq("user_id", userId);
-      const { error } = await supabase.from("profiles").delete().eq("id", userId);
+      await db.from("user_roles").delete().eq("user_id", userId);
+      const { error } = await db.from("profiles").delete().eq("id", userId);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -339,11 +339,11 @@ function OperacoesTab() {
   const [open, setOpen] = useState(false);
   const { data = [] } = useQuery({
     queryKey: ["ops"],
-    queryFn: async () => (await supabase.from("operacoes").select("*").order("nome")).data ?? [],
+    queryFn: async () => (await db.from("operacoes").select("*").order("nome")).data ?? [],
   });
   const create = useMutation({
     mutationFn: async (form: any) => {
-      const { error } = await supabase.from("operacoes").insert(form);
+      const { error } = await db.from("operacoes").insert(form);
       if (error) throw error;
     },
     onSuccess: () => {

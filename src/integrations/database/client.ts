@@ -1,4 +1,4 @@
-// Client-side Neon adapter providing Supabase-compatible interface
+// Client-side Neon database adapter
 import { neonAuthServerFn, neonQueryServerFn, neonRpcServerFn } from "@/lib/neon-server";
 
 const SESSION_KEY = "proaccess_neon_session";
@@ -178,7 +178,7 @@ class QueryBuilder {
   }
 }
 
-export const supabase = {
+export const db = {
   auth: {
     async signInWithPassword({ email, password }: { email?: string; password?: string }) {
       try {

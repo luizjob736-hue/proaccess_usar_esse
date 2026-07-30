@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/database/client";
 import { useMemo, useState, Fragment } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -56,12 +56,9 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
   const { data: me } = useQuery({
     queryKey: ["me-matriz"],
     queryFn: async () => {
-      const { data: u } = await supabase.auth.getUser();
+      const { data: u } = await db.auth.getUser();
       if (!u.user) return null;
-      const { data: roles } = await supabase
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", u.user.id);
+      const { data: roles } = await db.from("user_roles").select("role").eq("user_id", u.user.id);
       return { user: u.user, roles: roles?.map((r) => r.role) ?? [] };
     },
   });
@@ -73,8 +70,8 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
 
   const excluirColab = useMutation({
     mutationFn: async (id: string) => {
-      await supabase.from("acessos").delete().eq("colaborador_id", id);
-      const { error } = await supabase.from("colaboradores").delete().eq("id", id);
+      await db.from("acessos").delete().eq("colaborador_id", id);
+      const { error } = await db.from("colaboradores").delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -87,7 +84,7 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
   const { data: acessos = [] } = useQuery({
     queryKey: ["matriz-acessos-full"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("acessos")
         .select(
           "id, login, senha, sistema:sistemas(id,nome), colaborador:colaboradores(id, nome, cpf, email, email_senha, telefone, cargo, status, operacao_id, matricula, admissao_em)",
@@ -101,7 +98,7 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
     queryKey: ["colabs-full"],
     queryFn: async () =>
       (
-        await supabase
+        await db
           .from("colaboradores")
           .select(
             "id, nome, cpf, email, email_senha, telefone, cargo, status, operacao_id, matricula, admissao_em, inativado_em" as any,
@@ -112,19 +109,17 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
 
   const { data: sistemasAll = [] } = useQuery({
     queryKey: ["sistemas-all"],
-    queryFn: async () =>
-      (await supabase.from("sistemas").select("id,nome").order("nome")).data ?? [],
+    queryFn: async () => (await db.from("sistemas").select("id,nome").order("nome")).data ?? [],
   });
 
   const { data: operacoes = [] } = useQuery({
     queryKey: ["operacoes-all"],
-    queryFn: async () =>
-      (await supabase.from("operacoes").select("id,nome").order("nome")).data ?? [],
+    queryFn: async () => (await db.from("operacoes").select("id,nome").order("nome")).data ?? [],
   });
 
   const criarSistema = useMutation({
     mutationFn: async (payload: any) => {
-      const { error } = await supabase.from("sistemas").insert(payload);
+      const { error } = await db.from("sistemas").insert(payload);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -137,7 +132,7 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
 
   const criarColab = useMutation({
     mutationFn: async (form: any) => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("colaboradores")
         .insert(form)
         .select("id,cpf")
@@ -163,7 +158,7 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
   const editarColab = useMutation({
     mutationFn: async (payload: any) => {
       const { id, ...rest } = payload;
-      const { error } = await supabase.from("colaboradores").update(rest).eq("id", id);
+      const { error } = await db.from("colaboradores").update(rest).eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -176,7 +171,7 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
 
   const criarAcesso = useMutation({
     mutationFn: async (payload: any) => {
-      const { error } = await supabase.from("acessos").insert(payload);
+      const { error } = await db.from("acessos").insert(payload);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -190,7 +185,7 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
   const editarAcesso = useMutation({
     mutationFn: async (payload: any) => {
       const { id, login, senha } = payload;
-      const { error } = await supabase.from("acessos").update({ login, senha }).eq("id", id);
+      const { error } = await db.from("acessos").update({ login, senha }).eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -203,7 +198,7 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
 
   const flagInativo = useMutation({
     mutationFn: async ({ id, inativo }: { id: string; inativo: boolean }) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("colaboradores")
         .update({ status: inativo ? "inativo" : "ativo" })
         .eq("id", id);

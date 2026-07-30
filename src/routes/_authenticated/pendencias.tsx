@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/database/client";
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -68,7 +68,7 @@ function Pendencias() {
     queryKey: ["pendencias"],
     queryFn: async () =>
       (
-        await supabase
+        await db
           .from("pendencias")
           .select("*, colaborador:colaboradores(nome), sistema:sistemas(nome)")
           .order("posicao")
@@ -77,20 +77,17 @@ function Pendencias() {
   const { data: colabs = [] } = useQuery({
     queryKey: ["colabs-simple"],
     queryFn: async () =>
-      (await supabase.from("colaboradores").select("id,nome").order("nome")).data ?? [],
+      (await db.from("colaboradores").select("id,nome").order("nome")).data ?? [],
   });
   const { data: sistemas = [] } = useQuery({
     queryKey: ["sistemas-simple"],
-    queryFn: async () =>
-      (await supabase.from("sistemas").select("id,nome").order("nome")).data ?? [],
+    queryFn: async () => (await db.from("sistemas").select("id,nome").order("nome")).data ?? [],
   });
 
   const create = useMutation({
     mutationFn: async (form: any) => {
-      const { data: u } = await supabase.auth.getUser();
-      const { error } = await supabase
-        .from("pendencias")
-        .insert({ ...form, criado_por: u.user?.id });
+      const { data: u } = await db.auth.getUser();
+      const { error } = await db.from("pendencias").insert({ ...form, criado_por: u.user?.id });
       if (error) throw error;
     },
     onSuccess: () => {
@@ -105,7 +102,7 @@ function Pendencias() {
     mutationFn: async ({ id, status }: { id: string; status: string }) => {
       const patch: any = { status };
       if (status === "concluido") patch.concluido_em = new Date().toISOString();
-      const { error } = await supabase.from("pendencias").update(patch).eq("id", id);
+      const { error } = await db.from("pendencias").update(patch).eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["pendencias"] }),
@@ -122,7 +119,7 @@ function Pendencias() {
       const parsed = Papa.parse<any>(text, { header: true, skipEmptyLines: true });
       const colabMap = new Map((colabs as any[]).map((c) => [c.nome.toLowerCase(), c.id]));
       const sisMap = new Map((sistemas as any[]).map((s) => [s.nome.toLowerCase(), s.id]));
-      const { data: u } = await supabase.auth.getUser();
+      const { data: u } = await db.auth.getUser();
       const rows = parsed.data
         .map((r: any) => ({
           titulo: r.titulo || r.título || "",
@@ -145,7 +142,7 @@ function Pendencias() {
         }))
         .filter((r: any) => r.titulo);
       if (rows.length === 0) throw new Error("CSV vazio ou sem coluna 'titulo'");
-      const { error } = await supabase.from("pendencias").insert(rows);
+      const { error } = await db.from("pendencias").insert(rows);
       if (error) throw error;
       return rows.length;
     },
@@ -475,7 +472,7 @@ function PendenciaDetail({ p }: any) {
     queryKey: ["coments", p.id],
     queryFn: async () =>
       (
-        await supabase
+        await db
           .from("pendencia_comentarios")
           .select("*, autor:profiles!pendencia_comentarios_autor_id_fkey(nome)")
           .eq("pendencia_id", p.id)
@@ -484,8 +481,8 @@ function PendenciaDetail({ p }: any) {
   });
   const add = useMutation({
     mutationFn: async () => {
-      const { data: u } = await supabase.auth.getUser();
-      await supabase
+      const { data: u } = await db.auth.getUser();
+      await db
         .from("pendencia_comentarios")
         .insert({ pendencia_id: p.id, autor_id: u.user!.id, conteudo: text });
     },
@@ -514,7 +511,7 @@ function PendenciaDetail({ p }: any) {
               type="date"
               defaultValue={(p.data_inicio ?? p.criado_em)?.slice(0, 10)}
               onBlur={async (e) => {
-                await supabase
+                await db
                   .from("pendencias")
                   .update({ data_inicio: e.target.value } as any)
                   .eq("id", p.id);
@@ -529,7 +526,7 @@ function PendenciaDetail({ p }: any) {
               type="date"
               defaultValue={p.data_resolucao?.slice(0, 10) ?? ""}
               onBlur={async (e) => {
-                await supabase
+                await db
                   .from("pendencias")
                   .update({ data_resolucao: e.target.value || null } as any)
                   .eq("id", p.id);

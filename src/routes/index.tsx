@@ -1,11 +1,11 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/database/client";
 
 export const Route = createFileRoute("/")({
   beforeLoad: async () => {
     let data: any = null;
     try {
-      const res = await supabase.auth.getUser();
+      const res = await db.auth.getUser();
       data = res.data;
     } catch (err: any) {
       if (err?.to) throw err;

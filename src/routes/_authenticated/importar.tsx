@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import Papa from "papaparse";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/database/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -213,9 +213,9 @@ async function importRows(kind: TemplateKey, rows: Record<string, string>[]) {
     fail = 0;
 
   if (kind === "colaboradores") {
-    const { data: ops } = await supabase.from("operacoes").select("id,nome");
+    const { data: ops } = await db.from("operacoes").select("id,nome");
     const opMap = new Map((ops ?? []).map((o: any) => [o.nome.toLowerCase(), o.id]));
-    const { data: existentes } = await supabase
+    const { data: existentes } = await db
       .from("colaboradores")
       .select(
         "id, nome, cpf, matricula, email, email_senha, telefone, cargo, operacao_id, admissao_em, status",
@@ -264,13 +264,13 @@ async function importRows(kind: TemplateKey, rows: Record<string, string>[]) {
           ok++;
           continue;
         }
-        const { error } = await supabase.from("colaboradores").update(diff).eq("id", existente.id);
+        const { error } = await db.from("colaboradores").update(diff).eq("id", existente.id);
         if (error) {
           fail++;
           errors.push(`Linha ${i + 2}: ${error.message}`);
         } else ok++;
       } else {
-        const { error } = await supabase.from("colaboradores").insert(payload);
+        const { error } = await db.from("colaboradores").insert(payload);
         if (error) {
           fail++;
           errors.push(`Linha ${i + 2}: ${error.message}`);
@@ -278,7 +278,7 @@ async function importRows(kind: TemplateKey, rows: Record<string, string>[]) {
       }
     }
   } else if (kind === "sistemas") {
-    const { data: existentes } = await supabase
+    const { data: existentes } = await db
       .from("sistemas")
       .select("id, nome, categoria, criticidade, descricao, url, ativo");
     const sisMap = new Map((existentes ?? []).map((s: any) => [s.nome.trim().toLowerCase(), s]));
@@ -308,13 +308,13 @@ async function importRows(kind: TemplateKey, rows: Record<string, string>[]) {
           ok++;
           continue;
         }
-        const { error } = await supabase.from("sistemas").update(diff).eq("id", ex.id);
+        const { error } = await db.from("sistemas").update(diff).eq("id", ex.id);
         if (error) {
           fail++;
           errors.push(`Linha ${i + 2}: ${error.message}`);
         } else ok++;
       } else {
-        const { error } = await supabase.from("sistemas").insert(payload);
+        const { error } = await db.from("sistemas").insert(payload);
         if (error) {
           fail++;
           errors.push(`Linha ${i + 2}: ${error.message}`);
@@ -322,13 +322,13 @@ async function importRows(kind: TemplateKey, rows: Record<string, string>[]) {
       }
     }
   } else if (kind === "acessos") {
-    const { data: cols } = await supabase.from("colaboradores").select("id,cpf");
-    const { data: sis } = await supabase.from("sistemas").select("id,nome");
+    const { data: cols } = await db.from("colaboradores").select("id,cpf");
+    const { data: sis } = await db.from("sistemas").select("id,nome");
     const colMap = new Map(
       (cols ?? []).filter((c: any) => c.cpf).map((c: any) => [c.cpf.replace(/\D/g, ""), c.id]),
     );
     const sisMap = new Map((sis ?? []).map((s: any) => [s.nome.toLowerCase(), s.id]));
-    const { data: u } = await supabase.auth.getUser();
+    const { data: u } = await db.auth.getUser();
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
       const cpfKey = (r.cpf_colaborador ?? "").replace(/\D/g, "");
@@ -355,7 +355,7 @@ async function importRows(kind: TemplateKey, rows: Record<string, string>[]) {
         concedido_em: status === "ativo" ? new Date().toISOString() : null,
       };
 
-      const { data: exAcesso } = await supabase
+      const { data: exAcesso } = await db
         .from("acessos")
         .select("id, login, senha, status")
         .eq("colaborador_id", colId)
@@ -371,13 +371,13 @@ async function importRows(kind: TemplateKey, rows: Record<string, string>[]) {
           ok++;
           continue;
         }
-        const { error } = await supabase.from("acessos").update(diff).eq("id", exAcesso.id);
+        const { error } = await db.from("acessos").update(diff).eq("id", exAcesso.id);
         if (error) {
           fail++;
           errors.push(`Linha ${i + 2}: ${error.message}`);
         } else ok++;
       } else {
-        const { error } = await supabase.from("acessos").insert(payload);
+        const { error } = await db.from("acessos").insert(payload);
         if (error) {
           fail++;
           errors.push(`Linha ${i + 2}: ${error.message}`);

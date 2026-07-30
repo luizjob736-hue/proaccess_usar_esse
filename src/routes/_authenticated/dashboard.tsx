@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/database/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Users, Server, KeyRound, AlertTriangle, TrendingUp, ShieldCheck } from "lucide-react";
 import {
@@ -26,19 +26,16 @@ function Dashboard() {
     queryKey: ["dashboard"],
     queryFn: async () => {
       const [colab, sist, acc, pend, orfaos, semResp] = await Promise.all([
-        supabase.from("colaboradores").select("status", { count: "exact" }),
-        supabase.from("sistemas").select("id", { count: "exact", head: true }),
-        supabase.from("acessos").select("status", { count: "exact" }),
-        supabase.from("pendencias").select("status,prioridade", { count: "exact" }),
-        supabase
+        db.from("colaboradores").select("status", { count: "exact" }),
+        db.from("sistemas").select("id", { count: "exact", head: true }),
+        db.from("acessos").select("status", { count: "exact" }),
+        db.from("pendencias").select("status,prioridade", { count: "exact" }),
+        db
           .from("acessos")
           .select("id,colaborador:colaboradores!inner(status)")
           .eq("status", "ativo")
           .eq("colaboradores.status", "desligado"),
-        supabase
-          .from("sistemas")
-          .select("id", { count: "exact", head: true })
-          .is("responsavel_id", null),
+        db.from("sistemas").select("id", { count: "exact", head: true }).is("responsavel_id", null),
       ]);
       return {
         colabTotal: colab.count ?? 0,

@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/database/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { FileSpreadsheet, FileText, FileDown } from "lucide-react";
@@ -36,7 +36,7 @@ async function fetchRel(k: string) {
   if (k === "colaboradores")
     return (
       (
-        await supabase
+        await db
           .from("colaboradores")
           .select(
             "nome,cpf,matricula,email,cargo,status,admissao_em,desligamento_em,operacao:operacoes(nome)",
@@ -46,7 +46,7 @@ async function fetchRel(k: string) {
   if (k === "sistemas")
     return (
       (
-        await supabase
+        await db
           .from("sistemas")
           .select("nome,categoria,criticidade,ativo,responsavel:profiles(nome)")
       ).data ?? []
@@ -54,7 +54,7 @@ async function fetchRel(k: string) {
   if (k === "acessos")
     return (
       (
-        await supabase
+        await db
           .from("acessos")
           .select(
             "status,login,concedido_em,colaborador:colaboradores(nome),sistema:sistemas(nome)",
@@ -63,17 +63,14 @@ async function fetchRel(k: string) {
     );
   if (k === "pendencias")
     return (
-      (
-        await supabase
-          .from("pendencias")
-          .select("titulo,tipo,status,prioridade,sla_em,concluido_em")
-      ).data ?? []
+      (await db.from("pendencias").select("titulo,tipo,status,prioridade,sla_em,concluido_em"))
+        .data ?? []
     );
   if (k === "matriz" || k === "inativos") {
-    const { data: colabs = [] } = await supabase
+    const { data: colabs = [] } = await db
       .from("colaboradores")
       .select("id,nome,cpf,email,email_senha,telefone,cargo,status,inativado_em" as any);
-    const { data: acessos = [] } = await supabase
+    const { data: acessos = [] } = await db
       .from("acessos")
       .select("login,senha,colaborador_id,sistema:sistemas(nome)");
     const rows: any[] = [];

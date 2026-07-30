@@ -5,13 +5,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/database/client";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/auth")({
   beforeLoad: async () => {
     try {
-      const { data } = await supabase.auth.getUser();
+      const { data } = await db.auth.getUser();
       if (data?.user) {
         if (data.user.role === "operador") {
           throw redirect({ to: "/chamados" });
@@ -44,7 +44,7 @@ function AuthPage() {
     setErrorMsg(null);
 
     try {
-      const res = await supabase.auth.signInWithPassword({
+      const res = await db.auth.signInWithPassword({
         email: identifier.trim(),
         password: password.trim(),
       });

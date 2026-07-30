@@ -1,10 +1,10 @@
 import { createServerFn } from "@tanstack/react-start";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requireDatabaseAuth } from "@/integrations/database/auth-middleware";
 
 type Role = "admin_master" | "admin" | "analista" | "supervisor" | "consulta" | "operador";
 
 async function ensureAdmin(context: any) {
-  const { data: isAdm } = await context.supabase.rpc("is_admin", { _user_id: context.userId });
+  const { data: isAdm } = await context.db.rpc("is_admin", { _user_id: context.userId });
   if (!isAdm) throw new Error("Apenas administradores podem executar esta ação");
 }
 
@@ -13,7 +13,7 @@ function genSenha() {
 }
 
 export const createUserAccount = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireDatabaseAuth])
   .inputValidator(
     (d: {
       nome: string;
@@ -27,13 +27,13 @@ export const createUserAccount = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     await ensureAdmin(context);
     if (data.role === "admin_master") {
-      const { data: isMaster } = await context.supabase.rpc("has_role", {
+      const { data: isMaster } = await context.db.rpc("has_role", {
         _user_id: context.userId,
         _role: "admin_master",
       });
       if (!isMaster) throw new Error("Somente Admin Master pode conceder o papel admin_master");
     }
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { dbAdmin } = await import("@/integrations/database/client.server");
     const cpfDigits = (data.cpf ?? "").replace(/\D/g, "");
     let email = data.email;
     let senha = data.senha ?? genSenha();
@@ -42,7 +42,7 @@ export const createUserAccount = createServerFn({ method: "POST" })
       email = data.email || `${cpfDigits}@operador.proaccess.local`;
       senha = data.senha ?? "123456";
     }
-    const { data: created, error } = await supabaseAdmin.auth.admin.createUser({
+    const { data: created, error } = await dbAdmin.auth.admin.createUser({
       email,
       password: senha,
       email_confirm: true,
@@ -55,29 +55,29 @@ export const createUserAccount = createServerFn({ method: "POST" })
     });
     if (error) throw error;
     const uid = created.user!.id;
-    await supabaseAdmin.from("user_roles").delete().eq("user_id", uid);
-    await supabaseAdmin.from("user_roles").insert({ user_id: uid, role: data.role });
+    await dbAdmin.from("user_roles").delete().eq("user_id", uid);
+    await dbAdmin.from("user_roles").insert({ user_id: uid, role: data.role });
     // guarda senha visível para admins (campo já existente em profiles? adiciona em user_metadata)
     return { user_id: uid, senha_provisoria: senha, login: data.login || email };
   });
 
 export const resetUserPassword = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireDatabaseAuth])
   .inputValidator((d: { user_id: string; nova_senha?: string }) => d)
   .handler(async ({ data, context }) => {
     await ensureAdmin(context);
     const senha = data.nova_senha && data.nova_senha.length >= 6 ? data.nova_senha : genSenha();
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { error } = await supabaseAdmin.auth.admin.updateUserById(data.user_id, {
+    const { dbAdmin } = await import("@/integrations/database/client.server");
+    const { error } = await dbAdmin.auth.admin.updateUserById(data.user_id, {
       password: senha,
     });
     if (error) throw error;
     // salva última senha no profile para visibilidade admin
-    await supabaseAdmin
+    await dbAdmin
       .from("profiles")
       .update({ senha_alterada: false } as any)
       .eq("id", data.user_id);
-    await supabaseAdmin
+    await dbAdmin
       .from("profiles")
       .update({ ultima_senha: senha } as any)
       .eq("id", data.user_id);
@@ -85,11 +85,11 @@ export const resetUserPassword = createServerFn({ method: "POST" })
   });
 
 export const createOperadorFromColaborador = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireDatabaseAuth])
   .inputValidator((d: { colaborador_id: string }) => d)
   .handler(async ({ data, context }) => {
     await ensureAdmin(context);
-    const { data: col, error: e1 } = await context.supabase
+    const { data: col, error: e1 } = await context.db
       .from("colaboradores")
       .select("id, nome, cpf, email")
       .eq("id", data.colaborador_id)
@@ -100,8 +100,8 @@ export const createOperadorFromColaborador = createServerFn({ method: "POST" })
     const cpfDigits = String(col.cpf).replace(/\D/g, "");
     if (!cpfDigits) throw new Error("CPF inválido");
     const email = col.email ?? `${cpfDigits}@operador.proaccess.local`;
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: created, error } = await supabaseAdmin.auth.admin.createUser({
+    const { dbAdmin } = await import("@/integrations/database/client.server");
+    const { data: created, error } = await dbAdmin.auth.admin.createUser({
       email,
       password: "123456",
       email_confirm: true,
@@ -114,7 +114,7 @@ export const createOperadorFromColaborador = createServerFn({ method: "POST" })
       throw error;
     }
     const uid = created.user!.id;
-    await supabaseAdmin.from("user_roles").delete().eq("user_id", uid);
-    await supabaseAdmin.from("user_roles").insert({ user_id: uid, role: "operador" });
+    await dbAdmin.from("user_roles").delete().eq("user_id", uid);
+    await dbAdmin.from("user_roles").insert({ user_id: uid, role: "operador" });
     return { user_id: uid, login: cpfDigits, senha: "123456" };
   });

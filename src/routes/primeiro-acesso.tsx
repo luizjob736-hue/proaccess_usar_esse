@@ -4,14 +4,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/database/client";
 import { toast } from "sonner";
 import { KeyRound } from "lucide-react";
 
 export const Route = createFileRoute("/primeiro-acesso")({
   beforeLoad: async () => {
     if (typeof window === "undefined") return;
-    const { data } = await supabase.auth.getUser();
+    const { data } = await db.auth.getUser();
     if (!data.user) throw redirect({ to: "/auth" });
   },
   component: PrimeiroAcesso,
@@ -28,14 +28,13 @@ function PrimeiroAcesso() {
     if (pwd.length < 8) return toast.error("Senha deve ter pelo menos 8 caracteres");
     if (pwd !== confirm) return toast.error("Senhas não conferem");
     setLoading(true);
-    const { error } = await supabase.auth.updateUser({ password: pwd });
+    const { error } = await db.auth.updateUser({ password: pwd });
     if (error) {
       setLoading(false);
       return toast.error(error.message);
     }
-    const { data: u } = await supabase.auth.getUser();
-    if (u.user)
-      await supabase.from("profiles").update({ senha_alterada: true }).eq("id", u.user.id);
+    const { data: u } = await db.auth.getUser();
+    if (u.user) await db.from("profiles").update({ senha_alterada: true }).eq("id", u.user.id);
     setLoading(false);
     toast.success("Senha alterada");
     navigate({ to: "/dashboard" });

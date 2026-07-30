@@ -30,7 +30,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/database/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   DropdownMenu,
@@ -102,17 +102,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { data: me } = useQuery({
     queryKey: ["me"],
     queryFn: async () => {
-      const { data: u } = await supabase.auth.getUser();
+      const { data: u } = await db.auth.getUser();
       if (!u.user) return null;
-      const { data: prof } = await supabase
+      const { data: prof } = await db
         .from("profiles")
         .select("*")
         .eq("id", u.user.id)
         .maybeSingle();
-      const { data: roles } = await supabase
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", u.user.id);
+      const { data: roles } = await db.from("user_roles").select("role").eq("user_id", u.user.id);
       return { user: u.user, profile: prof, roles: roles?.map((r) => r.role) ?? [] };
     },
   });
@@ -121,7 +118,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     queryKey: ["notif-count"],
     queryFn: async () => {
       try {
-        const res = await supabase
+        const res = await db
           .from("notificacoes")
           .select("*", { count: "exact", head: true })
           .eq("lida", false);
@@ -143,7 +140,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   async function signOut() {
     await qc.cancelQueries();
     qc.clear();
-    await supabase.auth.signOut();
+    await db.auth.signOut();
     window.location.href = "/auth";
   }
 

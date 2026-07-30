@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/database/client";
 import { useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -19,7 +19,7 @@ function Credenciais() {
   const { data: rows = [], isLoading } = useQuery({
     queryKey: ["credenciais"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("acessos")
         .select(
           "id, login, senha, sistema:sistemas(nome), colaborador:colaboradores(nome, cpf, email, email_senha, telefone)",

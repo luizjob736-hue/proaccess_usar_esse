@@ -479,7 +479,7 @@ async function importRows(kind: TemplateKey, rows: Record<string, string>[]) {
         if (Object.keys(diff).length === 0) {
           const isOperadorCargo =
             (payload.cargo || existente.cargo || "").toLowerCase().trim() === "operador";
-          if (isOperadorCargo && (payload.email || existente.email)) {
+          if (isOperadorCargo && (payload.cpf || existente.cpf)) {
             try {
               const { createOperadorFromColaborador } = await import("@/lib/admin-users.functions");
               await createOperadorFromColaborador({ data: { colaborador_id: existente.id } });
@@ -498,7 +498,7 @@ async function importRows(kind: TemplateKey, rows: Record<string, string>[]) {
           ok++;
           const isOperadorCargo =
             (payload.cargo || existente.cargo || "").toLowerCase().trim() === "operador";
-          if (isOperadorCargo && (payload.email || existente.email)) {
+          if (isOperadorCargo && (payload.cpf || existente.cpf)) {
             try {
               const { createOperadorFromColaborador } = await import("@/lib/admin-users.functions");
               await createOperadorFromColaborador({ data: { colaborador_id: existente.id } });
@@ -519,7 +519,7 @@ async function importRows(kind: TemplateKey, rows: Record<string, string>[]) {
         } else {
           ok++;
           const isOperadorCargo = (payload.cargo || "").toLowerCase().trim() === "operador";
-          if (isOperadorCargo && inserted?.id && payload.email) {
+          if (isOperadorCargo && inserted?.id && payload.cpf) {
             try {
               const { createOperadorFromColaborador } = await import("@/lib/admin-users.functions");
               await createOperadorFromColaborador({ data: { colaborador_id: inserted.id } });

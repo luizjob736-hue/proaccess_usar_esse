@@ -98,7 +98,7 @@ function Colaboradores() {
 
       const isCargoOperador = form.cargo && String(form.cargo).toLowerCase().trim() === "operador";
       if (data?.id && isCargoOperador) {
-        if (form.email) {
+        if (form.cpf) {
           try {
             const r: any = await createOperador({ data: { colaborador_id: data.id } });
             if (r?.login)
@@ -108,7 +108,7 @@ function Colaboradores() {
           }
         } else {
           toast.warning(
-            "Colaborador com cargo Operador cadastrado, mas o login não foi criado por falta de e-mail.",
+            "Colaborador com cargo Operador cadastrado, mas o login não foi criado por falta de CPF.",
           );
         }
       }

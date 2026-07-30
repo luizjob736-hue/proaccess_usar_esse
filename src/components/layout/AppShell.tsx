@@ -144,12 +144,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     window.location.href = "/auth";
   }
 
-  const initials = (me?.profile?.nome ?? "?")
-    .split(" ")
-    .map((s) => s[0])
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
+  const displayName =
+    me?.profile?.nome ?? me?.user?.user_metadata?.nome ?? me?.user?.email ?? "Usuário";
+  const initials =
+    displayName
+      .split(" ")
+      .filter(Boolean)
+      .map((s) => s[0])
+      .slice(0, 2)
+      .join("")
+      .toUpperCase() || "?";
   const isOperador =
     (me?.roles ?? []).includes("operador") &&
     !(me?.roles ?? []).some((r: string) =>
@@ -228,7 +232,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   </AvatarFallback>
                 </Avatar>
                 <div className="hidden text-left md:block">
-                  <div className="text-xs font-medium">{me?.profile?.nome}</div>
+                  <div className="text-xs font-medium">{displayName}</div>
                   <div className="text-[10px] text-muted-foreground">
                     {me?.roles?.[0] === "operador"
                       ? "Colaborador"
@@ -242,7 +246,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuLabel>{me?.profile?.email}</DropdownMenuLabel>
+              <DropdownMenuLabel>{me?.profile?.email ?? me?.user?.email}</DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => navigate({ to: "/perfil" })}>
                 <User className="mr-2 h-4 w-4" /> Perfil

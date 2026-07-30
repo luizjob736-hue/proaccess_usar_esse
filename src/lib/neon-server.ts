@@ -64,7 +64,12 @@ export const neonAuthServerFn = createServerFn({ method: "POST" })
         }
 
         const cleanIdent = ident.toLowerCase();
-        const emailToUse = ident.includes("@") ? cleanIdent : `${cleanIdent}@proacess.local`;
+        const cleanCpf = ident.replace(/\D/g, "");
+        let emailToUse = ident.includes("@") ? cleanIdent : `${cleanIdent}@proacess.local`;
+
+        if (!ident.includes("@") && cleanCpf.length === 11) {
+          emailToUse = `${cleanCpf}@operador.proaccess.local`;
+        }
 
         const usernameToUse = ident.split("@")[0].toLowerCase();
 
@@ -74,16 +79,17 @@ export const neonAuthServerFn = createServerFn({ method: "POST" })
         try {
           const res = await client.query(
             `SELECT p.id, p.nome, p.email as profile_email, p.ativo, p.senha_alterada, p.ultima_senha,
-                    (SELECT role FROM public.user_roles WHERE user_id = p.id::text OR user_id::text = p.id::text LIMIT 1) as role
+                    (SELECT role FROM public.user_roles WHERE user_id::text = p.id::text LIMIT 1) as role
              FROM public.profiles p
              WHERE (
                lower(p.email) = lower($1)
                OR lower(p.nome) = lower($1)
                OR lower(p.nome) ILIKE '%' || $2 || '%'
                OR lower(p.email) = lower($3)
+               OR replace(replace(p.cpf, '.', ''), '-', '') = $4
              )
              LIMIT 1`,
-            [ident, usernameToUse, emailToUse],
+            [ident, usernameToUse, emailToUse, cleanCpf],
           );
           row = res.rows[0];
         } catch (_e) {
@@ -97,9 +103,10 @@ export const neonAuthServerFn = createServerFn({ method: "POST" })
                  OR lower(p.nome) = lower($1)
                  OR lower(p.nome) ILIKE '%' || $2 || '%'
                  OR lower(p.email) = lower($3)
+                 OR replace(replace(p.cpf, '.', ''), '-', '') = $4
                )
                LIMIT 1`,
-              [ident, usernameToUse, emailToUse],
+              [ident, usernameToUse, emailToUse, cleanCpf],
             );
             row = res.rows[0];
           } catch (_e2) {
@@ -112,7 +119,7 @@ export const neonAuthServerFn = createServerFn({ method: "POST" })
           try {
             const fallbackRes = await client.query(
               `SELECT p.id, p.nome, p.email as profile_email, p.ativo, p.senha_alterada, p.ultima_senha,
-                      (SELECT role FROM public.user_roles WHERE user_id = p.id::text OR user_id::text = p.id::text LIMIT 1) as role
+                      (SELECT role FROM public.user_roles WHERE user_id::text = p.id::text LIMIT 1) as role
                FROM public.profiles p
                ORDER BY p.criado_em ASC LIMIT 1`,
             );
@@ -251,7 +258,7 @@ export const neonAuthServerFn = createServerFn({ method: "POST" })
         try {
           const res = await client.query(
             `SELECT p.id, p.nome, p.email as profile_email, p.ativo, p.senha_alterada,
-                    (SELECT role FROM public.user_roles WHERE user_id = p.id::text OR user_id::text = p.id::text LIMIT 1) as role
+                    (SELECT role FROM public.user_roles WHERE user_id::text = p.id::text LIMIT 1) as role
              FROM public.profiles p
              WHERE p.id::text = $1 OR lower(p.email) = lower($1) LIMIT 1`,
             [userId],
@@ -266,6 +273,46 @@ export const neonAuthServerFn = createServerFn({ method: "POST" })
             row = res.rows[0];
           } catch (_e2) {
             // ignore
+          }
+        }
+
+        if (!row) {
+          try {
+            const authRes = await client
+              .query(
+                `SELECT id, email, raw_user_meta_data FROM auth.users WHERE id::text = $1 LIMIT 1`,
+                [userId],
+              )
+              .catch(() => ({ rows: [] }));
+            const authUser = authRes.rows[0];
+            if (authUser) {
+              const meta =
+                typeof authUser.raw_user_meta_data === "string"
+                  ? JSON.parse(authUser.raw_user_meta_data)
+                  : authUser.raw_user_meta_data || {};
+              const nome = meta.nome || authUser.email?.split("@")[0] || "Usuário";
+              const email = authUser.email || `${authUser.id}@proacess.local`;
+              const senhaAlterada = meta.senha_alterada ?? true;
+
+              await client.query(
+                `INSERT INTO public.profiles (id, nome, email, senha_alterada)
+                 VALUES ($1, $2, $3, $4)
+                 ON CONFLICT (id) DO UPDATE SET nome = EXCLUDED.nome, email = EXCLUDED.email`,
+                [authUser.id, nome, email, senhaAlterada],
+              );
+
+              // Re-fetch row
+              const res = await client.query(
+                `SELECT p.id, p.nome, p.email as profile_email, p.ativo, p.senha_alterada,
+                        (SELECT role FROM public.user_roles WHERE user_id::text = p.id::text LIMIT 1) as role
+                 FROM public.profiles p
+                 WHERE p.id::text = $1 LIMIT 1`,
+                [userId],
+              );
+              row = res.rows[0];
+            }
+          } catch (err) {
+            console.error("Error auto-creating profile in getUser:", err);
           }
         }
 
@@ -436,7 +483,7 @@ async function getCurrentUser(client: any): Promise<NeonUser | null> {
 
     const res = await client.query(
       `SELECT p.id, p.nome, p.email as profile_email, p.ativo, p.senha_alterada,
-              (SELECT role FROM public.user_roles WHERE user_id = p.id::text OR user_id::text = p.id::text LIMIT 1) as role
+              (SELECT role FROM public.user_roles WHERE user_id::text = p.id::text LIMIT 1) as role
        FROM public.profiles p
        WHERE p.id::text = $1 OR lower(p.email) = lower($1) LIMIT 1`,
       [userId],

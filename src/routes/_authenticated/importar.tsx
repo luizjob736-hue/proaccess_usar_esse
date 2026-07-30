@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Upload,
   FileDown,
@@ -358,6 +358,7 @@ function ImportCard({ kind, sistemasAll = [] }: { kind: TemplateKey; sistemasAll
     t = TEMPLATES[kind];
   }
   const Icon = t.icon;
+  const qc = useQueryClient();
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ ok: number; fail: number; errors: string[] } | null>(null);
 
@@ -378,6 +379,9 @@ function ImportCard({ kind, sistemasAll = [] }: { kind: TemplateKey; sistemasAll
           }
           const out = await importRows(kind, rows);
           setResult(out);
+          if (out.ok > 0) {
+            qc.invalidateQueries();
+          }
           if (out.fail === 0) {
             toast.success(`${out.ok} registros importados com sucesso!`);
           } else {
@@ -487,6 +491,24 @@ async function importRows(kind: TemplateKey, rows: Record<string, string>[]) {
   let ok = 0,
     fail = 0;
 
+  const cleanKey = (k: string) =>
+    k
+      .toLowerCase()
+      .trim()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]/g, "");
+
+  const getRowVal = (row: Record<string, string>, possibleKeys: string[]): string => {
+    const cleanPossible = possibleKeys.map((pk) => cleanKey(pk));
+    for (const [rk, rv] of Object.entries(row)) {
+      if (cleanPossible.includes(cleanKey(rk))) {
+        return String(rv ?? "").trim();
+      }
+    }
+    return "";
+  };
+
   // Helper function to check if a value is actually different
   const isFieldDifferent = (k: string, existing: any, incoming: any): boolean => {
     if (incoming === null || incoming === undefined || incoming === "") {
@@ -557,30 +579,55 @@ async function importRows(kind: TemplateKey, rows: Record<string, string>[]) {
 
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
-      const cpfKey = (r.cpf ?? "").replace(/\D/g, "");
-      const nomeKey = String(r.nome ?? "")
-        .trim()
-        .toLowerCase();
+      const nome = getRowVal(r, ["nome", "nome completo", "colaborador"]);
+      const cpf = getRowVal(r, ["cpf", "documento"]);
+      const matricula = getRowVal(r, ["matricula", "registro"]);
+      const email = getRowVal(r, ["email", "e-mail"]);
+      const email_senha = getRowVal(r, [
+        "email_senha",
+        "email senha",
+        "senha do email",
+        "senha email",
+        "senha e-mail",
+        "senha_email",
+      ]);
+      const telefone = getRowVal(r, ["telefone", "celular", "fone"]);
+      const cargo = getRowVal(r, ["cargo", "funcao", "função"]);
+      const operacao = getRowVal(r, ["operacao", "operação", "setor", "operacao_id"]);
+      const admissao_em = getRowVal(r, [
+        "admissao_em",
+        "admissao",
+        "admissão",
+        "data de admissao",
+        "data de admissão",
+        "data_admissao",
+        "data_de_admissao",
+      ]);
+      const rawStatus = getRowVal(r, ["status", "situacao", "situação"]);
 
-      const opName = r.operacao?.trim() || "";
+      const cpfKey = cpf.replace(/\D/g, "");
+      const nomeKey = nome.toLowerCase().trim();
+
+      const opName = operacao;
       const opId = opName ? (opMap.get(opName.toLowerCase()) ?? null) : null;
 
       // Se o usuário digitou uma operação mas ela não foi encontrada no banco, avisa ou cria.
       // Vamos tentar encontrar ou deixar nula se não existir.
 
-      const rawStatus = (r.status ?? "").trim().toLowerCase();
-      const status = validStatuses.includes(rawStatus) ? rawStatus : "ativo";
+      const status = validStatuses.includes(rawStatus.toLowerCase())
+        ? rawStatus.toLowerCase()
+        : "ativo";
 
       const payload: any = {
-        nome: r.nome?.trim(),
-        cpf: r.cpf?.trim() || null,
-        matricula: r.matricula?.trim() || null,
-        email: r.email?.trim() || null,
-        email_senha: r.email_senha?.trim() || null,
-        telefone: r.telefone?.trim() || null,
-        cargo: r.cargo?.trim() || null,
+        nome: nome || null,
+        cpf: cpf || null,
+        matricula: matricula || null,
+        email: email || null,
+        email_senha: email_senha || null,
+        telefone: telefone || null,
+        cargo: cargo || null,
         operacao_id: opId,
-        admissao_em: r.admissao_em?.trim() || null,
+        admissao_em: admissao_em || null,
         status: status as any,
       };
 

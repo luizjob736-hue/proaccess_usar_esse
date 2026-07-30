@@ -35,11 +35,10 @@ export const createUserAccount = createServerFn({ method: "POST" })
     }
     const { dbAdmin } = await import("@/integrations/database/client.server");
     const cpfDigits = (data.cpf ?? "").replace(/\D/g, "");
-    let email = data.email;
+    const email = data.email;
     let senha = data.senha ?? genSenha();
     if (data.role === "operador") {
-      if (!cpfDigits) throw new Error("CPF é obrigatório para criar operador");
-      email = data.email || `${cpfDigits}@operador.proaccess.local`;
+      if (!email) throw new Error("E-mail é obrigatório para criar operador");
       senha = data.senha ?? "123456";
     }
     const { data: created, error } = await dbAdmin.auth.admin.createUser({
@@ -49,11 +48,32 @@ export const createUserAccount = createServerFn({ method: "POST" })
       user_metadata: {
         nome: data.nome,
         cpf: cpfDigits || undefined,
-        username: data.login || (data.role === "operador" ? cpfDigits : undefined),
+        username: data.login || email,
         senha_alterada: data.role === "operador" ? true : false,
       },
     });
-    if (error) throw error;
+    if (error) {
+      if (String(error.message).toLowerCase().includes("already") && data.role === "operador") {
+        const { data: existingProfile } = await dbAdmin
+          .from("profiles")
+          .select("id")
+          .eq("email", email)
+          .maybeSingle();
+        if (existingProfile) {
+          await dbAdmin.from("user_roles").delete().eq("user_id", existingProfile.id);
+          await dbAdmin
+            .from("user_roles")
+            .insert({ user_id: existingProfile.id, role: "operador" });
+          return {
+            user_id: existingProfile.id,
+            senha_provisoria: "123456",
+            login: email,
+            message: "Acesso de operador vinculado ao usuário existente",
+          };
+        }
+      }
+      throw error;
+    }
     const uid = created.user!.id;
     await dbAdmin.from("user_roles").delete().eq("user_id", uid);
     await dbAdmin.from("user_roles").insert({ user_id: uid, role: data.role });
@@ -96,25 +116,54 @@ export const createOperadorFromColaborador = createServerFn({ method: "POST" })
       .maybeSingle();
     if (e1) throw e1;
     if (!col) throw new Error("Colaborador não encontrado");
-    if (!col.cpf) throw new Error("Colaborador precisa ter CPF cadastrado");
-    const cpfDigits = String(col.cpf).replace(/\D/g, "");
-    if (!cpfDigits) throw new Error("CPF inválido");
-    const email = col.email ?? `${cpfDigits}@operador.proaccess.local`;
+    if (!col.email) throw new Error("Colaborador precisa ter e-mail cadastrado");
+    const cpfDigits = col.cpf ? String(col.cpf).replace(/\D/g, "") : "";
+    const email = col.email.trim().toLowerCase();
     const { dbAdmin } = await import("@/integrations/database/client.server");
+
+    // Verificar se já existe uma conta com esse e-mail no auth/profiles
+    const { data: existingProfile } = await dbAdmin
+      .from("profiles")
+      .select("id")
+      .eq("email", email)
+      .maybeSingle();
+
+    if (existingProfile) {
+      // Se já existe, garante que ele tenha a role "operador"
+      await dbAdmin.from("user_roles").delete().eq("user_id", existingProfile.id);
+      await dbAdmin.from("user_roles").insert({ user_id: existingProfile.id, role: "operador" });
+      return {
+        user_id: existingProfile.id,
+        login: email,
+        senha: "123456",
+        message: "Acesso de operador vinculado ao usuário existente",
+      };
+    }
+
     const { data: created, error } = await dbAdmin.auth.admin.createUser({
       email,
       password: "123456",
       email_confirm: true,
-      user_metadata: { nome: col.nome, cpf: cpfDigits, senha_alterada: true, username: cpfDigits },
+      user_metadata: {
+        nome: col.nome,
+        cpf: cpfDigits || undefined,
+        senha_alterada: true,
+        username: email,
+      },
     });
     if (error) {
       if (String(error.message).toLowerCase().includes("already")) {
-        return { skipped: true, message: "Já existe conta com este e-mail" };
+        return {
+          skipped: true,
+          message: "Já existe conta com este e-mail",
+          login: email,
+          senha: "123456",
+        };
       }
       throw error;
     }
     const uid = created.user!.id;
     await dbAdmin.from("user_roles").delete().eq("user_id", uid);
     await dbAdmin.from("user_roles").insert({ user_id: uid, role: "operador" });
-    return { user_id: uid, login: cpfDigits, senha: "123456" };
+    return { user_id: uid, login: email, senha: "123456" };
   });

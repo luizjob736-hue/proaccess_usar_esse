@@ -15,7 +15,7 @@ export const Route = createFileRoute("/auth")({
       const { data } = await db.auth.getUser();
       if (data?.user) {
         if (data.user.role === "operador") {
-          throw redirect({ to: "/chamados" });
+          throw redirect({ to: "/minha-matriz" });
         }
         throw redirect({ to: "/dashboard" });
       }
@@ -70,7 +70,7 @@ function AuthPage() {
         toast.info("Primeiro acesso — altere sua senha");
         navigate({ to: "/primeiro-acesso" });
       } else if (isOperador) {
-        navigate({ to: "/chamados" });
+        navigate({ to: "/minha-matriz" });
       } else {
         navigate({ to: "/dashboard" });
       }

@@ -15,7 +15,7 @@ export const Route = createFileRoute("/")({
       throw redirect({ to: "/auth" });
     }
     if (data.user.role === "operador") {
-      throw redirect({ to: "/chamados" });
+      throw redirect({ to: "/minha-matriz" });
     }
     throw redirect({ to: "/dashboard" });
   },

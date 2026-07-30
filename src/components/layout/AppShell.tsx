@@ -69,7 +69,7 @@ const NAV_FULL = [
 ] as const;
 
 const NAV_OPERADOR = [
-  { to: "/chamados", icon: LifeBuoy, label: "Chamados" },
+  { to: "/minha-matriz", icon: Grid3x3, label: "Meus Acessos" },
   { to: "/perfil", icon: User, label: "Perfil" },
 ] as const;
 

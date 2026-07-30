@@ -29,8 +29,13 @@ export const Route = createFileRoute("/_authenticated")({
 
     if (isOperador) {
       const pathname = typeof window !== "undefined" ? window.location.pathname : "";
-      if (pathname === "/dashboard" || pathname === "/dashboard/") {
-        throw redirect({ to: "/chamados" });
+      if (
+        pathname === "/dashboard" ||
+        pathname === "/dashboard/" ||
+        pathname === "/chamados" ||
+        pathname === "/chamados/"
+      ) {
+        throw redirect({ to: "/minha-matriz" });
       }
     }
 

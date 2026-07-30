@@ -18,16 +18,21 @@ function MinhaMatriz() {
     queryFn: async () => {
       const { data: u } = await db.auth.getUser();
       if (!u.user) return [];
-      const email = u.user.email ?? "";
+      const email = (u.user.email ?? "").trim().toLowerCase();
       const meta: any = u.user.user_metadata ?? {};
       const cpfMeta = String(meta.cpf ?? "").replace(/\D/g, "");
       const cpfFromEmail = email.includes("@operador.proaccess.local")
         ? email.split("@")[0].replace(/\D/g, "")
         : "";
       const cpf = cpfMeta || cpfFromEmail;
-      if (!cpf) return [];
-      const { data: cols } = await db.from("colaboradores").select("id, cpf");
-      const col = (cols ?? []).find((c: any) => String(c.cpf ?? "").replace(/\D/g, "") === cpf);
+
+      const { data: cols } = await db.from("colaboradores").select("id, cpf, email");
+      const col = (cols ?? []).find((c: any) => {
+        const matchesEmail = c.email && email && c.email.trim().toLowerCase() === email;
+        const matchesCpf = cpf && c.cpf && String(c.cpf).replace(/\D/g, "") === cpf;
+        return matchesEmail || matchesCpf;
+      });
+
       if (!col) return [];
       const { data } = await db
         .from("acessos")

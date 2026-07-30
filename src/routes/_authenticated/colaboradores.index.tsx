@@ -92,16 +92,24 @@ function Colaboradores() {
       const { data, error } = await db
         .from("colaboradores")
         .insert(form)
-        .select("id, cpf")
+        .select("id")
         .maybeSingle();
       if (error) throw error;
-      // auto criar acesso operador se tiver CPF
-      if (data?.id && data?.cpf) {
-        try {
-          const r: any = await createOperador({ data: { colaborador_id: data.id } });
-          if (r?.login) toast.success(`Acesso Operador criado: usuário ${r.login} / senha 123456`);
-        } catch (err: any) {
-          toast.warning("Colaborador criado, mas o acesso operador falhou: " + err.message);
+
+      const isCargoOperador = form.cargo && String(form.cargo).toLowerCase().trim() === "operador";
+      if (data?.id && isCargoOperador) {
+        if (form.email) {
+          try {
+            const r: any = await createOperador({ data: { colaborador_id: data.id } });
+            if (r?.login)
+              toast.success(`Acesso Operador criado: usuário ${r.login} / senha 123456`);
+          } catch (err: any) {
+            toast.warning("Colaborador criado, mas o acesso de operador falhou: " + err.message);
+          }
+        } else {
+          toast.warning(
+            "Colaborador com cargo Operador cadastrado, mas o login não foi criado por falta de e-mail.",
+          );
         }
       }
     },
@@ -137,8 +145,8 @@ function Colaboradores() {
         <div>
           <h1 className="text-3xl font-bold">Colaboradores</h1>
           <p className="text-muted-foreground">
-            {list.length} registro(s) — novos colaboradores ganham automaticamente um acesso
-            Operador (usuário = CPF, senha = 123456)
+            {list.length} registro(s) — novos operadores ganham automaticamente um acesso Operador
+            (usuário = e-mail, senha = 123456)
           </p>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>

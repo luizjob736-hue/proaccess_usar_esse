@@ -225,9 +225,9 @@ function downloadCSV(key: TemplateKey) {
     },
     {
       delimiter: ";", // Force semicolon delimiter so it opens as clean columns in Excel PT-BR!
-    }
+    },
   );
-  
+
   // Add UTF-8 BOM so Excel opens with proper accents and special characters
   const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
@@ -244,9 +244,12 @@ function Importar() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight text-neutral-900 dark:text-white">Importar CSV</h1>
+        <h1 className="text-3xl font-bold tracking-tight text-neutral-900 dark:text-white">
+          Importar CSV
+        </h1>
         <p className="text-muted-foreground mt-1">
-          Baixe os modelos CSV com colunas pré-definidas (delimitadas por ponto e vírgula), preencha no Excel e faça o envio para importação direta no banco de dados.
+          Baixe os modelos CSV com colunas pré-definidas (delimitadas por ponto e vírgula), preencha
+          no Excel e faça o envio para importação direta no banco de dados.
         </p>
       </div>
 
@@ -332,7 +335,11 @@ function ImportCard({ kind }: { kind: TemplateKey }) {
           </span>
           <div className="flex flex-wrap gap-1.5">
             {t.headers.map((h) => (
-              <Badge key={h} variant="secondary" className="font-mono text-[11px] px-2 py-0.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300">
+              <Badge
+                key={h}
+                variant="secondary"
+                className="font-mono text-[11px] px-2 py-0.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300"
+              >
                 {h}
               </Badge>
             ))}
@@ -340,7 +347,11 @@ function ImportCard({ kind }: { kind: TemplateKey }) {
         </div>
 
         <div className="flex flex-wrap items-center gap-3 pt-2">
-          <Button variant="outline" onClick={() => downloadCSV(kind)} className="gap-2 border-neutral-300 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-900">
+          <Button
+            variant="outline"
+            onClick={() => downloadCSV(kind)}
+            className="gap-2 border-neutral-300 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-900"
+          >
             <FileDown className="h-4 w-4" /> Baixar Modelo Excel (.CSV)
           </Button>
           <label className="inline-flex cursor-pointer">
@@ -375,7 +386,9 @@ function ImportCard({ kind }: { kind: TemplateKey }) {
                 <div className="max-h-48 overflow-auto rounded-md bg-white dark:bg-neutral-950 p-3 border border-neutral-200 dark:border-neutral-800">
                   <ul className="list-disc pl-5 text-xs text-muted-foreground space-y-1">
                     {result.errors.slice(0, 30).map((e, i) => (
-                      <li key={i} className="text-red-500 dark:text-red-400">{e}</li>
+                      <li key={i} className="text-red-500 dark:text-red-400">
+                        {e}
+                      </li>
                     ))}
                     {result.errors.length > 30 && (
                       <li className="list-none text-neutral-400 pt-1">
@@ -405,12 +418,16 @@ async function importRows(kind: TemplateKey, rows: Record<string, string>[]) {
 
     const { data: existentes } = await db
       .from("colaboradores")
-      .select("id, nome, cpf, matricula, email, email_senha, telefone, cargo, operacao_id, admissao_em, status");
+      .select(
+        "id, nome, cpf, matricula, email, email_senha, telefone, cargo, operacao_id, admissao_em, status",
+      );
 
     const byKey = new Map<string, any>();
     for (const c of existentes ?? []) {
       const cpfKey = (c.cpf ?? "").replace(/\D/g, "");
-      const nomeKey = String(c.nome ?? "").trim().toLowerCase();
+      const nomeKey = String(c.nome ?? "")
+        .trim()
+        .toLowerCase();
       if (cpfKey) byKey.set(`cpf:${cpfKey}`, c);
       if (nomeKey) byKey.set(`nome:${nomeKey}`, c);
     }
@@ -420,14 +437,16 @@ async function importRows(kind: TemplateKey, rows: Record<string, string>[]) {
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
       const cpfKey = (r.cpf ?? "").replace(/\D/g, "");
-      const nomeKey = String(r.nome ?? "").trim().toLowerCase();
+      const nomeKey = String(r.nome ?? "")
+        .trim()
+        .toLowerCase();
 
       const opName = r.operacao?.trim() || "";
       const opId = opName ? (opMap.get(opName.toLowerCase()) ?? null) : null;
 
       // Se o usuário digitou uma operação mas ela não foi encontrada no banco, avisa ou cria.
       // Vamos tentar encontrar ou deixar nula se não existir.
-      
+
       const rawStatus = (r.status ?? "").trim().toLowerCase();
       const status = validStatuses.includes(rawStatus) ? rawStatus : "ativo";
 
@@ -458,6 +477,16 @@ async function importRows(kind: TemplateKey, rows: Record<string, string>[]) {
           if ((existente as any)[k] !== v) diff[k] = v;
         }
         if (Object.keys(diff).length === 0) {
+          const isOperadorCargo =
+            (payload.cargo || existente.cargo || "").toLowerCase().trim() === "operador";
+          if (isOperadorCargo && (payload.email || existente.email)) {
+            try {
+              const { createOperadorFromColaborador } = await import("@/lib/admin-users.functions");
+              await createOperadorFromColaborador({ data: { colaborador_id: existente.id } });
+            } catch (err) {
+              console.error("Erro ao garantir acesso de operador atualizado:", err);
+            }
+          }
           ok++;
           continue;
         }
@@ -465,13 +494,40 @@ async function importRows(kind: TemplateKey, rows: Record<string, string>[]) {
         if (error) {
           fail++;
           errors.push(`Linha ${i + 2}: Falha ao atualizar: ${error.message}`);
-        } else ok++;
+        } else {
+          ok++;
+          const isOperadorCargo =
+            (payload.cargo || existente.cargo || "").toLowerCase().trim() === "operador";
+          if (isOperadorCargo && (payload.email || existente.email)) {
+            try {
+              const { createOperadorFromColaborador } = await import("@/lib/admin-users.functions");
+              await createOperadorFromColaborador({ data: { colaborador_id: existente.id } });
+            } catch (err) {
+              console.error("Erro ao criar acesso de operador atualizado:", err);
+            }
+          }
+        }
       } else {
-        const { error } = await db.from("colaboradores").insert(payload);
+        const { data: inserted, error } = await db
+          .from("colaboradores")
+          .insert(payload)
+          .select("id")
+          .maybeSingle();
         if (error) {
           fail++;
           errors.push(`Linha ${i + 2}: Falha ao inserir: ${error.message}`);
-        } else ok++;
+        } else {
+          ok++;
+          const isOperadorCargo = (payload.cargo || "").toLowerCase().trim() === "operador";
+          if (isOperadorCargo && inserted?.id && payload.email) {
+            try {
+              const { createOperadorFromColaborador } = await import("@/lib/admin-users.functions");
+              await createOperadorFromColaborador({ data: { colaborador_id: inserted.id } });
+            } catch (err) {
+              console.error("Erro ao criar acesso de operador importado:", err);
+            }
+          }
+        }
       }
     }
   }
@@ -583,9 +639,11 @@ async function importRows(kind: TemplateKey, rows: Record<string, string>[]) {
     const { data: sis } = await db.from("sistemas").select("id, nome");
     const sisMap = new Map((sis ?? []).map((s: any) => [s.nome.trim().toLowerCase(), s.id]));
 
-    const { data: existentes } = await db.from("perfis_acesso").select("id, nome, sistema_id, descricao");
+    const { data: existentes } = await db
+      .from("perfis_acesso")
+      .select("id, nome, sistema_id, descricao");
     const perfMap = new Map(
-      (existentes ?? []).map((p: any) => [`${p.nome.trim().toLowerCase()}:${p.sistema_id}`, p])
+      (existentes ?? []).map((p: any) => [`${p.nome.trim().toLowerCase()}:${p.sistema_id}`, p]),
     );
 
     for (let i = 0; i < rows.length; i++) {
@@ -616,7 +674,7 @@ async function importRows(kind: TemplateKey, rows: Record<string, string>[]) {
       if (ex) {
         const diff: any = {};
         if (payload.descricao !== ex.descricao) diff.descricao = payload.descricao;
-        
+
         if (Object.keys(diff).length === 0) {
           ok++;
           continue;
@@ -643,11 +701,11 @@ async function importRows(kind: TemplateKey, rows: Record<string, string>[]) {
     const { data: perfis } = await db.from("perfis_acesso").select("id, nome, sistema_id");
 
     const colMap = new Map(
-      (cols ?? []).filter((c: any) => c.cpf).map((c: any) => [c.cpf.replace(/\D/g, ""), c.id])
+      (cols ?? []).filter((c: any) => c.cpf).map((c: any) => [c.cpf.replace(/\D/g, ""), c.id]),
     );
     const sisMap = new Map((sis ?? []).map((s: any) => [s.nome.toLowerCase().trim(), s.id]));
     const perfMap = new Map(
-      (perfis ?? []).map((p: any) => [`${p.nome.toLowerCase().trim()}:${p.sistema_id}`, p.id])
+      (perfis ?? []).map((p: any) => [`${p.nome.toLowerCase().trim()}:${p.sistema_id}`, p.id]),
     );
 
     const { data: u } = await db.auth.getUser();
@@ -671,7 +729,9 @@ async function importRows(kind: TemplateKey, rows: Record<string, string>[]) {
       }
 
       const perfilNome = r.perfil_acesso?.trim() || "";
-      const perfilId = perfilNome ? (perfMap.get(`${perfilNome.toLowerCase()}:${sisId}`) ?? null) : null;
+      const perfilId = perfilNome
+        ? (perfMap.get(`${perfilNome.toLowerCase()}:${sisId}`) ?? null)
+        : null;
 
       const rawStatus = (r.status ?? "").trim().toLowerCase();
       const status = validStatuses.includes(rawStatus) ? rawStatus : "pendente";
@@ -729,7 +789,7 @@ async function importRows(kind: TemplateKey, rows: Record<string, string>[]) {
     const { data: users } = await db.from("profiles").select("id, email");
 
     const colMap = new Map(
-      (cols ?? []).filter((c: any) => c.cpf).map((c: any) => [c.cpf.replace(/\D/g, ""), c.id])
+      (cols ?? []).filter((c: any) => c.cpf).map((c: any) => [c.cpf.replace(/\D/g, ""), c.id]),
     );
     const sisMap = new Map((sis ?? []).map((s: any) => [s.nome.trim().toLowerCase(), s.id]));
     const userMap = new Map((users ?? []).map((u: any) => [u.email.trim().toLowerCase(), u.id]));
@@ -737,7 +797,14 @@ async function importRows(kind: TemplateKey, rows: Record<string, string>[]) {
     const { data: loggedIn } = await db.auth.getUser();
 
     const validPriorities = ["baixa", "media", "alta", "critica"];
-    const validStatuses = ["backlog", "em_analise", "em_andamento", "aguardando", "concluido", "cancelado"];
+    const validStatuses = [
+      "backlog",
+      "em_analise",
+      "em_andamento",
+      "aguardando",
+      "concluido",
+      "cancelado",
+    ];
     const validTypes = ["solicitacao_acesso", "exclusao_acesso", "revisao", "alteracao", "outro"];
 
     for (let i = 0; i < rows.length; i++) {
@@ -801,7 +868,8 @@ async function importRows(kind: TemplateKey, rows: Record<string, string>[]) {
       if (existingPendencia) {
         const diff: any = {};
         if (payload.status !== existingPendencia.status) diff.status = payload.status;
-        if (payload.prioridade !== existingPendencia.prioridade) diff.prioridade = payload.prioridade;
+        if (payload.prioridade !== existingPendencia.prioridade)
+          diff.prioridade = payload.prioridade;
         if (payload.descricao && payload.descricao !== existingPendencia.descricao) {
           diff.descricao = payload.descricao;
         }
@@ -859,7 +927,9 @@ async function importRows(kind: TemplateKey, rows: Record<string, string>[]) {
       const sisId = sisName ? (sisMap.get(sisName.toLowerCase()) ?? null) : null;
 
       const opEmail = r.email_operador?.trim() || "";
-      const opId = opEmail ? (userMap.get(opEmail.toLowerCase()) ?? loggedIn.user?.id) : loggedIn.user?.id;
+      const opId = opEmail
+        ? (userMap.get(opEmail.toLowerCase()) ?? loggedIn.user?.id)
+        : loggedIn.user?.id;
 
       const tratadorEmail = r.email_tratador?.trim() || "";
       const tratadorId = tratadorEmail ? (userMap.get(tratadorEmail.toLowerCase()) ?? null) : null;
@@ -886,7 +956,8 @@ async function importRows(kind: TemplateKey, rows: Record<string, string>[]) {
       if (exChamado) {
         const diff: any = {};
         if (payload.status !== exChamado.status) diff.status = payload.status;
-        if (payload.resposta && payload.resposta !== exChamado.resposta) diff.resposta = payload.resposta;
+        if (payload.resposta && payload.resposta !== exChamado.resposta)
+          diff.resposta = payload.resposta;
 
         if (Object.keys(diff).length === 0) {
           ok++;

@@ -115,7 +115,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   });
 
   const { data: notifCount = 0 } = useQuery({
-    queryKey: ["notif-count"],
+    queryKey: ["notif-count", me?.user?.id],
+    enabled: !!me?.user?.id,
     queryFn: async () => {
       try {
         const res = await db

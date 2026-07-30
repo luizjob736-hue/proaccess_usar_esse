@@ -588,12 +588,6 @@ export const neonQueryServerFn = createServerFn({ method: "POST" })
 
       // Role-based Access Controls
       if (currentUser.role === "operador") {
-        if (isWrite) {
-          throw new Error(
-            "Não autorizado: Operadores não possuem permissão para realizar alterações.",
-          );
-        }
-
         const allowedTables = [
           "acessos",
           "colaboradores",
@@ -602,11 +596,27 @@ export const neonQueryServerFn = createServerFn({ method: "POST" })
           "perfis_acesso",
           "chamados",
           "chamado_comentarios",
+          "notificacoes",
+          "colaborador_favoritos",
         ];
         if (!allowedTables.includes(table)) {
           throw new Error(
-            `Não autorizado: Operadores não possuem permissão de leitura na tabela ${table}.`,
+            `Não autorizado: Operadores não possuem permissão na tabela ${table}.`,
           );
+        }
+
+        if (isWrite) {
+          const writeAllowedTables = [
+            "chamados",
+            "chamado_comentarios",
+            "notificacoes",
+            "colaborador_favoritos",
+          ];
+          if (!writeAllowedTables.includes(table)) {
+            throw new Error(
+              "Não autorizado: Operadores não possuem permissão para realizar alterações nesta tabela.",
+            );
+          }
         }
 
         // Apply Row Level Security filters for operators
@@ -630,6 +640,12 @@ export const neonQueryServerFn = createServerFn({ method: "POST" })
         } else if (table === "chamados") {
           data.whereClauses = (data.whereClauses || []).filter((w) => w.col !== "operador_id");
           data.whereClauses.push({ col: "operador_id", op: "eq", val: currentUser.id });
+        } else if (table === "notificacoes") {
+          data.whereClauses = (data.whereClauses || []).filter((w) => w.col !== "destinatario_id");
+          data.whereClauses.push({ col: "destinatario_id", op: "eq", val: currentUser.id });
+        } else if (table === "colaborador_favoritos") {
+          data.whereClauses = (data.whereClauses || []).filter((w) => w.col !== "user_id");
+          data.whereClauses.push({ col: "user_id", op: "eq", val: currentUser.id });
         }
       } else if (currentUser.role === "consulta") {
         if (isWrite) {

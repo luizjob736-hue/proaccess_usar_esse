@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { useQuery } from "@tanstack/react-query";
 import {
   Upload,
   FileDown,
@@ -18,6 +19,7 @@ import {
   KeyRound,
   ClipboardList,
   LifeBuoy,
+  Grid3x3,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -30,7 +32,8 @@ type TemplateKey =
   | "perfis_acesso"
   | "acessos"
   | "pendencias"
-  | "chamados";
+  | "chamados"
+  | "matriz";
 
 type TabGroup = "cadastro" | "sistemas" | "seguranca" | "processos";
 
@@ -191,6 +194,23 @@ const TEMPLATES: Record<
       },
     ],
   },
+  matriz: {
+    title: "Matriz de Acessos Unificada",
+    desc: "Importe ou atualize todos os colaboradores, seus dados cadastrais, status (ativo/inativo) e todas as suas credenciais de acesso de uma só vez usando um único arquivo de planilha unificado.",
+    icon: Grid3x3,
+    headers: ["nome", "cpf", "email", "telefone", "cargo", "status", "data inativação"],
+    sample: [
+      {
+        nome: "João da Silva",
+        cpf: "123.456.789-00",
+        email: "joao@empresa.com",
+        telefone: "11999999999",
+        cargo: "Analista de Suporte",
+        status: "ativo",
+        "data inativação": "",
+      },
+    ],
+  },
 };
 
 const TAB_GROUPS: { value: TabGroup; label: string; keys: TemplateKey[] }[] = [
@@ -207,7 +227,7 @@ const TAB_GROUPS: { value: TabGroup; label: string; keys: TemplateKey[] }[] = [
   {
     value: "seguranca",
     label: "Acessos e Segurança",
-    keys: ["acessos"],
+    keys: ["acessos", "matriz"],
   },
   {
     value: "processos",
@@ -216,12 +236,40 @@ const TAB_GROUPS: { value: TabGroup; label: string; keys: TemplateKey[] }[] = [
   },
 ];
 
-function downloadCSV(key: TemplateKey) {
-  const t = TEMPLATES[key];
+function downloadCSV(key: TemplateKey, sistemasAll: any[] = []) {
+  let headers: string[];
+  let sample: Record<string, string>[];
+
+  if (key === "matriz") {
+    headers = ["nome", "cpf", "email", "telefone", "cargo", "status", "data inativação"];
+    const baseSample: Record<string, string> = {
+      nome: "João da Silva",
+      cpf: "123.456.789-00",
+      email: "joao@empresa.com",
+      telefone: "11999999999",
+      cargo: "Analista de Suporte",
+      status: "ativo",
+      "data inativação": "",
+    };
+    for (const s of sistemasAll) {
+      baseSample[`${s.nome} - Usuário`] = "joao.silva";
+      baseSample[`${s.nome} - Senha`] = "SenhaTemporaria123";
+    }
+    headers = [
+      ...headers,
+      ...sistemasAll.flatMap((s) => [`${s.nome} - Usuário`, `${s.nome} - Senha`]),
+    ];
+    sample = [baseSample];
+  } else {
+    const t = TEMPLATES[key];
+    headers = t.headers;
+    sample = t.sample;
+  }
+
   const csv = Papa.unparse(
     {
-      fields: t.headers,
-      data: t.sample.map((r) => t.headers.map((h) => r[h] ?? "")),
+      fields: headers,
+      data: sample.map((r) => headers.map((h) => r[h] ?? "")),
     },
     {
       delimiter: ";", // Force semicolon delimiter so it opens as clean columns in Excel PT-BR!
@@ -240,6 +288,14 @@ function downloadCSV(key: TemplateKey) {
 
 function Importar() {
   const [activeTab, setActiveTab] = useState<TabGroup>("cadastro");
+
+  const { data: sistemasAll = [] } = useQuery({
+    queryKey: ["sistemas-import"],
+    queryFn: async () => {
+      const { data } = await db.from("sistemas").select("id, nome").order("nome");
+      return data ?? [];
+    },
+  });
 
   return (
     <div className="space-y-6">
@@ -272,15 +328,35 @@ function Importar() {
 
       <div className="grid grid-cols-1 gap-6">
         {TAB_GROUPS.find((g) => g.value === activeTab)?.keys.map((k) => (
-          <ImportCard key={k} kind={k} />
+          <ImportCard key={k} kind={k} sistemasAll={sistemasAll} />
         ))}
       </div>
     </div>
   );
 }
 
-function ImportCard({ kind }: { kind: TemplateKey }) {
-  const t = TEMPLATES[kind];
+function ImportCard({ kind, sistemasAll = [] }: { kind: TemplateKey; sistemasAll?: any[] }) {
+  let t;
+  if (kind === "matriz") {
+    const headers = [
+      "nome",
+      "cpf",
+      "email",
+      "telefone",
+      "cargo",
+      "status",
+      "data inativação",
+      ...sistemasAll.flatMap((s: any) => [`${s.nome} - Usuário`, `${s.nome} - Senha`]),
+    ];
+    t = {
+      title: "Matriz de Acessos Unificada",
+      desc: "Importe ou atualize todos os colaboradores, seus dados cadastrais, status (ativo/inativo) e todas as suas credenciais de acesso de uma só vez usando um único arquivo de planilha unificado.",
+      headers,
+      icon: Grid3x3,
+    };
+  } else {
+    t = TEMPLATES[kind];
+  }
   const Icon = t.icon;
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ ok: number; fail: number; errors: string[] } | null>(null);
@@ -349,7 +425,7 @@ function ImportCard({ kind }: { kind: TemplateKey }) {
         <div className="flex flex-wrap items-center gap-3 pt-2">
           <Button
             variant="outline"
-            onClick={() => downloadCSV(kind)}
+            onClick={() => downloadCSV(kind, sistemasAll)}
             className="gap-2 border-neutral-300 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-900"
           >
             <FileDown className="h-4 w-4" /> Baixar Modelo Excel (.CSV)
@@ -410,6 +486,51 @@ async function importRows(kind: TemplateKey, rows: Record<string, string>[]) {
   const errors: string[] = [];
   let ok = 0,
     fail = 0;
+
+  // Helper function to check if a value is actually different
+  const isFieldDifferent = (k: string, existing: any, incoming: any): boolean => {
+    if (incoming === null || incoming === undefined || incoming === "") {
+      return false; // Skip empty incoming values to avoid overwriting existing data
+    }
+    if (existing === null || existing === undefined) {
+      return true; // Any non-empty incoming value is different from null/undefined
+    }
+
+    if (k === "cpf" || k === "telefone") {
+      const cleanEx = String(existing).replace(/\D/g, "");
+      const cleanNew = String(incoming).replace(/\D/g, "");
+      return cleanEx !== cleanNew;
+    }
+
+    if (k === "email" || k === "nome" || k === "cargo" || k === "status") {
+      return String(existing).trim().toLowerCase() !== String(incoming).trim().toLowerCase();
+    }
+
+    if (k === "admissao_em" || k === "inativado_em") {
+      try {
+        const d1 = new Date(existing);
+        let d2;
+        const cleanInc = String(incoming).trim();
+        if (cleanInc.includes("/")) {
+          const parts = cleanInc.split("/");
+          if (parts.length === 3) {
+            d2 = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+          }
+        }
+        if (!d2 || isNaN(d2.getTime())) {
+          d2 = new Date(cleanInc);
+        }
+        if (isNaN(d1.getTime()) || isNaN(d2.getTime())) {
+          return String(existing).trim() !== String(incoming).trim();
+        }
+        return d1.toISOString().split("T")[0] !== d2.toISOString().split("T")[0];
+      } catch (_) {
+        return String(existing).trim() !== String(incoming).trim();
+      }
+    }
+
+    return String(existing).trim() !== String(incoming).trim();
+  };
 
   // 1. IMPORT COLABORADORES
   if (kind === "colaboradores") {
@@ -473,8 +594,9 @@ async function importRows(kind: TemplateKey, rows: Record<string, string>[]) {
       if (existente) {
         const diff: any = {};
         for (const [k, v] of Object.entries(payload)) {
-          if (v === null || v === "") continue;
-          if ((existente as any)[k] !== v) diff[k] = v;
+          if (isFieldDifferent(k, existente[k], v)) {
+            diff[k] = v;
+          }
         }
         if (Object.keys(diff).length === 0) {
           const isOperadorCargo =
@@ -975,6 +1097,240 @@ async function importRows(kind: TemplateKey, rows: Record<string, string>[]) {
           fail++;
           errors.push(`Linha ${i + 2}: Falha ao criar chamado: ${error.message}`);
         } else ok++;
+      }
+    }
+  }
+
+  // 8. IMPORT MATRIZ DE ACESSOS UNIFICADA
+  else if (kind === "matriz") {
+    const { data: sis } = await db.from("sistemas").select("id, nome");
+    const sistemasList = sis ?? [];
+
+    const { data: existentes } = await db
+      .from("colaboradores")
+      .select("id, nome, cpf, email, telefone, cargo, status, inativado_em");
+
+    const colabMap = new Map<string, any>();
+    for (const c of existentes ?? []) {
+      const cpfKey = (c.cpf ?? "").replace(/\D/g, "");
+      const nomeKey = String(c.nome ?? "")
+        .trim()
+        .toLowerCase();
+      if (cpfKey) colabMap.set(`cpf:${cpfKey}`, c);
+      if (nomeKey) colabMap.set(`nome:${nomeKey}`, c);
+    }
+
+    const { data: loggedIn } = await db.auth.getUser();
+
+    const validStatuses = ["ativo", "ferias", "afastado", "inativo", "desligado"];
+
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+
+      let nome = "";
+      let rawCpf = "";
+      let email = "";
+      let telefone = "";
+      let cargo = "";
+      let rawStatus = "";
+      let dataInativacao = "";
+
+      const dataInativacaoKeys = [
+        "data inativação",
+        "data inativacao",
+        "data_inativacao",
+        "datainativacao",
+        "inativado em",
+        "inativado_em",
+      ];
+
+      for (const [rowKey, rowValue] of Object.entries(r)) {
+        const lowerKey = rowKey.toLowerCase().trim();
+        if (lowerKey === "nome") nome = String(rowValue ?? "").trim();
+        else if (lowerKey === "cpf") rawCpf = String(rowValue ?? "").trim();
+        else if (lowerKey === "email") email = String(rowValue ?? "").trim();
+        else if (lowerKey === "telefone") telefone = String(rowValue ?? "").trim();
+        else if (lowerKey === "cargo") cargo = String(rowValue ?? "").trim();
+        else if (lowerKey === "status") rawStatus = String(rowValue ?? "").trim();
+        else if (dataInativacaoKeys.includes(lowerKey))
+          dataInativacao = String(rowValue ?? "").trim();
+      }
+
+      if (!nome) {
+        fail++;
+        errors.push(`Linha ${i + 2}: O campo 'nome' é obrigatório.`);
+        continue;
+      }
+
+      const cpfKey = rawCpf.replace(/\D/g, "");
+      const nomeKey = nome.toLowerCase();
+
+      const colabExistente =
+        (cpfKey && colabMap.get(`cpf:${cpfKey}`)) || colabMap.get(`nome:${nomeKey}`);
+
+      const status = validStatuses.includes(rawStatus.toLowerCase())
+        ? rawStatus.toLowerCase()
+        : "ativo";
+
+      let inativado_em = null;
+      if (status === "inativo" || status === "desligado") {
+        if (dataInativacao) {
+          try {
+            let parsedDate;
+            if (dataInativacao.includes("/")) {
+              const parts = dataInativacao.split("/");
+              if (parts.length === 3) {
+                parsedDate = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+              }
+            }
+            if (!parsedDate || isNaN(parsedDate.getTime())) {
+              parsedDate = new Date(dataInativacao);
+            }
+            if (!isNaN(parsedDate.getTime())) {
+              inativado_em = parsedDate.toISOString();
+            } else {
+              inativado_em = colabExistente?.inativado_em || new Date().toISOString();
+            }
+          } catch (_) {
+            inativado_em = colabExistente?.inativado_em || new Date().toISOString();
+          }
+        } else {
+          inativado_em = colabExistente?.inativado_em || new Date().toISOString();
+        }
+      }
+
+      const colabPayload: any = {
+        nome,
+        cpf: rawCpf || null,
+        email: email || null,
+        telefone: telefone || null,
+        cargo: cargo || null,
+        status: status as any,
+        inativado_em,
+      };
+
+      let colId: string;
+
+      if (colabExistente) {
+        colId = colabExistente.id;
+        const diff: any = {};
+        for (const [k, v] of Object.entries(colabPayload)) {
+          if (isFieldDifferent(k, colabExistente[k], v)) {
+            diff[k] = v;
+          }
+        }
+
+        if (Object.keys(diff).length > 0) {
+          const { error } = await db.from("colaboradores").update(diff).eq("id", colId);
+          if (error) {
+            fail++;
+            errors.push(`Linha ${i + 2}: Falha ao atualizar colaborador: ${error.message}`);
+            continue;
+          }
+        }
+      } else {
+        const { data: novoColab, error } = await db
+          .from("colaboradores")
+          .insert(colabPayload)
+          .select("id")
+          .maybeSingle();
+
+        if (error || !novoColab) {
+          fail++;
+          errors.push(
+            `Linha ${i + 2}: Falha ao cadastrar colaborador: ${error?.message || "Erro desconhecido"}`,
+          );
+          continue;
+        }
+        colId = novoColab.id;
+      }
+
+      const isOperadorCargo =
+        (cargo || colabExistente?.cargo || "").toLowerCase().trim() === "operador";
+      if (isOperadorCargo && (rawCpf || colabExistente?.cpf)) {
+        try {
+          const { createOperadorFromColaborador } = await import("@/lib/admin-users.functions");
+          await createOperadorFromColaborador({ data: { colaborador_id: colId } });
+        } catch (err) {
+          console.error("Erro ao criar operador no login:", err);
+        }
+      }
+
+      let rowCredErrors = false;
+      for (const s of sistemasList) {
+        const userKeys = [
+          `${s.nome} - Usuário`,
+          `${s.nome} - Usuario`,
+          `${s.nome} - usuario`,
+          `${s.nome} - usuário`,
+        ].map((k) => k.toLowerCase());
+        const passKeys = [`${s.nome} - Senha`, `${s.nome} - senha`].map((k) => k.toLowerCase());
+
+        let userVal = "";
+        let passVal = "";
+
+        for (const [rowKey, rowValue] of Object.entries(r)) {
+          const lowerKey = rowKey.toLowerCase().trim();
+          if (userKeys.includes(lowerKey)) {
+            userVal = String(rowValue ?? "").trim();
+          }
+          if (passKeys.includes(lowerKey)) {
+            passVal = String(rowValue ?? "").trim();
+          }
+        }
+
+        if (userVal || passVal) {
+          const { data: exAcesso } = await db
+            .from("acessos")
+            .select("id, login, senha, status")
+            .eq("colaborador_id", colId)
+            .eq("sistema_id", s.id)
+            .maybeSingle();
+
+          const accessPayload: any = {
+            colaborador_id: colId,
+            sistema_id: s.id,
+            login: userVal || null,
+            senha: passVal || null,
+            status: status === "inativo" || status === "desligado" ? "inativo" : "ativo",
+            concedido_por: loggedIn.user?.id ?? null,
+            concedido_em: new Date().toISOString(),
+          };
+
+          if (exAcesso) {
+            const accessDiff: any = {};
+            if (accessPayload.login && exAcesso.login !== accessPayload.login)
+              accessDiff.login = accessPayload.login;
+            if (accessPayload.senha && exAcesso.senha !== accessPayload.senha)
+              accessDiff.senha = accessPayload.senha;
+            if (accessPayload.status && exAcesso.status !== accessPayload.status)
+              accessDiff.status = accessPayload.status;
+
+            if (Object.keys(accessDiff).length > 0) {
+              const { error } = await db.from("acessos").update(accessDiff).eq("id", exAcesso.id);
+              if (error) {
+                rowCredErrors = true;
+                errors.push(
+                  `Linha ${i + 2} (${s.nome}): Erro ao atualizar credencial: ${error.message}`,
+                );
+              }
+            }
+          } else {
+            const { error } = await db.from("acessos").insert(accessPayload);
+            if (error) {
+              rowCredErrors = true;
+              errors.push(
+                `Linha ${i + 2} (${s.nome}): Erro ao inserir credencial: ${error.message}`,
+              );
+            }
+          }
+        }
+      }
+
+      if (rowCredErrors) {
+        fail++;
+      } else {
+        ok++;
       }
     }
   }

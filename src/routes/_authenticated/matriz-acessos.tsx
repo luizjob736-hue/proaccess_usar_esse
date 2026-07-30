@@ -268,6 +268,11 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
         Telefone: r.telefone ?? "",
         Cargo: r.cargo ?? "",
       };
+      if (onlyInativos) {
+        base["Data Inativação"] = r.inativado_em
+          ? new Date(r.inativado_em).toLocaleDateString("pt-BR")
+          : "—";
+      }
       for (const s of sistemas) {
         base[`${s.nome} - Usuário`] = r.acessos[s.id]?.login ?? "";
         base[`${s.nome} - Senha`] = r.acessos[s.id]?.senha ?? "";
@@ -276,8 +281,8 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
     });
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Matriz");
-    XLSX.writeFile(wb, "matriz-acessos.xlsx");
+    XLSX.utils.book_append_sheet(wb, ws, onlyInativos ? "Inativos" : "Matriz");
+    XLSX.writeFile(wb, onlyInativos ? "usuarios-inativos.xlsx" : "matriz-acessos.xlsx");
   }
 
   const Val = ({

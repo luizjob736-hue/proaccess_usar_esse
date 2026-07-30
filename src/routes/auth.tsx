@@ -60,26 +60,11 @@ function AuthPage() {
 
       if (senhaAlterada === false) {
         toast.info("Primeiro acesso — troque sua senha");
-        navigate({ to: "/primeiro-acesso", replace: true });
-        setTimeout(() => {
-          if (window.location.pathname.includes("/auth")) {
-            window.location.href = "/primeiro-acesso";
-          }
-        }, 150);
+        window.location.replace("/primeiro-acesso");
       } else if (isOperador) {
-        navigate({ to: "/chamados", replace: true });
-        setTimeout(() => {
-          if (window.location.pathname.includes("/auth")) {
-            window.location.href = "/chamados";
-          }
-        }, 150);
+        window.location.replace("/chamados");
       } else {
-        navigate({ to: "/dashboard", replace: true });
-        setTimeout(() => {
-          if (window.location.pathname.includes("/auth")) {
-            window.location.href = "/dashboard";
-          }
-        }, 150);
+        window.location.replace("/dashboard");
       }
     } catch (err: any) {
       console.error("Erro no login:", err);

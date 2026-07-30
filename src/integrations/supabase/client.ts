@@ -183,7 +183,9 @@ export const supabase = {
 
     async getUser() {
       const session = getStoredSession();
-      if (!session) return { data: { user: null }, error: null };
+      if (!session) {
+        return { data: { user: null }, error: null };
+      }
       const res = await neonAuthServerFn({
         data: {
           action: "getUser",
@@ -193,7 +195,10 @@ export const supabase = {
       if (res.data?.user) {
         return { data: { user: res.data.user }, error: null };
       }
-      return { data: { user: session.user }, error: null };
+      if (session.user) {
+        return { data: { user: session.user }, error: null };
+      }
+      return { data: { user: null }, error: null };
     },
 
     async getSession() {

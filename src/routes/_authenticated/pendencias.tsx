@@ -82,6 +82,16 @@ function Pendencias() {
     queryFn: async () => (await db.from("sistemas").select("id,nome").order("nome")).data ?? [],
   });
 
+  const { data: isAdmin = false } = useQuery({
+    queryKey: ["is_admin_pendencias"],
+    queryFn: async () => {
+      const { data: u } = await db.auth.getUser();
+      if (!u.user) return false;
+      const { data: roles } = await db.from("user_roles").select("role").eq("user_id", u.user.id);
+      return (roles ?? []).some((r) => r.role === "admin" || r.role === "admin_master");
+    },
+  });
+
   const create = useMutation({
     mutationFn: async (form: any) => {
       const { data: u } = await db.auth.getUser();
@@ -242,11 +252,13 @@ function Pendencias() {
               </span>
             </Button>
           </label>
-          <Button variant="outline" asChild className="gap-2">
-            <Link to="/pendencias-historico">
-              <MessageSquare className="h-4 w-4" /> Histórico
-            </Link>
-          </Button>
+          {isAdmin && (
+            <Button variant="outline" asChild className="gap-2">
+              <Link to="/pendencias-historico">
+                <MessageSquare className="h-4 w-4" /> Histórico
+              </Link>
+            </Button>
+          )}
           <Dialog open={open} onOpenChange={setOpen}>
             <Button onClick={() => setOpen(true)} className="gap-2">
               <Plus className="h-4 w-4" />

@@ -59,7 +59,6 @@ const NAV_FULL = [
   { to: "/importar", icon: Upload, label: "Importar CSV" },
   { to: "/pendencias", icon: Kanban, label: "Pendências" },
   { to: "/chamados", icon: LifeBuoy, label: "Chamados" },
-  { to: "/ia", icon: Sparkles, label: "IA" },
   { to: "/historico", icon: History, label: "Histórico" },
   { to: "/relatorios", icon: FileBarChart, label: "Relatórios" },
   { to: "/notificacoes", icon: Bell, label: "Notificações" },

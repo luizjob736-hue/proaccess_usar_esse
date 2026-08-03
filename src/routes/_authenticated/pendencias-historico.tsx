@@ -16,8 +16,19 @@ export const Route = createFileRoute("/_authenticated/pendencias-historico")({
 function PendenciasHistorico() {
   const [busca, setBusca] = useState("");
 
+  const { data: isAdmin = false, isLoading: isLoadingRole } = useQuery({
+    queryKey: ["is_admin_historico"],
+    queryFn: async () => {
+      const { data: u } = await db.auth.getUser();
+      if (!u.user) return false;
+      const { data: roles } = await db.from("user_roles").select("role").eq("user_id", u.user.id);
+      return (roles ?? []).some((r) => r.role === "admin" || r.role === "admin_master");
+    },
+  });
+
   const { data: historico = [], isLoading } = useQuery({
     queryKey: ["pendencias_historico"],
+    enabled: isAdmin,
     queryFn: async () =>
       (
         await db
@@ -78,6 +89,18 @@ function PendenciasHistorico() {
     link.click();
     document.body.removeChild(link);
   };
+
+  if (isLoadingRole)
+    return <div className="p-8 text-center text-muted-foreground">Carregando...</div>;
+
+  if (!isAdmin) {
+    return (
+      <div className="p-8 text-center space-y-4">
+        <h2 className="text-2xl font-bold">Acesso Negado</h2>
+        <p className="text-muted-foreground">Você não tem permissão para acessar esta página.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

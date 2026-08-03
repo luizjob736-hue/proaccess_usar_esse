@@ -371,7 +371,15 @@ function ImportCard({ kind, sistemasAll = [] }: { kind: TemplateKey; sistemasAll
       // No explicit delimiter set, PapaParse will automatically detect between semicolon (;) and comma (,)
       complete: async (res) => {
         try {
-          const rows = res.data.filter((r) => Object.values(r).some((v) => v && String(v).trim()));
+          const rows = res.data
+            .map((r) => {
+              const newR: Record<string, string> = {};
+              for (const [k, v] of Object.entries(r)) {
+                newR[k] = String(v ?? "").substring(0, 200);
+              }
+              return newR;
+            })
+            .filter((r) => Object.values(r).some((v) => v && String(v).trim()));
           if (rows.length === 0) {
             toast.warning("Arquivo CSV está vazio ou sem linhas de dados");
             setBusy(false);

@@ -22,7 +22,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Plus, MessageSquare, Upload, FileDown } from "lucide-react";
+import { Plus, MessageSquare, Upload, FileDown, Settings, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import Papa from "papaparse";
 import {
@@ -40,15 +40,6 @@ import { CSS } from "@dnd-kit/utilities";
 
 export const Route = createFileRoute("/_authenticated/pendencias")({ component: Pendencias });
 
-const COLUMNS = [
-  { key: "backlog", title: "Backlog", color: "bg-slate-500" },
-  { key: "em_analise", title: "Em análise", color: "bg-blue-500" },
-  { key: "em_andamento", title: "Em andamento", color: "bg-accent" },
-  { key: "aguardando", title: "Aguardando", color: "bg-amber-500" },
-  { key: "concluido", title: "Concluído", color: "bg-success" },
-  { key: "cancelado", title: "Cancelado", color: "bg-destructive" },
-] as const;
-
 const PRIO_COLOR: Record<string, string> = {
   baixa: "bg-slate-400",
   media: "bg-blue-500",
@@ -59,10 +50,16 @@ const PRIO_COLOR: Record<string, string> = {
 function Pendencias() {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [openQuadros, setOpenQuadros] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [sistemaFiltro, setSistemaFiltro] = useState<string>("todos");
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+
+  const { data: quadros = [] } = useQuery({
+    queryKey: ["pendencia_quadros"],
+    queryFn: async () => (await db.from("pendencia_quadros").select("*").order("ordem")).data ?? [],
+  });
 
   const { data: list = [] } = useQuery({
     queryKey: ["pendencias"],
@@ -101,11 +98,30 @@ function Pendencias() {
   const moveMut = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: string }) => {
       const patch: any = { status };
-      if (status === "concluido") patch.concluido_em = new Date().toISOString();
+      if (status === "DESBLOQUEIO" || status === "Concluído" || status === "concluido")
+        patch.concluido_em = new Date().toISOString();
       const { error } = await db.from("pendencias").update(patch).eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["pendencias"] }),
+  });
+
+  const addQuadro = useMutation({
+    mutationFn: async (form: any) => {
+      const { error } = await db.from("pendencia_quadros").insert(form);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["pendencia_quadros"] }),
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const delQuadro = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await db.from("pendencia_quadros").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["pendencia_quadros"] }),
+    onError: (e: any) => toast.error(e.message),
   });
 
   const listFiltrada =
@@ -120,13 +136,22 @@ function Pendencias() {
       const colabMap = new Map((colabs as any[]).map((c) => [c.nome.toLowerCase(), c.id]));
       const sisMap = new Map((sistemas as any[]).map((s) => [s.nome.toLowerCase(), s.id]));
       const { data: u } = await db.auth.getUser();
+
+      // Limita a 200 caracteres cada célula do CSV
       const rows = parsed.data
+        .map((r: any) => {
+          const newR: any = {};
+          for (const [k, v] of Object.entries(r)) {
+            newR[k] = String(v ?? "").substring(0, 200);
+          }
+          return newR;
+        })
         .map((r: any) => ({
           titulo: r.titulo || r.título || "",
           descricao: r.descricao || r.descrição || null,
           tipo: r.tipo || "outro",
           prioridade: r.prioridade || "media",
-          status: r.status || "backlog",
+          status: r.status || "PENDENTE",
           colaborador_id: r.colaborador
             ? (colabMap.get(String(r.colaborador).toLowerCase()) ?? null)
             : null,
@@ -155,7 +180,7 @@ function Pendencias() {
 
   function downloadTemplate() {
     const csv =
-      "titulo,descricao,tipo,prioridade,status,colaborador,sistema,sla_em,etiquetas\nExemplo,Descrição,solicitacao_acesso,media,backlog,Nome do Colaborador,Nome do Sistema,2025-12-31T18:00,urgente;tributário\n";
+      "titulo,descricao,tipo,prioridade,status,colaborador,sistema,sla_em,etiquetas\nExemplo,Descrição,solicitacao_acesso,media,PENDENTE,Nome do Colaborador,Nome do Sistema,2025-12-31T18:00,urgente;tributário\n";
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
@@ -342,6 +367,56 @@ function Pendencias() {
               </form>
             </DialogContent>
           </Dialog>
+
+          <Dialog open={openQuadros} onOpenChange={setOpenQuadros}>
+            <Button onClick={() => setOpenQuadros(true)} variant="outline" className="gap-2">
+              <Settings className="h-4 w-4" /> Quadros
+            </Button>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Gerenciar Quadros</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                {quadros.map((q: any) => (
+                  <div key={q.id} className="flex items-center justify-between gap-3">
+                    <Badge className={q.cor}>{q.nome}</Badge>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-destructive"
+                      onClick={() => delQuadro.mutate(q.id)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const fd = new FormData(e.currentTarget);
+                    addQuadro.mutate({
+                      nome: fd.get("nome"),
+                      cor: fd.get("cor") || "bg-slate-500",
+                      ordem: quadros.length + 1,
+                    });
+                    e.currentTarget.reset();
+                  }}
+                  className="flex gap-2 items-end pt-4 border-t"
+                >
+                  <div className="flex-1">
+                    <Label className="text-xs">Novo quadro (Nome)</Label>
+                    <Input name="nome" placeholder="Ex: EM TESTE" required />
+                  </div>
+                  <div className="w-32">
+                    <Label className="text-xs">Cor (Tailwind bg)</Label>
+                    <Input name="cor" defaultValue="bg-slate-500" />
+                  </div>
+                  <Button type="submit">Add</Button>
+                </form>
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
 
@@ -359,14 +434,14 @@ function Pendencias() {
         onDragEnd={onDragEnd}
       >
         <div className="grid grid-cols-2 gap-4 overflow-x-auto md:grid-cols-3 lg:grid-cols-6">
-          {COLUMNS.map((col) => {
-            const items = listFiltrada.filter((p: any) => p.status === col.key);
+          {quadros.map((col: any) => {
+            const items = listFiltrada.filter((p: any) => p.status === col.nome);
             return (
               <Column
-                key={col.key}
-                id={col.key}
-                title={col.title}
-                color={col.color}
+                key={col.id}
+                id={col.nome}
+                title={col.nome}
+                color={col.cor}
                 items={items}
                 onOpen={setDetailId}
               />
@@ -378,7 +453,7 @@ function Pendencias() {
 
       <Dialog open={!!detail} onOpenChange={(o) => !o && setDetailId(null)}>
         <DialogContent className="max-w-2xl">
-          {detail && <PendenciaDetail p={detail} />}
+          {detail && <PendenciaDetail p={detail} quadros={quadros} />}
         </DialogContent>
       </Dialog>
     </div>
@@ -465,7 +540,7 @@ function CardView({ p }: any) {
   );
 }
 
-function PendenciaDetail({ p }: any) {
+function PendenciaDetail({ p, quadros }: any) {
   const qc = useQueryClient();
   const [text, setText] = useState("");
   const { data: coments = [] } = useQuery({
@@ -492,14 +567,52 @@ function PendenciaDetail({ p }: any) {
     },
   });
 
+  const updateStatus = async (novoStatus: string) => {
+    const patch: any = { status: novoStatus };
+    if (novoStatus === "DESBLOQUEIO" || novoStatus === "Concluído" || novoStatus === "concluido") {
+      patch.concluido_em = new Date().toISOString();
+    }
+    await db.from("pendencias").update(patch).eq("id", p.id);
+    qc.invalidateQueries({ queryKey: ["pendencias"] });
+    toast.success("Status atualizado");
+  };
+
+  const deleteItem = async () => {
+    if (!confirm("Remover pendência?")) return;
+    await db.from("pendencias").delete().eq("id", p.id);
+    qc.invalidateQueries({ queryKey: ["pendencias"] });
+    toast.success("Removido");
+  };
+
   return (
     <>
       <DialogHeader>
-        <DialogTitle>{p.titulo}</DialogTitle>
+        <div className="flex items-start justify-between pr-6">
+          <DialogTitle>{p.titulo}</DialogTitle>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="text-destructive h-8 w-8"
+            onClick={deleteItem}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
       </DialogHeader>
       <div className="space-y-3">
         <div className="flex gap-2">
-          <Badge>{p.status}</Badge>
+          <Select value={p.status} onValueChange={updateStatus}>
+            <SelectTrigger className="h-7 text-xs w-[140px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {quadros?.map((q: any) => (
+                <SelectItem key={q.id} value={q.nome}>
+                  {q.nome}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Badge variant="outline">{p.prioridade}</Badge>
           <Badge variant="outline">{p.tipo}</Badge>
         </div>

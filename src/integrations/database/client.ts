@@ -205,7 +205,7 @@ export const db = {
 
     async getUser() {
       const session = getStoredSession();
-      if (!session) {
+      if (!session && typeof window !== "undefined") {
         return { data: { user: null }, error: null };
       }
 
@@ -213,14 +213,16 @@ export const db = {
         const res = await neonAuthServerFn({
           data: {
             action: "getUser",
-            token: session.access_token,
+            token: session?.access_token,
           },
         });
 
         if (res?.data?.user) {
           // Update stored session with fresh user data
-          session.user = res.data.user;
-          setStoredSession(session);
+          if (session) {
+            session.user = res.data.user;
+            setStoredSession(session);
+          }
           return { data: { user: res.data.user }, error: null };
         }
       } catch (err: any) {
@@ -236,7 +238,7 @@ export const db = {
         }
       }
 
-      if (session.user) {
+      if (session?.user) {
         return { data: { user: session.user }, error: null };
       }
 

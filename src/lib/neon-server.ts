@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { getCookie } from "@tanstack/react-start/server";
 
 const NEON_URL =
   "postgresql://neondb_owner:npg_yfSCO5GNgd1n@ep-sweet-sea-ayco0rx7-pooler.c-5.us-east-2.aws.neon.tech/neondb?sslmode=require";
@@ -600,9 +601,7 @@ export const neonQueryServerFn = createServerFn({ method: "POST" })
           "colaborador_favoritos",
         ];
         if (!allowedTables.includes(table)) {
-          throw new Error(
-            `Não autorizado: Operadores não possuem permissão na tabela ${table}.`,
-          );
+          throw new Error(`Não autorizado: Operadores não possuem permissão na tabela ${table}.`);
         }
 
         if (isWrite) {

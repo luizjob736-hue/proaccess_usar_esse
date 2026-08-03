@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { db } from "@/integrations/database/client";
 import { useState } from "react";
@@ -68,6 +68,7 @@ function Pendencias() {
         await db
           .from("pendencias")
           .select("*, colaborador:colaboradores(nome), sistema:sistemas(nome)")
+          .eq("arquivado", false)
           .order("posicao")
       ).data ?? [],
   });
@@ -241,6 +242,11 @@ function Pendencias() {
               </span>
             </Button>
           </label>
+          <Button variant="outline" asChild className="gap-2">
+            <Link to="/pendencias-historico">
+              <MessageSquare className="h-4 w-4" /> Histórico
+            </Link>
+          </Button>
           <Dialog open={open} onOpenChange={setOpen}>
             <Button onClick={() => setOpen(true)} className="gap-2">
               <Plus className="h-4 w-4" />
@@ -584,19 +590,34 @@ function PendenciaDetail({ p, quadros }: any) {
     toast.success("Removido");
   };
 
+  const archiveItem = async () => {
+    if (!confirm("Finalizar e arquivar pendência?")) return;
+    await db
+      .from("pendencias")
+      .update({ arquivado: true, concluido_em: new Date().toISOString() })
+      .eq("id", p.id);
+    qc.invalidateQueries({ queryKey: ["pendencias"] });
+    toast.success("Pendência finalizada e enviada para o histórico.");
+  };
+
   return (
     <>
       <DialogHeader>
         <div className="flex items-start justify-between pr-6">
           <DialogTitle>{p.titulo}</DialogTitle>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="text-destructive h-8 w-8"
-            onClick={deleteItem}
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={archiveItem}>
+              Finalizar
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="text-destructive h-8 w-8"
+              onClick={deleteItem}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
       </DialogHeader>
       <div className="space-y-3">

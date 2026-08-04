@@ -25,6 +25,7 @@ import {
 import { Plus, MessageSquare, Upload, FileDown, Settings, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import Papa from "papaparse";
+import { parseDateToISO } from "@/routes/_authenticated/importar";
 import {
   DndContext,
   DragEndEvent,
@@ -181,6 +182,9 @@ function Pendencias() {
           const sisVal = (r.sistema || r.nome_sistema || "").trim();
           const sisId = sisVal ? (sisMap.get(sisVal.toLowerCase()) ?? null) : null;
 
+          const dataInicioVal = (r.data_inicio || r.data_início || r.inicio || "").trim();
+          const slaVal = (r.sla_em || r.sla || r.vencimento || r.data_limite || "").trim();
+
           return {
             titulo: r.titulo || r.título || "",
             descricao: r.descricao || r.descrição || null,
@@ -189,7 +193,9 @@ function Pendencias() {
             status: r.status ? String(r.status).trim() : "PENDENTE",
             colaborador_id: colId,
             sistema_id: sisId,
-            sla_em: r.sla_em || null,
+            data_inicio:
+              parseDateToISO(dataInicioVal) || new Date().toISOString().split("T")[0],
+            sla_em: parseDateToISO(slaVal),
             etiquetas: r.etiquetas
               ? String(r.etiquetas)
                   .split(/[,;]/)

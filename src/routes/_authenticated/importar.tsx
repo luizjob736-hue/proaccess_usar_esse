@@ -23,6 +23,65 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+export function parseDateToISO(val: any): string | null {
+  if (!val) return null;
+  const str = String(val).trim();
+  if (!str) return null;
+
+  // 1. Check Excel serial date number (e.g. 45869)
+  if (!isNaN(Number(str)) && Number(str) > 20000 && Number(str) < 90000) {
+    const excelNum = Number(str);
+    const dateObj = new Date((excelNum - (25567 + 2)) * 86400 * 1000);
+    if (!isNaN(dateObj.getTime())) {
+      return dateObj.toISOString();
+    }
+  }
+
+  // 2. Check Brazilian date format DD/MM/YYYY or DD/MM/YYYY HH:mm or DD/MM/YYYY HH:mm:ss
+  const brMatch = str.match(
+    /^(\d{1,2})[\/\.-](\d{1,2})[\/\.-](\d{4})(?:[\sT]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/
+  );
+  if (brMatch) {
+    const day = brMatch[1].padStart(2, "0");
+    const month = brMatch[2].padStart(2, "0");
+    const year = brMatch[3];
+    const hour = brMatch[4] ? brMatch[4].padStart(2, "0") : null;
+    const min = brMatch[5] ? brMatch[5].padStart(2, "0") : null;
+    const sec = brMatch[6] ? brMatch[6].padStart(2, "0") : "00";
+
+    if (hour !== null && min !== null) {
+      return `${year}-${month}-${day}T${hour}:${min}:${sec}`;
+    }
+    return `${year}-${month}-${day}`;
+  }
+
+  // 3. Check ISO format YYYY-MM-DD or YYYY-MM-DD HH:mm or YYYY-MM-DDTHH:mm
+  const isoMatch = str.match(
+    /^(\d{4})[\/\.-](\d{1,2})[\/\.-](\d{1,2})(?:[\sT]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/
+  );
+  if (isoMatch) {
+    const year = isoMatch[1];
+    const month = isoMatch[2].padStart(2, "0");
+    const day = isoMatch[3].padStart(2, "0");
+    const hour = isoMatch[4] ? isoMatch[4].padStart(2, "0") : null;
+    const min = isoMatch[5] ? isoMatch[5].padStart(2, "0") : null;
+    const sec = isoMatch[6] ? isoMatch[6].padStart(2, "0") : "00";
+
+    if (hour !== null && min !== null) {
+      return `${year}-${month}-${day}T${hour}:${min}:${sec}`;
+    }
+    return `${year}-${month}-${day}`;
+  }
+
+  // 4. Fallback to standard JS Date constructor
+  const d = new Date(str);
+  if (!isNaN(d.getTime())) {
+    return d.toISOString();
+  }
+
+  return null;
+}
+
 export const Route = createFileRoute("/_authenticated/importar")({ component: Importar });
 
 type TemplateKey =
@@ -547,27 +606,11 @@ export async function importRows(kind: TemplateKey, rows: Record<string, string>
       return String(existing).trim().toLowerCase() !== String(incoming).trim().toLowerCase();
     }
 
-    if (k === "admissao_em" || k === "inativado_em") {
-      try {
-        const d1 = new Date(existing);
-        let d2;
-        const cleanInc = String(incoming).trim();
-        if (cleanInc.includes("/")) {
-          const parts = cleanInc.split("/");
-          if (parts.length === 3) {
-            d2 = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
-          }
-        }
-        if (!d2 || isNaN(d2.getTime())) {
-          d2 = new Date(cleanInc);
-        }
-        if (isNaN(d1.getTime()) || isNaN(d2.getTime())) {
-          return String(existing).trim() !== String(incoming).trim();
-        }
-        return d1.toISOString().split("T")[0] !== d2.toISOString().split("T")[0];
-      } catch (_) {
-        return String(existing).trim() !== String(incoming).trim();
-      }
+    if (k === "admissao_em" || k === "inativado_em" || k === "sla_em" || k === "data_inicio") {
+      const iso1 = parseDateToISO(existing);
+      const iso2 = parseDateToISO(incoming);
+      if (!iso1 || !iso2) return String(existing).trim() !== String(incoming).trim();
+      return iso1 !== iso2;
     }
 
     return String(existing).trim() !== String(incoming).trim();
@@ -891,8 +934,10 @@ export async function importRows(kind: TemplateKey, rows: Record<string, string>
         colaborador_id: colId,
         sistema_id: sisId,
         responsavel_id: respId,
-        data_inicio: r.data_inicio?.trim() || new Date().toISOString().split("T")[0],
-        sla_em: r.sla_em?.trim() || null,
+        data_inicio:
+          parseDateToISO(r.data_inicio || r.data_início || r.inicio) ||
+          new Date().toISOString().split("T")[0],
+        sla_em: parseDateToISO(r.sla_em || r.sla || r.vencimento || r.data_limite),
         etiquetas: rawEtiquetas,
         criado_por: loggedIn.user?.id ?? null,
       };
@@ -1100,29 +1145,10 @@ export async function importRows(kind: TemplateKey, rows: Record<string, string>
 
       let inativado_em = null;
       if (status === "inativo" || status === "desligado") {
-        if (dataInativacao) {
-          try {
-            let parsedDate;
-            if (dataInativacao.includes("/")) {
-              const parts = dataInativacao.split("/");
-              if (parts.length === 3) {
-                parsedDate = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
-              }
-            }
-            if (!parsedDate || isNaN(parsedDate.getTime())) {
-              parsedDate = new Date(dataInativacao);
-            }
-            if (!isNaN(parsedDate.getTime())) {
-              inativado_em = parsedDate.toISOString();
-            } else {
-              inativado_em = colabExistente?.inativado_em || new Date().toISOString();
-            }
-          } catch (_) {
-            inativado_em = colabExistente?.inativado_em || new Date().toISOString();
-          }
-        } else {
-          inativado_em = colabExistente?.inativado_em || new Date().toISOString();
-        }
+        inativado_em =
+          parseDateToISO(dataInativacao) ||
+          colabExistente?.inativado_em ||
+          new Date().toISOString();
       }
 
       const colabPayload: any = {

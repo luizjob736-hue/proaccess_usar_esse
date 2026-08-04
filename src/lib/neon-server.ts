@@ -86,20 +86,26 @@ export const neonAuthServerFn = createServerFn({ method: "POST" })
                     (SELECT role FROM public.user_roles WHERE user_id::text = p.id::text LIMIT 1) as role
              FROM public.profiles p
              WHERE lower(p.email) = lower($1)
-                OR (replace(replace(p.cpf, '.', ''), '-', '') = $2 AND $2 <> '')
+                OR lower(p.email) = lower($2)
                 OR lower(p.email) = lower($3)
                 OR lower(p.email) = lower($4)
-                OR lower(split_part(p.email, '@', 1)) = lower($1)
+                OR lower(split_part(p.email, '@', 1)) = lower($5)
                 OR lower(p.nome) = lower($1)
              ORDER BY
                CASE
                  WHEN lower(p.email) = lower($1) THEN 1
-                 WHEN (replace(replace(p.cpf, '.', ''), '-', '') = $2 AND $2 <> '') THEN 2
-                 WHEN lower(p.email) = lower($3) THEN 3
+                 WHEN lower(p.email) = lower($2) THEN 2
+                 WHEN lower(split_part(p.email, '@', 1)) = lower($5) THEN 3
                  ELSE 4
                END
              LIMIT 1`,
-            [ident, cleanCpf, emailToUse, `${cleanIdent}@proaccess.local`],
+            [
+              ident,
+              emailToUse,
+              `${usernameToUse}@proaccess.local`,
+              `${usernameToUse}@proacess.local`,
+              usernameToUse,
+            ],
           );
           row = res.rows[0];
         } catch (_e) {
@@ -109,20 +115,26 @@ export const neonAuthServerFn = createServerFn({ method: "POST" })
               `SELECT p.id, p.nome, p.email as profile_email, p.ativo, p.senha_alterada, p.ultima_senha
                FROM public.profiles p
                WHERE lower(p.email) = lower($1)
-                  OR (replace(replace(p.cpf, '.', ''), '-', '') = $2 AND $2 <> '')
+                  OR lower(p.email) = lower($2)
                   OR lower(p.email) = lower($3)
                   OR lower(p.email) = lower($4)
-                  OR lower(split_part(p.email, '@', 1)) = lower($1)
+                  OR lower(split_part(p.email, '@', 1)) = lower($5)
                   OR lower(p.nome) = lower($1)
                ORDER BY
                  CASE
                    WHEN lower(p.email) = lower($1) THEN 1
-                   WHEN (replace(replace(p.cpf, '.', ''), '-', '') = $2 AND $2 <> '') THEN 2
-                   WHEN lower(p.email) = lower($3) THEN 3
+                   WHEN lower(p.email) = lower($2) THEN 2
+                   WHEN lower(split_part(p.email, '@', 1)) = lower($5) THEN 3
                    ELSE 4
                  END
                LIMIT 1`,
-              [ident, cleanCpf, emailToUse, `${cleanIdent}@proaccess.local`],
+              [
+                ident,
+                emailToUse,
+                `${usernameToUse}@proaccess.local`,
+                `${usernameToUse}@proacess.local`,
+                usernameToUse,
+              ],
             );
             row = res.rows[0];
           } catch (_e2) {

@@ -273,8 +273,8 @@ function downloadCSV(key: TemplateKey, sistemasAll: any[] = []) {
     },
   );
 
-  // Add UTF-8 BOM so Excel opens with proper accents and special characters
-  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+  // Add sep=;\n directive for Excel + UTF-8 BOM so Excel automatically splits columns by semicolon
+  const blob = new Blob(["\uFEFFsep=;\n" + csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -365,47 +365,60 @@ function ImportCard({ kind, sistemasAll = [] }: { kind: TemplateKey; sistemasAll
   async function handleFile(file: File) {
     setBusy(true);
     setResult(null);
-    Papa.parse<Record<string, string>>(file, {
-      header: true,
-      skipEmptyLines: true,
-      // No explicit delimiter set, PapaParse will automatically detect between semicolon (;) and comma (,)
-      complete: async (res) => {
-        try {
-          const rows = res.data
-            .map((r) => {
-              const newR: Record<string, string> = {};
-              for (const [k, v] of Object.entries(r)) {
-                newR[k] = String(v ?? "").substring(0, 200);
-              }
-              return newR;
-            })
-            .filter((r) => Object.values(r).some((v) => v && String(v).trim()));
-          if (rows.length === 0) {
-            toast.warning("Arquivo CSV está vazio ou sem linhas de dados");
+    try {
+      let text = await file.text();
+      // Remove UTF-8 BOM if present
+      if (text.charCodeAt(0) === 0xFEFF) {
+        text = text.slice(1);
+      }
+      // Remove sep=; directive line if present at start of CSV
+      text = text.replace(/^sep=\s*;\s*\r?\n/i, "");
+
+      Papa.parse<Record<string, string>>(text, {
+        header: true,
+        skipEmptyLines: true,
+        delimitersToGuess: [";", ",", "\t"],
+        complete: async (res) => {
+          try {
+            const rows = res.data
+              .map((r) => {
+                const newR: Record<string, string> = {};
+                for (const [k, v] of Object.entries(r)) {
+                  newR[k] = String(v ?? "").substring(0, 200);
+                }
+                return newR;
+              })
+              .filter((r) => Object.values(r).some((v) => v && String(v).trim()));
+            if (rows.length === 0) {
+              toast.warning("Arquivo CSV está vazio ou sem linhas de dados");
+              setBusy(false);
+              return;
+            }
+            const out = await importRows(kind, rows);
+            setResult(out);
+            if (out.ok > 0) {
+              qc.invalidateQueries();
+            }
+            if (out.fail === 0) {
+              toast.success(`${out.ok} registros importados com sucesso!`);
+            } else {
+              toast.warning(`${out.ok} importados, ${out.fail} falhas encontradas.`);
+            }
+          } catch (e: any) {
+            toast.error(e.message ?? "Erro interno ao processar importação");
+          } finally {
             setBusy(false);
-            return;
           }
-          const out = await importRows(kind, rows);
-          setResult(out);
-          if (out.ok > 0) {
-            qc.invalidateQueries();
-          }
-          if (out.fail === 0) {
-            toast.success(`${out.ok} registros importados com sucesso!`);
-          } else {
-            toast.warning(`${out.ok} importados, ${out.fail} falhas encontradas.`);
-          }
-        } catch (e: any) {
-          toast.error(e.message ?? "Erro interno ao processar importação");
-        } finally {
+        },
+        error: (err) => {
+          toast.error(`Falha ao ler o arquivo CSV: ${err.message}`);
           setBusy(false);
-        }
-      },
-      error: (err) => {
-        toast.error(`Falha ao ler o arquivo CSV: ${err.message}`);
-        setBusy(false);
-      },
-    });
+        },
+      });
+    } catch (err: any) {
+      toast.error(`Erro ao carregar o arquivo: ${err?.message || err}`);
+      setBusy(false);
+    }
   }
 
   return (

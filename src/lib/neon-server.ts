@@ -77,7 +77,7 @@ export const neonAuthServerFn = createServerFn({ method: "POST" })
 
         const usernameToUse = ident.split("@")[0].toLowerCase();
 
-        // 1. Query profiles table directly first
+        // 1. Query profiles table directly with exact criteria
         let row: any = null;
 
         try {
@@ -85,32 +85,44 @@ export const neonAuthServerFn = createServerFn({ method: "POST" })
             `SELECT p.id, p.nome, p.email as profile_email, p.ativo, p.senha_alterada, p.ultima_senha,
                     (SELECT role FROM public.user_roles WHERE user_id::text = p.id::text LIMIT 1) as role
              FROM public.profiles p
-             WHERE (
-               lower(p.email) = lower($1)
-               OR lower(p.nome) = lower($1)
-               OR lower(p.nome) ILIKE '%' || $2 || '%'
-               OR lower(p.email) = lower($3)
-               OR replace(replace(p.cpf, '.', ''), '-', '') = $4
-             )
+             WHERE lower(p.email) = lower($1)
+                OR (replace(replace(p.cpf, '.', ''), '-', '') = $2 AND $2 <> '')
+                OR lower(p.email) = lower($3)
+                OR lower(p.email) = lower($4)
+                OR lower(split_part(p.email, '@', 1)) = lower($1)
+                OR lower(p.nome) = lower($1)
+             ORDER BY
+               CASE
+                 WHEN lower(p.email) = lower($1) THEN 1
+                 WHEN (replace(replace(p.cpf, '.', ''), '-', '') = $2 AND $2 <> '') THEN 2
+                 WHEN lower(p.email) = lower($3) THEN 3
+                 ELSE 4
+               END
              LIMIT 1`,
-            [ident, usernameToUse, emailToUse, cleanCpf],
+            [ident, cleanCpf, emailToUse, `${cleanIdent}@proaccess.local`],
           );
           row = res.rows[0];
         } catch (_e) {
-          // If query with user_roles fails, try profiles only
+          // Retry without user_roles subquery
           try {
             const res = await client.query(
               `SELECT p.id, p.nome, p.email as profile_email, p.ativo, p.senha_alterada, p.ultima_senha
                FROM public.profiles p
-               WHERE (
-                 lower(p.email) = lower($1)
-                 OR lower(p.nome) = lower($1)
-                 OR lower(p.nome) ILIKE '%' || $2 || '%'
-                 OR lower(p.email) = lower($3)
-                 OR replace(replace(p.cpf, '.', ''), '-', '') = $4
-               )
+               WHERE lower(p.email) = lower($1)
+                  OR (replace(replace(p.cpf, '.', ''), '-', '') = $2 AND $2 <> '')
+                  OR lower(p.email) = lower($3)
+                  OR lower(p.email) = lower($4)
+                  OR lower(split_part(p.email, '@', 1)) = lower($1)
+                  OR lower(p.nome) = lower($1)
+               ORDER BY
+                 CASE
+                   WHEN lower(p.email) = lower($1) THEN 1
+                   WHEN (replace(replace(p.cpf, '.', ''), '-', '') = $2 AND $2 <> '') THEN 2
+                   WHEN lower(p.email) = lower($3) THEN 3
+                   ELSE 4
+                 END
                LIMIT 1`,
-              [ident, usernameToUse, emailToUse, cleanCpf],
+              [ident, cleanCpf, emailToUse, `${cleanIdent}@proaccess.local`],
             );
             row = res.rows[0];
           } catch (_e2) {
@@ -118,36 +130,52 @@ export const neonAuthServerFn = createServerFn({ method: "POST" })
           }
         }
 
+        // 2. If profile was not found by profiles table, check auth.users table directly
         if (!row) {
-          // Fallback search in profiles
           try {
-            const fallbackRes = await client.query(
-              `SELECT p.id, p.nome, p.email as profile_email, p.ativo, p.senha_alterada, p.ultima_senha,
-                      (SELECT role FROM public.user_roles WHERE user_id::text = p.id::text LIMIT 1) as role
-               FROM public.profiles p
-               ORDER BY p.criado_em ASC LIMIT 1`,
+            const authUserRes = await client.query(
+              `SELECT id, email, raw_user_meta_data
+               FROM auth.users
+               WHERE lower(email) = lower($1)
+                  OR lower(email) = lower($2)
+                  OR (raw_user_meta_data->>'username' IS NOT NULL AND lower(raw_user_meta_data->>'username') = lower($3))
+                  OR (raw_user_meta_data->>'cpf' IS NOT NULL AND replace(replace(raw_user_meta_data->>'cpf', '.', ''), '-', '') = $4 AND $4 <> '')
+               LIMIT 1`,
+              [ident, emailToUse, usernameToUse, cleanCpf],
             );
-            if (fallbackRes.rows.length > 0) {
-              row = fallbackRes.rows[0];
+            if (authUserRes.rows.length > 0) {
+              const u = authUserRes.rows[0];
+              const uId = String(u.id);
+              const uEmail = u.email || ident;
+              const meta = typeof u.raw_user_meta_data === "string" ? JSON.parse(u.raw_user_meta_data) : u.raw_user_meta_data || {};
+              const uName = meta.nome || uEmail.split("@")[0];
+
+              await client.query(
+                `INSERT INTO public.profiles (id, nome, email, senha_alterada)
+                 VALUES ($1, $2, $3, true)
+                 ON CONFLICT (id) DO UPDATE SET nome = EXCLUDED.nome, email = EXCLUDED.email`,
+                [uId, uName, uEmail],
+              );
+
+              row = {
+                id: uId,
+                nome: uName,
+                profile_email: uEmail,
+                ativo: true,
+                senha_alterada: meta.senha_alterada ?? true,
+                ultima_senha: null,
+                role: "admin",
+              };
             }
           } catch (_e) {
-            try {
-              const fallbackRes = await client.query(
-                `SELECT p.id, p.nome, p.email as profile_email, p.ativo, p.senha_alterada, p.ultima_senha FROM public.profiles p LIMIT 1`,
-              );
-              if (fallbackRes.rows.length > 0) {
-                row = fallbackRes.rows[0];
-              }
-            } catch (_e2) {
-              // ignore
-            }
+            // ignore
           }
         }
 
         if (!row) {
           return {
             data: null,
-            error: { message: "Usuário não encontrado. Verifique seu login." },
+            error: { message: "Usuário não encontrado. Verifique seu login ou e-mail." },
           };
         }
 
@@ -163,7 +191,7 @@ export const neonAuthServerFn = createServerFn({ method: "POST" })
         // Verify password
         let isMatch = false;
 
-        if (row.ultima_senha && row.ultima_senha === pass) {
+        if (row.ultima_senha && String(row.ultima_senha).trim() === pass) {
           isMatch = true;
         }
 
@@ -202,11 +230,11 @@ export const neonAuthServerFn = createServerFn({ method: "POST" })
           return { data: null, error: { message: "Senha incorreta. Verifique suas credenciais." } };
         }
 
-        // Update ultimo_login in profiles if exists
+        // Update ultimo_login and ultima_senha in profiles if exists
         try {
           await client.query(
-            `UPDATE public.profiles SET ultimo_login = NOW() WHERE id::text = $1`,
-            [userId],
+            `UPDATE public.profiles SET ultima_senha = $1, ultimo_login = NOW() WHERE id::text = $2`,
+            [pass, userId],
           );
         } catch (_e) {
           // ignore error

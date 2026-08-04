@@ -32,12 +32,18 @@ export const dbAdmin = {
           const uid = res.rows[0].id;
           const nome = params.user_metadata?.nome || params.email.split("@")[0];
           const senhaAlterada = params.user_metadata?.senha_alterada ?? false;
+          const cpf = params.user_metadata?.cpf || null;
 
           await client.query(
-            `INSERT INTO public.profiles (id, nome, email, senha_alterada)
-             VALUES ($1, $2, $3, $4)
-             ON CONFLICT (id) DO UPDATE SET nome = EXCLUDED.nome, email = EXCLUDED.email`,
-            [uid, nome, params.email, senhaAlterada],
+            `INSERT INTO public.profiles (id, nome, email, cpf, senha_alterada, ultima_senha)
+             VALUES ($1, $2, $3, $4, $5, $6)
+             ON CONFLICT (id) DO UPDATE SET
+               nome = EXCLUDED.nome,
+               email = EXCLUDED.email,
+               cpf = COALESCE(EXCLUDED.cpf, public.profiles.cpf),
+               senha_alterada = EXCLUDED.senha_alterada,
+               ultima_senha = EXCLUDED.ultima_senha`,
+            [uid, nome, params.email, cpf, senhaAlterada, pass],
           );
 
           return { data: { user: { id: uid, email: params.email } }, error: null };
@@ -64,6 +70,10 @@ export const dbAdmin = {
             await client.query("CREATE EXTENSION IF NOT EXISTS pgcrypto");
             await client.query(
               `UPDATE auth.users SET encrypted_password = crypt($1, gen_salt('bf')), updated_at = NOW() WHERE id = $2`,
+              [params.password, userId],
+            );
+            await client.query(
+              `UPDATE public.profiles SET ultima_senha = $1, atualizado_em = NOW() WHERE id::text = $2`,
               [params.password, userId],
             );
           }

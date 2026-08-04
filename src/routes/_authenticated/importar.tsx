@@ -494,7 +494,7 @@ function ImportCard({ kind, sistemasAll = [] }: { kind: TemplateKey; sistemasAll
   );
 }
 
-async function importRows(kind: TemplateKey, rows: Record<string, string>[]) {
+export async function importRows(kind: TemplateKey, rows: Record<string, string>[]) {
   const errors: string[] = [];
   let ok = 0,
     fail = 0;
@@ -1151,6 +1151,9 @@ async function importRows(kind: TemplateKey, rows: Record<string, string>[]) {
           continue;
         }
         colId = novoColab.id;
+        const newColabObj = { id: colId, ...colabPayload };
+        if (cpfKey) colabMap.set(`cpf:${cpfKey}`, newColabObj);
+        if (nomeKey) colabMap.set(`nome:${nomeKey}`, newColabObj);
       }
 
       const isOperadorCargo =

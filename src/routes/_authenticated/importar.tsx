@@ -124,32 +124,30 @@ const TEMPLATES: Record<
   },
   pendencias: {
     title: "Processos (Pendências)",
-    desc: "Importe pendências e fluxos de trabalho de acessos. Vinculação opcional do colaborador por CPF, sistema por nome e responsável administrativo por e-mail.",
+    desc: "Importe pendências e fluxos de trabalho de acessos. Vinculação por nome ou CPF do colaborador, nome do sistema, status e etiquetas.",
     icon: ClipboardList,
     headers: [
       "titulo",
+      "descricao",
       "tipo",
       "prioridade",
       "status",
-      "descricao",
-      "cpf_colaborador",
+      "colaborador",
       "sistema",
-      "email_responsavel",
-      "data_inicio",
       "sla_em",
+      "etiquetas",
     ],
     sample: [
       {
         titulo: "Criar Acesso SAP - João",
+        descricao: "Realizar a criação de credencial do novo colaborador",
         tipo: "solicitacao_acesso",
         prioridade: "media",
-        status: "em_andamento",
-        descricao: "Realizar a criação de credencial do novo colaborador",
-        cpf_colaborador: "123.456.789-00",
+        status: "PENDENTE",
+        colaborador: "João da Silva",
         sistema: "SAP ERP",
-        email_responsavel: "suporte@empresa.com",
-        data_inicio: "2026-07-30",
         sla_em: "2026-08-05",
+        etiquetas: "urgente;tributário",
       },
     ],
   },
@@ -827,32 +825,28 @@ export async function importRows(kind: TemplateKey, rows: Record<string, string>
 
   // 6. IMPORT PENDÊNCIAS
   else if (kind === "pendencias") {
-    const { data: cols } = await db.from("colaboradores").select("id, cpf");
+    const { data: cols } = await db.from("colaboradores").select("id, cpf, nome, email");
     const { data: sis } = await db.from("sistemas").select("id, nome");
     const { data: users } = await db.from("profiles").select("id, email");
 
-    const colMap = new Map(
-      (cols ?? []).filter((c: any) => c.cpf).map((c: any) => [c.cpf.replace(/\D/g, ""), c.id]),
-    );
+    const colMap = new Map();
+    (cols ?? []).forEach((c: any) => {
+      if (c.cpf) colMap.set(c.cpf.replace(/\D/g, ""), c.id);
+      if (c.nome) colMap.set(c.nome.trim().toLowerCase(), c.id);
+      if (c.email) colMap.set(c.email.trim().toLowerCase(), c.id);
+    });
+
     const sisMap = new Map((sis ?? []).map((s: any) => [s.nome.trim().toLowerCase(), s.id]));
     const userMap = new Map((users ?? []).map((u: any) => [u.email.trim().toLowerCase(), u.id]));
 
     const { data: loggedIn } = await db.auth.getUser();
 
     const validPriorities = ["baixa", "media", "alta", "critica"];
-    const validStatuses = [
-      "backlog",
-      "em_analise",
-      "em_andamento",
-      "aguardando",
-      "concluido",
-      "cancelado",
-    ];
     const validTypes = ["solicitacao_acesso", "exclusao_acesso", "revisao", "alteracao", "outro"];
 
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
-      const titulo = r.titulo?.trim();
+      const titulo = (r.titulo || r.título || "").trim();
 
       if (!titulo) {
         fail++;
@@ -861,22 +855,32 @@ export async function importRows(kind: TemplateKey, rows: Record<string, string>
       }
 
       const rawType = (r.tipo ?? "").trim().toLowerCase();
-      const tipo = validTypes.includes(rawType) ? rawType : "outro";
+      const tipo = validTypes.includes(rawType) ? rawType : "solicitacao_acesso";
 
       const rawPriority = (r.prioridade ?? "").trim().toLowerCase();
       const prioridade = validPriorities.includes(rawPriority) ? rawPriority : "media";
 
-      const rawStatus = (r.status ?? "").trim().toLowerCase();
-      const status = validStatuses.includes(rawStatus) ? rawStatus : "backlog";
+      const status = (r.status ?? "").trim() || "PENDENTE";
 
-      const cpfKey = (r.cpf_colaborador ?? "").replace(/\D/g, "");
-      const colId = cpfKey ? (colMap.get(cpfKey) ?? null) : null;
+      const colabVal = (r.colaborador || r.cpf_colaborador || r.cpf || "").trim();
+      const colabDigits = colabVal.replace(/\D/g, "");
+      const colId =
+        (colabDigits ? colMap.get(colabDigits) : null) ??
+        colMap.get(colabVal.toLowerCase()) ??
+        null;
 
-      const sisName = r.sistema?.trim() || "";
+      const sisName = (r.sistema || r.nome_sistema || "").trim();
       const sisId = sisName ? (sisMap.get(sisName.toLowerCase()) ?? null) : null;
 
-      const respEmail = r.email_responsavel?.trim() || "";
+      const respEmail = (r.email_responsavel || r.responsavel || "").trim();
       const respId = respEmail ? (userMap.get(respEmail.toLowerCase()) ?? null) : null;
+
+      const rawEtiquetas = r.etiquetas
+        ? String(r.etiquetas)
+            .split(/[,;]/)
+            .map((s: string) => s.trim())
+            .filter(Boolean)
+        : [];
 
       const payload: any = {
         titulo,
@@ -889,10 +893,11 @@ export async function importRows(kind: TemplateKey, rows: Record<string, string>
         responsavel_id: respId,
         data_inicio: r.data_inicio?.trim() || new Date().toISOString().split("T")[0],
         sla_em: r.sla_em?.trim() || null,
+        etiquetas: rawEtiquetas,
         criado_por: loggedIn.user?.id ?? null,
       };
 
-      // Check if similar task already exists for this collaborator + system
+      // Check if similar task already exists for this collaborator + system or title
       const query = db.from("pendencias").select("id, status, prioridade, descricao");
       let existingPendencia: any = null;
 

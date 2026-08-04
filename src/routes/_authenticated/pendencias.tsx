@@ -142,13 +142,26 @@ function Pendencias() {
 
   const importCsv = useMutation({
     mutationFn: async (file: File) => {
-      const text = await file.text();
-      const parsed = Papa.parse<any>(text, { header: true, skipEmptyLines: true });
-      const colabMap = new Map((colabs as any[]).map((c) => [c.nome.toLowerCase(), c.id]));
-      const sisMap = new Map((sistemas as any[]).map((s) => [s.nome.toLowerCase(), s.id]));
+      let text = await file.text();
+      if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+      text = text.replace(/^sep=\s*;\s*\r?\n/i, "");
+
+      const parsed = Papa.parse<any>(text, {
+        header: true,
+        skipEmptyLines: true,
+        delimitersToGuess: [";", ",", "\t"],
+      });
+
+      const colabMap = new Map();
+      (colabs as any[]).forEach((c) => {
+        if (c.nome) colabMap.set(c.nome.toLowerCase().trim(), c.id);
+        if (c.cpf) colabMap.set(c.cpf.replace(/\D/g, ""), c.id);
+        if (c.email) colabMap.set(c.email.toLowerCase().trim(), c.id);
+      });
+
+      const sisMap = new Map((sistemas as any[]).map((s) => [s.nome.toLowerCase().trim(), s.id]));
       const { data: u } = await db.auth.getUser();
 
-      // Limita a 200 caracteres cada célula do CSV
       const rows = parsed.data
         .map((r: any) => {
           const newR: any = {};
@@ -157,46 +170,58 @@ function Pendencias() {
           }
           return newR;
         })
-        .map((r: any) => ({
-          titulo: r.titulo || r.título || "",
-          descricao: r.descricao || r.descrição || null,
-          tipo: r.tipo || "outro",
-          prioridade: r.prioridade || "media",
-          status: r.status || "PENDENTE",
-          colaborador_id: r.colaborador
-            ? (colabMap.get(String(r.colaborador).toLowerCase()) ?? null)
-            : null,
-          sistema_id: r.sistema ? (sisMap.get(String(r.sistema).toLowerCase()) ?? null) : null,
-          sla_em: r.sla_em || null,
-          etiquetas: r.etiquetas
-            ? String(r.etiquetas)
-                .split(",")
-                .map((s: string) => s.trim())
-                .filter(Boolean)
-            : [],
-          criado_por: u.user?.id,
-        }))
+        .map((r: any) => {
+          const colabVal = (r.colaborador || r.cpf_colaborador || r.cpf || "").trim();
+          const colabDigits = colabVal.replace(/\D/g, "");
+          const colId =
+            (colabDigits ? colabMap.get(colabDigits) : null) ??
+            colabMap.get(colabVal.toLowerCase()) ??
+            null;
+
+          const sisVal = (r.sistema || r.nome_sistema || "").trim();
+          const sisId = sisVal ? (sisMap.get(sisVal.toLowerCase()) ?? null) : null;
+
+          return {
+            titulo: r.titulo || r.título || "",
+            descricao: r.descricao || r.descrição || null,
+            tipo: r.tipo || "solicitacao_acesso",
+            prioridade: r.prioridade || "media",
+            status: r.status ? String(r.status).trim() : "PENDENTE",
+            colaborador_id: colId,
+            sistema_id: sisId,
+            sla_em: r.sla_em || null,
+            etiquetas: r.etiquetas
+              ? String(r.etiquetas)
+                  .split(/[,;]/)
+                  .map((s: string) => s.trim())
+                  .filter(Boolean)
+              : [],
+            criado_por: u.user?.id,
+          };
+        })
         .filter((r: any) => r.titulo);
+
       if (rows.length === 0) throw new Error("CSV vazio ou sem coluna 'titulo'");
       const { error } = await db.from("pendencias").insert(rows);
       if (error) throw error;
       return rows.length;
     },
     onSuccess: (n) => {
-      toast.success(`${n} pendência(s) importada(s)`);
+      toast.success(`${n} pendência(s) importada(s) com sucesso!`);
       qc.invalidateQueries({ queryKey: ["pendencias"] });
     },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: any) => toast.error(e.message || "Erro ao importar CSV"),
   });
 
   function downloadTemplate() {
     const csv =
-      "titulo,descricao,tipo,prioridade,status,colaborador,sistema,sla_em,etiquetas\nExemplo,Descrição,solicitacao_acesso,media,PENDENTE,Nome do Colaborador,Nome do Sistema,2025-12-31T18:00,urgente;tributário\n";
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      "titulo;descricao;tipo;prioridade;status;colaborador;sistema;sla_em;etiquetas\nExemplo;Descrição;solicitacao_acesso;media;PENDENTE;Nome do Colaborador;Nome do Sistema;2025-12-31T18:00;urgente;tributário\n";
+    const blob = new Blob(["\uFEFFsep=;\n" + csv], { type: "text/csv;charset=utf-8;" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = "modelo-pendencias.csv";
     a.click();
+    URL.revokeObjectURL(a.href);
   }
 
   function onDragEnd(e: DragEndEvent) {

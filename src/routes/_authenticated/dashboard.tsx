@@ -26,33 +26,64 @@ function Dashboard() {
   const { data } = useQuery({
     queryKey: ["dashboard"],
     queryFn: async () => {
-      const [colab, sist, acc, pend, orfaos, semResp, quadros] = await Promise.all([
-        db.from("colaboradores").select("status", { count: "exact" }),
-        db.from("sistemas").select("id, nome", { count: "exact" }),
-        db.from("acessos").select("status, sistema_id", { count: "exact" }),
-        db.from("pendencias").select("status, prioridade, sistema_id", { count: "exact" }),
-        db
-          .from("acessos")
-          .select("id,colaborador:colaboradores!inner(status)")
-          .eq("status", "ativo")
-          .eq("colaboradores.status", "desligado"),
-        db.from("sistemas").select("id", { count: "exact", head: true }).is("responsavel_id", null),
-        db.from("pendencia_quadros").select("*").order("ordem"),
-      ]);
-      return {
-        colabTotal: colab.count ?? 0,
-        colabAtivos: (colab.data ?? []).filter((c) => c.status === "ativo").length,
-        sistTotal: sist.count ?? 0,
-        sistData: sist.data ?? [],
-        acessosTotal: acc.count ?? 0,
-        acessosAtivos: (acc.data ?? []).filter((a) => a.status === "ativo").length,
-        acessosData: acc.data ?? [],
-        pendTotal: pend.count ?? 0,
-        pendData: pend.data ?? [],
-        orfaos: orfaos.data?.length ?? 0,
-        semResp: semResp.count ?? 0,
-        quadros: quadros.data ?? [],
-      };
+      try {
+        const [colabRes, sistRes, accRes, pendRes, quadrosRes] = await Promise.all([
+          db.from("colaboradores").select("id, status", { count: "exact" }),
+          db.from("sistemas").select("id, nome, responsavel_id", { count: "exact" }),
+          db.from("acessos").select("id, status, sistema_id, colaborador_id", { count: "exact" }),
+          db.from("pendencias").select("id, status, prioridade, sistema_id", { count: "exact" }),
+          db.from("pendencia_quadros").select("*").order("ordem"),
+        ]);
+
+        const colabList = colabRes.data ?? [];
+        const sistList = sistRes.data ?? [];
+        const accList = accRes.data ?? [];
+        const pendList = pendRes.data ?? [];
+        const quadrosList = quadrosRes.data ?? [];
+
+        const desligadosIds = new Set(
+          colabList
+            .filter((c: any) => c.status === "desligado" || c.status === "inativo")
+            .map((c: any) => c.id),
+        );
+
+        const orfaosCount = accList.filter(
+          (a: any) => a.status === "ativo" && a.colaborador_id && desligadosIds.has(a.colaborador_id),
+        ).length;
+
+        const semRespCount = sistList.filter((s: any) => !s.responsavel_id).length;
+
+        return {
+          colabTotal: colabRes.count ?? colabList.length,
+          colabAtivos: colabList.filter((c: any) => c.status === "ativo").length,
+          sistTotal: sistRes.count ?? sistList.length,
+          sistData: sistList,
+          acessosTotal: accRes.count ?? accList.length,
+          acessosAtivos: accList.filter((a: any) => a.status === "ativo").length,
+          acessosData: accList,
+          pendTotal: pendRes.count ?? pendList.length,
+          pendData: pendList,
+          orfaos: orfaosCount,
+          semResp: semRespCount,
+          quadros: quadrosList,
+        };
+      } catch (err) {
+        console.error("Erro ao carregar dados do dashboard:", err);
+        return {
+          colabTotal: 0,
+          colabAtivos: 0,
+          sistTotal: 0,
+          sistData: [],
+          acessosTotal: 0,
+          acessosAtivos: 0,
+          acessosData: [],
+          pendTotal: 0,
+          pendData: [],
+          orfaos: 0,
+          semResp: 0,
+          quadros: [],
+        };
+      }
     },
   });
 
@@ -172,14 +203,20 @@ function Dashboard() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={pendChart}>
-                <XAxis dataKey="name" fontSize={11} interval={0} />
-                <YAxis fontSize={12} allowDecimals={false} />
-                <Tooltip />
-                <Bar dataKey="value" name="Pendências" fill="#F58220" radius={[6, 6, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            <div className="h-[260px] w-full flex items-center justify-center">
+              {pendChart.length === 0 || pendChart.every((item) => item.value === 0) ? (
+                <p className="text-sm text-muted-foreground">Nenhuma pendência cadastrada</p>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={pendChart}>
+                    <XAxis dataKey="name" fontSize={11} interval={0} />
+                    <YAxis fontSize={12} allowDecimals={false} />
+                    <Tooltip />
+                    <Bar dataKey="value" name="Pendências" fill="#F58220" radius={[6, 6, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </div>
           </CardContent>
         </Card>
 
@@ -190,14 +227,20 @@ function Dashboard() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={pendBySistemaChart} layout="vertical">
-                <XAxis type="number" fontSize={12} allowDecimals={false} />
-                <YAxis type="category" dataKey="name" fontSize={11} width={110} />
-                <Tooltip />
-                <Bar dataKey="value" name="Pendências" fill="#0B1F3A" radius={[0, 6, 6, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            <div className="h-[260px] w-full flex items-center justify-center">
+              {pendBySistemaChart.length === 0 || pendBySistemaChart.every((item) => item.value === 0) ? (
+                <p className="text-sm text-muted-foreground">Nenhuma pendência vinculada a sistemas</p>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={pendBySistemaChart} layout="vertical">
+                    <XAxis type="number" fontSize={12} allowDecimals={false} />
+                    <YAxis type="category" dataKey="name" fontSize={11} width={110} />
+                    <Tooltip />
+                    <Bar dataKey="value" name="Pendências" fill="#0B1F3A" radius={[0, 6, 6, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -210,20 +253,26 @@ function Dashboard() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={260}>
-              <PieChart>
-                <Pie data={pendByPriorityChart} dataKey="value" nameKey="name" outerRadius={85} label>
-                  {pendByPriorityChart.map((entry, i) => (
-                    <Cell
-                      key={i}
-                      fill={PRIO_COLORS[entry.name] || COLORS[i % COLORS.length]}
-                    />
-                  ))}
-                </Pie>
-                <Tooltip />
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
+            <div className="h-[260px] w-full flex items-center justify-center">
+              {pendByPriorityChart.length === 0 || pendByPriorityChart.every((item) => item.value === 0) ? (
+                <p className="text-sm text-muted-foreground">Nenhuma pendência cadastrada</p>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={pendByPriorityChart} dataKey="value" nameKey="name" outerRadius={85} label>
+                      {pendByPriorityChart.map((entry, i) => (
+                        <Cell
+                          key={i}
+                          fill={PRIO_COLORS[entry.name] || COLORS[i % COLORS.length]}
+                        />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
+            </div>
           </CardContent>
         </Card>
 
@@ -234,17 +283,23 @@ function Dashboard() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={260}>
-              <PieChart>
-                <Pie data={accChart} dataKey="value" nameKey="name" outerRadius={85} label>
-                  {accChart.map((_, i) => (
-                    <Cell key={i} fill={COLORS[i % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip />
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
+            <div className="h-[260px] w-full flex items-center justify-center">
+              {accChart.length === 0 || accChart.every((item) => item.value === 0) ? (
+                <p className="text-sm text-muted-foreground">Nenhum acesso cadastrado</p>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={accChart} dataKey="value" nameKey="name" outerRadius={85} label>
+                      {accChart.map((_, i) => (
+                        <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
+            </div>
           </CardContent>
         </Card>
       </div>

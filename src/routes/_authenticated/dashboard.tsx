@@ -41,6 +41,8 @@ function Dashboard() {
         const pendList = pendRes.data ?? [];
         const quadrosList = quadrosRes.data ?? [];
 
+        const colabStatusMap = new Map(colabList.map((c: any) => [c.id, c.status]));
+
         const desligadosIds = new Set(
           colabList
             .filter((c: any) => c.status === "desligado" || c.status === "inativo")
@@ -48,8 +50,23 @@ function Dashboard() {
         );
 
         const orfaosCount = accList.filter(
-          (a: any) => a.status === "ativo" && a.colaborador_id && desligadosIds.has(a.colaborador_id),
+          (a: any) =>
+            (a.status === "ativo" || !a.status) &&
+            a.colaborador_id &&
+            desligadosIds.has(a.colaborador_id),
         ).length;
+
+        const acessosAtivosCount = accList.filter((a: any) => {
+          const isAccAtivo = a.status === "ativo" || a.status === "ATIVO" || (!a.status || a.status !== "inativo");
+          if (!isAccAtivo) return false;
+          if (a.colaborador_id) {
+            const cStatus = colabStatusMap.get(a.colaborador_id);
+            if (cStatus === "desligado" || cStatus === "inativo") {
+              return false;
+            }
+          }
+          return true;
+        }).length;
 
         const semRespCount = sistList.filter((s: any) => !s.responsavel_id).length;
 
@@ -59,8 +76,9 @@ function Dashboard() {
           sistTotal: sistRes.count ?? sistList.length,
           sistData: sistList,
           acessosTotal: accRes.count ?? accList.length,
-          acessosAtivos: accList.filter((a: any) => a.status === "ativo").length,
+          acessosAtivos: acessosAtivosCount,
           acessosData: accList,
+          colabStatusMap,
           pendTotal: pendRes.count ?? pendList.length,
           pendData: pendList,
           orfaos: orfaosCount,
@@ -144,8 +162,15 @@ function Dashboard() {
   const pendByPriorityChart = Object.entries(pendByPrioMap).map(([name, value]) => ({ name, value }));
 
   // Acessos por Status
-  const accByStatus = (data?.acessosData ?? []).reduce<Record<string, number>>((acc, a) => {
-    const st = a.status ? a.status.charAt(0).toUpperCase() + a.status.slice(1) : "Indefinido";
+  const statusMap = data?.colabStatusMap;
+  const accByStatus = (data?.acessosData ?? []).reduce<Record<string, number>>((acc, a: any) => {
+    let st = "Ativo";
+    const colabStatus = a.colaborador_id && statusMap ? statusMap.get(a.colaborador_id) : null;
+    if (a.status === "inativo" || colabStatus === "desligado" || colabStatus === "inativo") {
+      st = "Inativo / Órfão";
+    } else if (a.status) {
+      st = a.status.charAt(0).toUpperCase() + a.status.slice(1).toLowerCase();
+    }
     acc[st] = (acc[st] ?? 0) + 1;
     return acc;
   }, {});

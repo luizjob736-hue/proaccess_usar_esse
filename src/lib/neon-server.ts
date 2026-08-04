@@ -22,6 +22,9 @@ export async function getNeonPool() {
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 5000,
     });
+    pool.on("error", (err: any) => {
+      console.warn("Unexpected error on idle PostgreSQL client:", err?.message || err);
+    });
   }
   return pool;
 }

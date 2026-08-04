@@ -22,6 +22,7 @@ import {
   Grid3x3,
 } from "lucide-react";
 import { toast } from "sonner";
+import { matchesColumnStatus } from "./pendencias";
 
 export function parseDateToISO(val: any): string | null {
   if (!val) return null;
@@ -871,6 +872,8 @@ export async function importRows(kind: TemplateKey, rows: Record<string, string>
     const { data: cols } = await db.from("colaboradores").select("id, cpf, nome, email");
     const { data: sis } = await db.from("sistemas").select("id, nome");
     const { data: users } = await db.from("profiles").select("id, email");
+    const { data: quadrosData } = await db.from("pendencia_quadros").select("nome").order("ordem");
+    const quadrosNomes = (quadrosData ?? []).map((q: any) => q.nome);
 
     const colMap = new Map();
     (cols ?? []).forEach((c: any) => {
@@ -903,7 +906,14 @@ export async function importRows(kind: TemplateKey, rows: Record<string, string>
       const rawPriority = (r.prioridade ?? "").trim().toLowerCase();
       const prioridade = validPriorities.includes(rawPriority) ? rawPriority : "media";
 
-      const status = (r.status ?? "").trim() || "PENDENTE";
+      const rawStatus = (r.status ?? "").trim();
+      let status = rawStatus || "PENDENTE";
+      if (quadrosNomes.length > 0) {
+        const matchedQ = quadrosNomes.find((qName) =>
+          matchesColumnStatus(rawStatus, qName, quadrosNomes),
+        );
+        if (matchedQ) status = matchedQ;
+      }
 
       const colabVal = (r.colaborador || r.cpf_colaborador || r.cpf || "").trim();
       const colabDigits = colabVal.replace(/\D/g, "");
@@ -912,8 +922,21 @@ export async function importRows(kind: TemplateKey, rows: Record<string, string>
         colMap.get(colabVal.toLowerCase()) ??
         null;
 
-      const sisName = (r.sistema || r.nome_sistema || "").trim();
-      const sisId = sisName ? (sisMap.get(sisName.toLowerCase()) ?? null) : null;
+      const sisName = (r.sistema || r.nome_sistema || r.produto || "").trim();
+      let sisId = sisName ? (sisMap.get(sisName.toLowerCase()) ?? null) : null;
+
+      // Auto-create system if it doesn't exist
+      if (sisName && !sisId) {
+        const { data: newSis } = await db
+          .from("sistemas")
+          .insert({ nome: sisName })
+          .select("id, nome")
+          .single();
+        if (newSis) {
+          sisId = newSis.id;
+          sisMap.set(sisName.toLowerCase(), sisId);
+        }
+      }
 
       const respEmail = (r.email_responsavel || r.responsavel || "").trim();
       const respId = respEmail ? (userMap.get(respEmail.toLowerCase()) ?? null) : null;

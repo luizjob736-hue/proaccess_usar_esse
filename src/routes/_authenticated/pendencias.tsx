@@ -48,6 +48,93 @@ const PRIO_COLOR: Record<string, string> = {
   critica: "bg-destructive",
 };
 
+export function normalizeStatus(s: string): string {
+  if (!s) return "";
+  return String(s)
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[-_]/g, " ")
+    .replace(/\s+/g, " ");
+}
+
+export function matchesColumnStatus(
+  pStatus: string,
+  colNome: string,
+  allQuadrosNomes: string[],
+): boolean {
+  if (!pStatus || !colNome) return false;
+  const normP = normalizeStatus(pStatus);
+  const normCol = normalizeStatus(colNome);
+
+  if (normP === normCol) return true;
+
+  const pendingAliases = [
+    "pendente",
+    "backlog",
+    "em analise",
+    "em andamento",
+    "aguardando",
+    "solicitacao acesso",
+    "novo",
+    "aberto",
+  ];
+  const erroAliases = ["com erro", "erro", "falha", "com falha", "bug", "problema"];
+  const senhaAliases = ["redefinir senha", "reset senha", "trocar senha", "senha", "esqueci senha"];
+  const concluidoAliases = [
+    "desbloqueio",
+    "concluido",
+    "concluida",
+    "finalizado",
+    "finalizada",
+    "resolvido",
+    "resolvida",
+  ];
+
+  const isPendingCol = pendingAliases.some((a) => normCol.includes(a));
+  const isErroCol = erroAliases.some((a) => normCol.includes(a));
+  const isSenhaCol = senhaAliases.some((a) => normCol.includes(a));
+  const isConcluidoCol = concluidoAliases.some((a) => normCol.includes(a));
+
+  if (isPendingCol && pendingAliases.some((a) => normP === a || normP.includes(a))) return true;
+  if (isErroCol && erroAliases.some((a) => normP === a || normP.includes(a))) return true;
+  if (isSenhaCol && senhaAliases.some((a) => normP === a || normP.includes(a))) return true;
+  if (isConcluidoCol && concluidoAliases.some((a) => normP === a || normP.includes(a))) return true;
+
+  const hasMatchAnywhere = allQuadrosNomes.some((qName) => {
+    const nQ = normalizeStatus(qName);
+    if (normP === nQ) return true;
+    if (
+      pendingAliases.some((a) => nQ.includes(a)) &&
+      pendingAliases.some((a) => normP === a || normP.includes(a))
+    )
+      return true;
+    if (
+      erroAliases.some((a) => nQ.includes(a)) &&
+      erroAliases.some((a) => normP === a || normP.includes(a))
+    )
+      return true;
+    if (
+      senhaAliases.some((a) => nQ.includes(a)) &&
+      senhaAliases.some((a) => normP === a || normP.includes(a))
+    )
+      return true;
+    if (
+      concluidoAliases.some((a) => nQ.includes(a)) &&
+      concluidoAliases.some((a) => normP === a || normP.includes(a))
+    )
+      return true;
+    return false;
+  });
+
+  if (!hasMatchAnywhere && allQuadrosNomes.length > 0 && allQuadrosNomes[0] === colNome) {
+    return true;
+  }
+
+  return false;
+}
+
 function Pendencias() {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -161,16 +248,33 @@ function Pendencias() {
       });
 
       const sisMap = new Map((sistemas as any[]).map((s) => [s.nome.toLowerCase().trim(), s.id]));
+      const quadrosNomes = (quadros as any[]).map((q) => q.nome);
       const { data: u } = await db.auth.getUser();
 
-      const rows = parsed.data
-        .map((r: any) => {
-          const newR: any = {};
-          for (const [k, v] of Object.entries(r)) {
-            newR[k] = String(v ?? "").substring(0, 200);
+      const rawRows = parsed.data.map((r: any) => {
+        const newR: any = {};
+        for (const [k, v] of Object.entries(r)) {
+          newR[k] = String(v ?? "").substring(0, 200);
+        }
+        return newR;
+      });
+
+      // Auto-create missing systems if needed
+      for (const r of rawRows) {
+        const sisVal = (r.sistema || r.nome_sistema || r.produto || "").trim();
+        if (sisVal && !sisMap.has(sisVal.toLowerCase())) {
+          const { data: newSis } = await db
+            .from("sistemas")
+            .insert({ nome: sisVal })
+            .select("id, nome")
+            .single();
+          if (newSis) {
+            sisMap.set(sisVal.toLowerCase(), newSis.id);
           }
-          return newR;
-        })
+        }
+      }
+
+      const rows = rawRows
         .map((r: any) => {
           const colabVal = (r.colaborador || r.cpf_colaborador || r.cpf || "").trim();
           const colabDigits = colabVal.replace(/\D/g, "");
@@ -179,8 +283,17 @@ function Pendencias() {
             colabMap.get(colabVal.toLowerCase()) ??
             null;
 
-          const sisVal = (r.sistema || r.nome_sistema || "").trim();
+          const sisVal = (r.sistema || r.nome_sistema || r.produto || "").trim();
           const sisId = sisVal ? (sisMap.get(sisVal.toLowerCase()) ?? null) : null;
+
+          const rawStatus = (r.status ?? "").trim();
+          let statusVal = rawStatus || "PENDENTE";
+          if (quadrosNomes.length > 0) {
+            const matchedQ = quadrosNomes.find((qName) =>
+              matchesColumnStatus(rawStatus, qName, quadrosNomes),
+            );
+            if (matchedQ) statusVal = matchedQ;
+          }
 
           const dataInicioVal = (r.data_inicio || r.data_início || r.inicio || "").trim();
           const slaVal = (r.sla_em || r.sla || r.vencimento || r.data_limite || "").trim();
@@ -190,7 +303,7 @@ function Pendencias() {
             descricao: r.descricao || r.descrição || null,
             tipo: r.tipo || "solicitacao_acesso",
             prioridade: r.prioridade || "media",
-            status: r.status ? String(r.status).trim() : "PENDENTE",
+            status: statusVal,
             colaborador_id: colId,
             sistema_id: sisId,
             data_inicio:
@@ -484,7 +597,10 @@ function Pendencias() {
       >
         <div className="grid grid-cols-2 gap-4 overflow-x-auto md:grid-cols-3 lg:grid-cols-6">
           {quadros.map((col: any) => {
-            const items = listFiltrada.filter((p: any) => p.status === col.nome);
+            const quadrosNomes = quadros.map((q: any) => q.nome);
+            const items = listFiltrada.filter((p: any) =>
+              matchesColumnStatus(p.status, col.nome, quadrosNomes),
+            );
             return (
               <Column
                 key={col.id}
@@ -665,18 +781,26 @@ function PendenciaDetail({ p, quadros }: any) {
       </DialogHeader>
       <div className="space-y-3">
         <div className="flex gap-2">
-          <Select value={p.status} onValueChange={updateStatus}>
-            <SelectTrigger className="h-7 text-xs w-[140px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {quadros?.map((q: any) => (
-                <SelectItem key={q.id} value={q.nome}>
-                  {q.nome}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {(() => {
+            const quadrosNomes = quadros?.map((x: any) => x.nome) ?? [];
+            const selectedStatus =
+              quadros?.find((q: any) => matchesColumnStatus(p.status, q.nome, quadrosNomes))?.nome ??
+              p.status;
+            return (
+              <Select value={selectedStatus} onValueChange={updateStatus}>
+                <SelectTrigger className="h-7 text-xs w-[140px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {quadros?.map((q: any) => (
+                    <SelectItem key={q.id} value={q.nome}>
+                      {q.nome}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            );
+          })()}
           <Badge variant="outline">{p.prioridade}</Badge>
           <Badge variant="outline">{p.tipo}</Badge>
         </div>

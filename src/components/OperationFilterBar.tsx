@@ -47,7 +47,7 @@ export function OperationFilterBar({
   return (
     <div
       className={cn(
-        "flex flex-col gap-2 sm:flex-row sm:items-center justify-between bg-card border rounded-lg p-3 shadow-sm",
+        "flex flex-col gap-2.5 sm:flex-row sm:items-center justify-start gap-3 sm:gap-4 bg-card border rounded-lg p-3 shadow-sm",
         className,
       )}
     >

@@ -465,7 +465,7 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-3">
+      <div className="flex items-center justify-start flex-wrap gap-4">
         <div>
           <h1 className="text-3xl font-bold">
             {onlyInativos ? "Usuários Inativos" : "Matriz de Acessos"}

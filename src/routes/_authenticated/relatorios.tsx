@@ -65,27 +65,35 @@ async function fetchRel(k: string) {
     const { data: raw = [] } = await db
       .from("pendencias")
       .select(
-        "titulo,descricao,tipo,status,prioridade,criado_em,data_inicio,sla_em,concluido_em,colaborador:colaboradores(nome,operacao:operacoes(nome)),sistema:sistemas(nome)",
+        "titulo,descricao,tipo,status,prioridade,criado_em,data_inicio,sla_em,concluido_em,colaborador_id,sistema:sistemas(nome)",
       );
-    return (raw as any[]).map((p) => ({
-      Título: p.titulo ?? "",
-      Descrição: p.descricao ?? "",
-      Tipo: p.tipo ?? "",
-      Status: p.status ?? "",
-      Prioridade: p.prioridade ?? "",
-      "Produto / Sistema": p.sistema?.nome ?? "—",
-      Colaborador: p.colaborador?.nome ?? "—",
-      Operação: p.colaborador?.operacao?.nome ?? "—",
-      "Data Início": p.data_inicio
-        ? new Date(p.data_inicio).toLocaleDateString("pt-BR")
-        : p.criado_em
-          ? new Date(p.criado_em).toLocaleDateString("pt-BR")
-          : "",
-      "SLA (Data Limite)": p.sla_em ? new Date(p.sla_em).toLocaleString("pt-BR") : "",
-      "Concluído em": p.concluido_em
-        ? new Date(p.concluido_em).toLocaleString("pt-BR")
-        : "Em aberto",
-    }));
+    const { data: colabs = [] } = await db
+      .from("colaboradores")
+      .select("id,nome,operacao:operacoes(nome)");
+    const colabMap = new Map((colabs || []).map((c: any) => [c.id, c]));
+
+    return (raw as any[]).map((p) => {
+      const colab = colabMap.get(p.colaborador_id);
+      return {
+        Título: p.titulo ?? "",
+        Descrição: p.descricao ?? "",
+        Tipo: p.tipo ?? "",
+        Status: p.status ?? "",
+        Prioridade: p.prioridade ?? "",
+        "Produto / Sistema": p.sistema?.nome ?? "—",
+        Colaborador: colab?.nome ?? "—",
+        Operação: colab?.operacao?.nome ?? "—",
+        "Data Início": p.data_inicio
+          ? new Date(p.data_inicio).toLocaleDateString("pt-BR")
+          : p.criado_em
+            ? new Date(p.criado_em).toLocaleDateString("pt-BR")
+            : "",
+        "SLA (Data Limite)": p.sla_em ? new Date(p.sla_em).toLocaleString("pt-BR") : "",
+        "Concluído em": p.concluido_em
+          ? new Date(p.concluido_em).toLocaleString("pt-BR")
+          : "Em aberto",
+      };
+    });
   }
   if (k === "matriz" || k === "inativos") {
     const { data: colabs = [] } = await db
@@ -154,25 +162,37 @@ function flatten(rows: any[]) {
 
 function Relatorios() {
   async function exportar(k: string, fmt: "xlsx" | "csv" | "pdf") {
-    const rows = flatten(await fetchRel(k));
-    if (rows.length === 0) return toast.warning("Sem dados para exportar");
-    if (fmt === "xlsx" || fmt === "csv") {
-      const ws = XLSX.utils.json_to_sheet(rows);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, k);
-      XLSX.writeFile(wb, `${k}.${fmt}`);
-    } else {
-      const doc = new jsPDF({ orientation: "landscape" });
-      doc.text(`Relatório: ${k}`, 14, 14);
-      autoTable(doc, {
-        head: [Object.keys(rows[0])],
-        body: rows.map((r) => Object.values(r).map((v) => String(v ?? ""))),
-        startY: 20,
-        styles: { fontSize: 8 },
-      });
-      doc.save(`${k}.pdf`);
+    const loadingToast = toast.loading("Preparando dados para exportação...");
+    try {
+      const rawData = await fetchRel(k);
+      const rows = flatten(rawData);
+      if (rows.length === 0) {
+        toast.dismiss(loadingToast);
+        return toast.warning("Sem dados para exportar");
+      }
+      if (fmt === "xlsx" || fmt === "csv") {
+        const ws = XLSX.utils.json_to_sheet(rows);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, k);
+        XLSX.writeFile(wb, `${k}.${fmt}`);
+      } else {
+        const doc = new jsPDF({ orientation: "landscape" });
+        doc.text(`Relatório: ${k}`, 14, 14);
+        autoTable(doc, {
+          head: [Object.keys(rows[0])],
+          body: rows.map((r) => Object.values(r).map((v) => String(v ?? ""))),
+          startY: 20,
+          styles: { fontSize: 8 },
+        });
+        doc.save(`${k}.pdf`);
+      }
+      toast.dismiss(loadingToast);
+      toast.success("Exportado com sucesso!");
+    } catch (error: any) {
+      console.error("Erro ao exportar relatório:", error);
+      toast.dismiss(loadingToast);
+      toast.error(`Falha ao exportar: ${error?.message || error}`);
     }
-    toast.success("Exportado");
   }
 
   return (

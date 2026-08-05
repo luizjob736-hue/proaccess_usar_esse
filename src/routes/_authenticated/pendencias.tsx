@@ -209,9 +209,23 @@ function Pendencias() {
 
   const moveMut = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: string }) => {
+      const concluidoAliases = [
+        "desbloqueio",
+        "concluido",
+        "concluida",
+        "finalizado",
+        "finalizada",
+        "resolvido",
+        "resolvida",
+      ];
+      const isConcluidoStatus = concluidoAliases.some((a) => status.toLowerCase().includes(a));
       const patch: any = { status };
-      if (status === "DESBLOQUEIO" || status === "Concluído" || status === "concluido")
+      if (isConcluidoStatus) {
         patch.concluido_em = new Date().toISOString();
+      } else {
+        patch.concluido_em = null;
+        patch.data_resolucao = null;
+      }
       const { error } = await db.from("pendencias").update(patch).eq("id", id);
       if (error) throw error;
     },
@@ -707,8 +721,19 @@ function CardView({ p, onOpen, onDelete }: any) {
     slaTarget = new Date(inicio.getTime() + 24 * 3600 * 1000);
   }
 
-  const isConcluido = !!(p.data_resolucao || p.concluido_em);
-  const isAtrasado = !isConcluido && new Date() > slaTarget;
+  const concluidoAliases = [
+    "desbloqueio",
+    "concluido",
+    "concluida",
+    "finalizado",
+    "finalizada",
+    "resolvido",
+    "resolvida",
+  ];
+  const normStatus = (p.status || "").toLowerCase();
+  const isConcluidoStatus = concluidoAliases.some((a) => normStatus.includes(a));
+  const isConcluido = isConcluidoStatus || p.arquivado;
+  const isAtrasado = !isConcluido && slaTarget ? new Date() > slaTarget : false;
 
   return (
     <div
@@ -841,9 +866,22 @@ function PendenciaDetail({ p, quadros, onClose }: any) {
   });
 
   const updateStatus = async (novoStatus: string) => {
+    const concluidoAliases = [
+      "desbloqueio",
+      "concluido",
+      "concluida",
+      "finalizado",
+      "finalizada",
+      "resolvido",
+      "resolvida",
+    ];
+    const isConcluidoStatus = concluidoAliases.some((a) => novoStatus.toLowerCase().includes(a));
     const patch: any = { status: novoStatus };
-    if (novoStatus === "DESBLOQUEIO" || novoStatus === "Concluído" || novoStatus === "concluido") {
+    if (isConcluidoStatus) {
       patch.concluido_em = new Date().toISOString();
+    } else {
+      patch.concluido_em = null;
+      patch.data_resolucao = null;
     }
     await db.from("pendencias").update(patch).eq("id", p.id);
     qc.invalidateQueries({ queryKey: ["pendencias"] });

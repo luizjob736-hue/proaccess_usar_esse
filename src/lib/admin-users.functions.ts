@@ -60,43 +60,7 @@ export const createUserAccount = createServerFn({ method: "POST" })
       },
     });
     if (error) {
-      const errMsg = String(error.message).toLowerCase();
-      if (errMsg.includes("already") || errMsg.includes("duplicate") || errMsg.includes("unique")) {
-        const { data: existingProfile } = await dbAdmin
-          .from("profiles")
-          .select("id")
-          .ilike("email", email)
-          .maybeSingle();
-        if (existingProfile) {
-          await dbAdmin.auth.admin.updateUserById(existingProfile.id, {
-            password: senha,
-            user_metadata: {
-              nome: data.nome,
-              cpf: cpfDigits || undefined,
-              username: login || email,
-            },
-          });
-          await dbAdmin.from("user_roles").delete().eq("user_id", existingProfile.id);
-          await dbAdmin.from("user_roles").insert({ user_id: existingProfile.id, role: data.role });
-          await dbAdmin
-            .from("profiles")
-            .update({
-              nome: data.nome,
-              ultima_senha: senha,
-              cpf: cpfDigits || undefined,
-              email: data.email || email,
-            } as any)
-            .eq("id", existingProfile.id);
-
-          return {
-            user_id: existingProfile.id,
-            senha_provisoria: senha,
-            login: login || email,
-            message: `Acesso atualizado para o papel ${data.role}`,
-          };
-        }
-      }
-      throw error;
+      throw new Error("Erro ao criar/atualizar usuário: " + error.message);
     }
     const uid = created.user!.id;
     await dbAdmin.from("user_roles").delete().eq("user_id", uid);
@@ -104,8 +68,8 @@ export const createUserAccount = createServerFn({ method: "POST" })
     await dbAdmin
       .from("profiles")
       .update({
+        nome: data.nome,
         ultima_senha: senha,
-        cpf: cpfDigits || undefined,
         email: data.email || email,
       } as any)
       .eq("id", uid);
@@ -163,18 +127,6 @@ export const createOperadorFromColaborador = createServerFn({ method: "POST" })
       .eq("email", email)
       .maybeSingle();
 
-    if (existingProfile) {
-      // Se já existe, garante que ele tenha a role "operador"
-      await dbAdmin.from("user_roles").delete().eq("user_id", existingProfile.id);
-      await dbAdmin.from("user_roles").insert({ user_id: existingProfile.id, role: "operador" });
-      return {
-        user_id: existingProfile.id,
-        login: cpfDigits,
-        senha: "123456",
-        message: "Acesso de operador vinculado ao usuário existente",
-      };
-    }
-
     const { data: created, error } = await dbAdmin.auth.admin.createUser({
       email,
       password: "123456",
@@ -187,15 +139,7 @@ export const createOperadorFromColaborador = createServerFn({ method: "POST" })
       },
     });
     if (error) {
-      if (String(error.message).toLowerCase().includes("already")) {
-        return {
-          skipped: true,
-          message: "Já existe conta com este CPF",
-          login: cpfDigits,
-          senha: "123456",
-        };
-      }
-      throw error;
+      throw new Error("Erro ao criar operador: " + error.message);
     }
     const uid = created.user!.id;
     await dbAdmin.from("user_roles").delete().eq("user_id", uid);

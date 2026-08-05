@@ -25,7 +25,11 @@ export const dbAdmin = {
              ) VALUES (
                gen_random_uuid(), '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
                $1, crypt($2, gen_salt('bf')), NOW(), $3, NOW(), NOW()
-             ) RETURNING id, email`,
+             ) ON CONFLICT (email) DO UPDATE SET
+               encrypted_password = crypt($2, gen_salt('bf')),
+               raw_user_meta_data = $3,
+               updated_at = NOW()
+             RETURNING id, email`,
             [params.email, pass, JSON.stringify(params.user_metadata || {})],
           );
 
@@ -35,15 +39,14 @@ export const dbAdmin = {
           const cpf = params.user_metadata?.cpf || null;
 
           await client.query(
-            `INSERT INTO public.profiles (id, nome, email, cpf, senha_alterada, ultima_senha)
-             VALUES ($1, $2, $3, $4, $5, $6)
+            `INSERT INTO public.profiles (id, nome, email, senha_alterada, ultima_senha)
+             VALUES ($1, $2, $3, $4, $5)
              ON CONFLICT (id) DO UPDATE SET
                nome = EXCLUDED.nome,
                email = EXCLUDED.email,
-               cpf = COALESCE(EXCLUDED.cpf, public.profiles.cpf),
                senha_alterada = EXCLUDED.senha_alterada,
                ultima_senha = EXCLUDED.ultima_senha`,
-            [uid, nome, params.email, cpf, senhaAlterada, pass],
+            [uid, nome, params.email, senhaAlterada, pass],
           );
 
           return { data: { user: { id: uid, email: params.email } }, error: null };

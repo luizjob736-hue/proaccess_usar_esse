@@ -433,10 +433,10 @@ function Pendencias() {
 
                   if (!finalSla && selectedSisId) {
                     const sisObj = sistemas.find((s: any) => s.id === selectedSisId);
-                    const horas = sisObj?.sla_horas ?? 24;
+                    const diasSla = sisObj?.sla_horas ?? 1;
                     const startVal = (fd.get("data_inicio") as string) || new Date().toISOString();
                     const startDate = new Date(startVal);
-                    const slaDate = new Date(startDate.getTime() + horas * 3600 * 1000);
+                    const slaDate = new Date(startDate.getTime() + diasSla * 24 * 3600 * 1000);
                     finalSla = slaDate.toISOString();
                   }
 
@@ -702,7 +702,7 @@ function CardView({ p, onOpen, onDelete }: any) {
   if (p.sla_em) {
     slaTarget = new Date(p.sla_em);
   } else if (p.sistema?.sla_horas) {
-    slaTarget = new Date(inicio.getTime() + p.sistema.sla_horas * 3600 * 1000);
+    slaTarget = new Date(inicio.getTime() + p.sistema.sla_horas * 24 * 3600 * 1000);
   } else {
     slaTarget = new Date(inicio.getTime() + 24 * 3600 * 1000);
   }
@@ -743,7 +743,7 @@ function CardView({ p, onOpen, onDelete }: any) {
         <p className="text-xs text-muted-foreground truncate flex items-center gap-1">
           🖥 {p.sistema.nome}
           {p.sistema.sla_horas && (
-            <span className="text-[10px] text-muted-foreground">({p.sistema.sla_horas}h SLA)</span>
+            <span className="text-[10px] text-muted-foreground">({p.sistema.sla_horas}d SLA)</span>
           )}
         </p>
       )}

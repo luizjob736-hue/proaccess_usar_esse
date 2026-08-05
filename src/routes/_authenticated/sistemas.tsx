@@ -93,7 +93,7 @@ function Sistemas() {
       criticidade: fd.get("criticidade") || "media",
       responsavel_id: (fd.get("responsavel_id") as string) || null,
       url: fd.get("url"),
-      sla_horas: fd.get("sla_horas") ? Number(fd.get("sla_horas")) : 24,
+      sla_horas: fd.get("sla_horas") ? Number(fd.get("sla_horas")) : 1,
     });
   }
 
@@ -164,16 +164,16 @@ function Sistemas() {
                 <Input name="url" placeholder="https://..." />
               </div>
               <div>
-                <Label>SLA de Atendimento / Criação (Horas)</Label>
+                <Label>SLA de Atendimento / Criação (Dias)</Label>
                 <Input
                   name="sla_horas"
                   type="number"
                   min="1"
-                  defaultValue="24"
-                  placeholder="Ex: 24, 48"
+                  defaultValue="1"
+                  placeholder="Ex: 1, 2, 5"
                 />
                 <p className="text-[11px] text-muted-foreground mt-1">
-                  Prazo padrão de atendimento refletido nas pendências deste sistema.
+                  Prazo padrão de atendimento em dias refletido nas pendências deste sistema.
                 </p>
               </div>
               <DialogFooter>
@@ -198,7 +198,7 @@ function Sistemas() {
                     variant="secondary"
                     className="text-xs font-medium bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30"
                   >
-                    ⏱ SLA: {s.sla_horas ?? 24}h
+                    ⏱ SLA: {s.sla_horas ?? 1} dia(s)
                   </Badge>
                   <Badge
                     variant={
@@ -265,7 +265,7 @@ function Sistemas() {
                   criticidade: fd.get("criticidade"),
                   responsavel_id: (fd.get("responsavel_id") as string) || null,
                   url: fd.get("url"),
-                  sla_horas: fd.get("sla_horas") ? Number(fd.get("sla_horas")) : 24,
+                  sla_horas: fd.get("sla_horas") ? Number(fd.get("sla_horas")) : 1,
                 });
               }}
               className="space-y-3"
@@ -318,13 +318,13 @@ function Sistemas() {
                 <Input name="url" defaultValue={editSis.url ?? ""} placeholder="https://..." />
               </div>
               <div>
-                <Label>SLA de Atendimento / Criação (Horas)</Label>
+                <Label>SLA de Atendimento / Criação (Dias)</Label>
                 <Input
                   name="sla_horas"
                   type="number"
                   min="1"
-                  defaultValue={editSis.sla_horas ?? 24}
-                  placeholder="Ex: 24, 48"
+                  defaultValue={editSis.sla_horas ?? 1}
+                  placeholder="Ex: 1, 2, 5"
                 />
               </div>
               <DialogFooter>

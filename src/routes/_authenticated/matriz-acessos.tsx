@@ -23,6 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Eye,
   EyeOff,
@@ -35,6 +36,7 @@ import {
   Upload,
   Pencil,
   Trash2,
+  CheckSquare,
 } from "lucide-react";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
@@ -253,14 +255,58 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
     );
   }, [linhas, q]);
 
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const allFilteredSelected =
+    filtered.length > 0 && filtered.every((r: any) => selectedIds.has(r.id));
+
+  const toggleSelectAll = () => {
+    if (allFilteredSelected) {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        filtered.forEach((r: any) => next.delete(r.id));
+        return next;
+      });
+    } else {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        filtered.forEach((r: any) => next.add(r.id));
+        return next;
+      });
+    }
+  };
+
+  const clearSelection = () => {
+    setSelectedIds(new Set());
+  };
+
   function copy(v: string | null, label: string) {
     if (!v) return;
     navigator.clipboard.writeText(v);
     toast.success(`${label} copiado`);
   }
 
-  function exportar() {
-    const rows = filtered.map((r: any) => {
+  function exportar(onlySelected = false) {
+    const targetRows = onlySelected ? filtered.filter((r: any) => selectedIds.has(r.id)) : filtered;
+
+    if (onlySelected && targetRows.length === 0) {
+      toast.error("Nenhum operador selecionado para exportar");
+      return;
+    }
+
+    const rows = targetRows.map((r: any) => {
       const base: any = {
         Nome: r.nome,
         CPF: r.cpf ?? "",
@@ -285,7 +331,16 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, onlyInativos ? "Inativos" : "Matriz");
-    XLSX.writeFile(wb, onlyInativos ? "usuarios-inativos.xlsx" : "matriz-acessos.xlsx");
+    const fileName = onlySelected
+      ? onlyInativos
+        ? "usuarios-inativos-selecionados.xlsx"
+        : "matriz-acessos-selecionados.xlsx"
+      : onlyInativos
+        ? "usuarios-inativos.xlsx"
+        : "matriz-acessos.xlsx";
+
+    XLSX.writeFile(wb, fileName);
+    toast.success(`${rows.length} operador(es) exportado(s) com sucesso!`);
   }
 
   const Val = ({
@@ -330,9 +385,19 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
             {reveal ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             {reveal ? "Ocultar" : "Mostrar"}
           </Button>
-          <Button variant="outline" onClick={exportar} className="gap-2">
-            <FileDown className="h-4 w-4" /> Exportar
-          </Button>
+          {selectedIds.size > 0 ? (
+            <Button
+              variant="default"
+              onClick={() => exportar(true)}
+              className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm"
+            >
+              <FileDown className="h-4 w-4" /> Exportar Selecionados ({selectedIds.size})
+            </Button>
+          ) : (
+            <Button variant="outline" onClick={() => exportar(false)} className="gap-2">
+              <FileDown className="h-4 w-4" /> Exportar Excel
+            </Button>
+          )}
           {!onlyInativos && (
             <>
               <Link to="/importar">
@@ -508,6 +573,37 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
         </CardContent>
       </Card>
 
+      {selectedIds.size > 0 && (
+        <Card className="bg-primary/5 border-primary/20">
+          <CardContent className="py-2 px-4 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs">
+            <div className="flex items-center gap-2 text-primary font-medium">
+              <CheckSquare className="h-4 w-4 text-primary" />
+              <span>
+                <strong>{selectedIds.size}</strong> operador(es) selecionado(s) de {filtered.length}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 text-xs hover:bg-primary/10 text-primary"
+                onClick={clearSelection}
+              >
+                Limpar seleção
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => exportar(true)}
+                className="h-7 text-xs gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"
+              >
+                <FileDown className="h-3.5 w-3.5" />
+                Exportar Selecionados ({selectedIds.size})
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <Card className="overflow-hidden border shadow-sm">
         <CardHeader className="py-3 px-4 bg-muted/20 border-b flex flex-row items-center justify-between">
           <CardTitle className="text-base font-medium flex items-center gap-2">
@@ -515,6 +611,11 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
             <Badge variant="secondary" className="ml-1 text-xs">
               {filtered.length} registro{filtered.length === 1 ? "" : "s"}
             </Badge>
+            {selectedIds.size > 0 && (
+              <Badge variant="default" className="bg-emerald-600 text-white text-xs">
+                {selectedIds.size} selecionado(s)
+              </Badge>
+            )}
           </CardTitle>
           <div className="text-xs text-muted-foreground font-medium">Tabela única e contínua</div>
         </CardHeader>
@@ -523,8 +624,15 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
           <table className="text-xs border-collapse w-full relative">
             <thead className="bg-muted uppercase text-[11px] font-semibold text-muted-foreground sticky top-0 z-30 shadow-sm">
               <tr>
-                <th className="p-2.5 text-left border-b border-r sticky left-0 top-0 bg-muted z-40 min-w-[180px] shadow-sm">
-                  Nome
+                <th className="p-2.5 text-left border-b border-r sticky left-0 top-0 bg-muted z-40 min-w-[210px] shadow-sm">
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      checked={allFilteredSelected}
+                      onCheckedChange={toggleSelectAll}
+                      aria-label="Selecionar todos os colaboradores"
+                    />
+                    <span>Nome</span>
+                  </div>
                 </th>
                 <th className="p-2.5 text-left border-b border-r min-w-[110px]">CPF</th>
                 <th className="p-2.5 text-left border-b border-r min-w-[100px]">Nascimento</th>
@@ -565,147 +673,161 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
               </tr>
             </thead>
             <tbody className="divide-y">
-              {filtered.map((r: any) => (
-                <tr
-                  key={r.id}
-                  className={
-                    "hover:bg-muted/40 transition-colors " +
-                    (r.status === "inativo" || r.status === "desligado"
-                      ? "opacity-75 bg-muted/10"
-                      : "")
-                  }
-                >
-                  <td className="p-2 border-r font-medium sticky left-0 bg-background z-20 shadow-sm">
-                    <div className="flex items-center justify-between gap-1">
-                      <span className="truncate max-w-[160px]" title={r.nome}>
-                        {r.nome}
-                      </span>
-                      {(r.status === "inativo" || r.status === "desligado") && (
-                        <Badge variant="destructive" className="text-[9px] px-1 py-0 h-4">
-                          {r.status}
-                        </Badge>
-                      )}
-                    </div>
-                  </td>
-                  <td className="p-2 border-r font-mono text-[11px] text-muted-foreground">
-                    {r.cpf ?? "—"}
-                  </td>
-                  <td className="p-2 border-r text-[11px]">
-                    {r.data_nascimento
-                      ? new Date(r.data_nascimento + "T00:00:00").toLocaleDateString("pt-BR")
-                      : "—"}
-                  </td>
-                  <td
-                    className="p-2 border-r text-[11px] truncate max-w-[160px]"
-                    title={r.email ?? ""}
+              {filtered.map((r: any) => {
+                const isSelected = selectedIds.has(r.id);
+                return (
+                  <tr
+                    key={r.id}
+                    className={
+                      "transition-colors " +
+                      (isSelected ? "bg-primary/10 hover:bg-primary/15" : "hover:bg-muted/40 ") +
+                      (r.status === "inativo" || r.status === "desligado" ? " opacity-85" : "")
+                    }
                   >
-                    {r.email ?? "—"}
-                  </td>
-                  <td className="p-2 border-r">
-                    <Val v={r.email_senha} label="Senha e-mail" />
-                  </td>
-                  <td className="p-2 border-r text-[11px]">{r.telefone ?? "—"}</td>
-                  <td className="p-2 border-r text-[11px] truncate max-w-[120px]">
-                    {r.cargo ?? "—"}
-                  </td>
-                  {onlyInativos && (
-                    <td className="p-2 border-r text-[11px]">
-                      {r.inativado_em ? new Date(r.inativado_em).toLocaleDateString("pt-BR") : "—"}
+                    <td className="p-2 border-r font-medium sticky left-0 bg-background z-20 shadow-sm">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          <Checkbox
+                            checked={isSelected}
+                            onCheckedChange={() => toggleSelect(r.id)}
+                            aria-label={`Selecionar ${r.nome}`}
+                          />
+                          <span className="truncate max-w-[140px]" title={r.nome}>
+                            {r.nome}
+                          </span>
+                        </div>
+                        {(r.status === "inativo" || r.status === "desligado") && (
+                          <Badge
+                            variant="destructive"
+                            className="text-[9px] px-1 py-0 h-4 shrink-0"
+                          >
+                            {r.status}
+                          </Badge>
+                        )}
+                      </div>
                     </td>
-                  )}
-                  <td className="p-2 border-r">
-                    <div className="flex items-center justify-center gap-1">
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-6 w-6"
-                        title="Editar"
-                        onClick={() => setEditColab(r)}
-                      >
-                        <Pencil className="h-3 w-3" />
-                      </Button>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-6 w-6"
-                        title="Adicionar acesso"
-                        onClick={() => setAddAcessoFor(r)}
-                      >
-                        <Plus className="h-3 w-3" />
-                      </Button>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-6 w-6"
-                        title={r.status === "inativo" ? "Reativar" : "Marcar inativo"}
-                        onClick={() =>
-                          flagInativo.mutate({ id: r.id, inativo: r.status !== "inativo" })
-                        }
-                      >
-                        <UserX
-                          className={
-                            "h-3 w-3 " + (r.status === "inativo" ? "text-destructive" : "")
-                          }
-                        />
-                      </Button>
-                      {isMaster && (
+                    <td className="p-2 border-r font-mono text-[11px] text-muted-foreground">
+                      {r.cpf ?? "—"}
+                    </td>
+                    <td className="p-2 border-r text-[11px]">
+                      {r.data_nascimento
+                        ? new Date(r.data_nascimento + "T00:00:00").toLocaleDateString("pt-BR")
+                        : "—"}
+                    </td>
+                    <td
+                      className="p-2 border-r text-[11px] truncate max-w-[160px]"
+                      title={r.email ?? ""}
+                    >
+                      {r.email ?? "—"}
+                    </td>
+                    <td className="p-2 border-r">
+                      <Val v={r.email_senha} label="Senha e-mail" />
+                    </td>
+                    <td className="p-2 border-r text-[11px]">{r.telefone ?? "—"}</td>
+                    <td className="p-2 border-r text-[11px] truncate max-w-[120px]">
+                      {r.cargo ?? "—"}
+                    </td>
+                    {onlyInativos && (
+                      <td className="p-2 border-r text-[11px]">
+                        {r.inativado_em
+                          ? new Date(r.inativado_em).toLocaleDateString("pt-BR")
+                          : "—"}
+                      </td>
+                    )}
+                    <td className="p-2 border-r">
+                      <div className="flex items-center justify-center gap-1">
                         <Button
                           size="icon"
                           variant="ghost"
-                          title="Excluir colaborador"
-                          className="h-6 w-6 text-destructive hover:text-destructive hover:bg-destructive/10"
-                          onClick={() => {
-                            if (window.confirm(`Tem certeza que deseja excluir ${r.nome}?`)) {
-                              excluirColab.mutate(r.id);
-                            }
-                          }}
+                          className="h-6 w-6"
+                          title="Editar"
+                          onClick={() => setEditColab(r)}
                         >
-                          <Trash2 className="h-3 w-3" />
+                          <Pencil className="h-3 w-3" />
                         </Button>
-                      )}
-                    </div>
-                  </td>
-                  {sistemas.map((s) => {
-                    const a = r.acessos[s.id];
-                    return (
-                      <Fragment key={s.id}>
-                        <td className="p-2 border-r">
-                          <Val
-                            v={a?.login}
-                            label="Usuário"
-                            onEdit={
-                              a
-                                ? () =>
-                                    setEditAcesso({
-                                      ...a,
-                                      colab_nome: r.nome,
-                                      sistema_nome: s.nome,
-                                    })
-                                : undefined
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-6 w-6"
+                          title="Adicionar acesso"
+                          onClick={() => setAddAcessoFor(r)}
+                        >
+                          <Plus className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-6 w-6"
+                          title={r.status === "inativo" ? "Reativar" : "Marcar inativo"}
+                          onClick={() =>
+                            flagInativo.mutate({ id: r.id, inativo: r.status !== "inativo" })
+                          }
+                        >
+                          <UserX
+                            className={
+                              "h-3 w-3 " + (r.status === "inativo" ? "text-destructive" : "")
                             }
                           />
-                        </td>
-                        <td className="p-2 border-r">
-                          <Val
-                            v={a?.senha}
-                            label="Senha"
-                            onEdit={
-                              a
-                                ? () =>
-                                    setEditAcesso({
-                                      ...a,
-                                      colab_nome: r.nome,
-                                      sistema_nome: s.nome,
-                                    })
-                                : undefined
-                            }
-                          />
-                        </td>
-                      </Fragment>
-                    );
-                  })}
-                </tr>
-              ))}
+                        </Button>
+                        {isMaster && (
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            title="Excluir colaborador"
+                            className="h-6 w-6 text-destructive hover:text-destructive hover:bg-destructive/10"
+                            onClick={() => {
+                              if (window.confirm(`Tem certeza que deseja excluir ${r.nome}?`)) {
+                                excluirColab.mutate(r.id);
+                              }
+                            }}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        )}
+                      </div>
+                    </td>
+                    {sistemas.map((s) => {
+                      const a = r.acessos[s.id];
+                      return (
+                        <Fragment key={s.id}>
+                          <td className="p-2 border-r">
+                            <Val
+                              v={a?.login}
+                              label="Usuário"
+                              onEdit={
+                                a
+                                  ? () =>
+                                      setEditAcesso({
+                                        ...a,
+                                        colab_nome: r.nome,
+                                        sistema_nome: s.nome,
+                                      })
+                                  : undefined
+                              }
+                            />
+                          </td>
+                          <td className="p-2 border-r">
+                            <Val
+                              v={a?.senha}
+                              label="Senha"
+                              onEdit={
+                                a
+                                  ? () =>
+                                      setEditAcesso({
+                                        ...a,
+                                        colab_nome: r.nome,
+                                        sistema_nome: s.nome,
+                                      })
+                                  : undefined
+                              }
+                            />
+                          </td>
+                        </Fragment>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
               {filtered.length === 0 && (
                 <tr>
                   <td

@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { db } from "@/integrations/database/client";
 import { useMemo, useState, Fragment, memo, useCallback } from "react";
+import { OperationFilterBar } from "@/components/OperationFilterBar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -112,6 +113,7 @@ const ValCell = memo(function ValCell({
 export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean }) {
   const qc = useQueryClient();
   const [q, setQ] = useState("");
+  const [selectedOperacaoId, setSelectedOperacaoId] = useState("todas");
   const [reveal, setReveal] = useState(false);
   const [newSisOpen, setNewSisOpen] = useState(false);
   const [newColOpen, setNewColOpen] = useState(false);
@@ -315,17 +317,35 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
     return { sistemas, linhas };
   }, [acessos, colabsRaw, onlyInativos]);
 
+  const operacaoCounts = useMemo(() => {
+    const counts: Record<string, number> = { todas: linhas.length, sem_operacao: 0 };
+    for (const r of linhas) {
+      if (!r.operacao_id) {
+        counts["sem_operacao"] = (counts["sem_operacao"] || 0) + 1;
+      } else {
+        counts[r.operacao_id] = (counts[r.operacao_id] || 0) + 1;
+      }
+    }
+    return counts;
+  }, [linhas]);
+
+  const filteredByOp = useMemo(() => {
+    if (selectedOperacaoId === "todas") return linhas;
+    if (selectedOperacaoId === "sem_operacao") return linhas.filter((r: any) => !r.operacao_id);
+    return linhas.filter((r: any) => r.operacao_id === selectedOperacaoId);
+  }, [linhas, selectedOperacaoId]);
+
   const filtered = useMemo(() => {
     const t = q.trim().toLowerCase();
-    if (!t) return linhas;
-    return linhas.filter((r: any) =>
+    if (!t) return filteredByOp;
+    return filteredByOp.filter((r: any) =>
       [r.nome, r.email, r.telefone, r.cpf].some((v) =>
         String(v ?? "")
           .toLowerCase()
           .includes(t),
       ),
     );
-  }, [linhas, q]);
+  }, [filteredByOp, q]);
 
   const totalPages = pageSize > 0 ? Math.ceil(filtered.length / pageSize) : 1;
   const currentPage = Math.min(Math.max(1, page), totalPages || 1);
@@ -592,7 +612,14 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
                     </div>
                     <div>
                       <Label>Operação</Label>
-                      <Select name="operacao_id">
+                      <Select
+                        name="operacao_id"
+                        defaultValue={
+                          selectedOperacaoId !== "todas" && selectedOperacaoId !== "sem_operacao"
+                            ? selectedOperacaoId
+                            : undefined
+                        }
+                      >
                         <SelectTrigger>
                           <SelectValue placeholder="—" />
                         </SelectTrigger>
@@ -629,6 +656,12 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
           )}
         </div>
       </div>
+
+      <OperationFilterBar
+        selectedOperacaoId={selectedOperacaoId}
+        onChange={setSelectedOperacaoId}
+        counts={operacaoCounts}
+      />
 
       <Card>
         <CardContent className="py-3 px-4">
@@ -790,9 +823,7 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
                     <td className="p-2 border-r font-mono text-[11px] text-muted-foreground">
                       {r.cpf ?? "—"}
                     </td>
-                    <td className="p-2 border-r text-[11px]">
-                      {formatDateBR(r.data_nascimento)}
-                    </td>
+                    <td className="p-2 border-r text-[11px]">{formatDateBR(r.data_nascimento)}</td>
                     <td
                       className="p-2 border-r text-[11px] truncate max-w-[160px]"
                       title={r.email ?? ""}
@@ -800,16 +831,19 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
                       {r.email ?? "—"}
                     </td>
                     <td className="p-2 border-r">
-                      <ValCell v={r.email_senha} label="Senha e-mail" reveal={reveal} onCopy={copy} />
+                      <ValCell
+                        v={r.email_senha}
+                        label="Senha e-mail"
+                        reveal={reveal}
+                        onCopy={copy}
+                      />
                     </td>
                     <td className="p-2 border-r text-[11px]">{r.telefone ?? "—"}</td>
                     <td className="p-2 border-r text-[11px] truncate max-w-[120px]">
                       {r.cargo ?? "—"}
                     </td>
                     {onlyInativos && (
-                      <td className="p-2 border-r text-[11px]">
-                        {formatDateBR(r.inativado_em)}
-                      </td>
+                      <td className="p-2 border-r text-[11px]">{formatDateBR(r.inativado_em)}</td>
                     )}
                     <td className="p-2 border-r">
                       <div className="flex items-center justify-center gap-1">
@@ -930,12 +964,9 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
               {filtered.length === 0
                 ? 0
                 : pageSize > 0
-                ? Math.min((currentPage - 1) * pageSize + 1, filtered.length)
-                : 1}{" "}
-              -{" "}
-              {pageSize > 0
-                ? Math.min(currentPage * pageSize, filtered.length)
-                : filtered.length}{" "}
+                  ? Math.min((currentPage - 1) * pageSize + 1, filtered.length)
+                  : 1}{" "}
+              - {pageSize > 0 ? Math.min(currentPage * pageSize, filtered.length) : filtered.length}{" "}
               de <strong>{filtered.length}</strong> colaboradores
             </span>
             {selectedIds.size > 0 && (
@@ -1122,7 +1153,11 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
               </div>
               <div>
                 <Label>Admissão</Label>
-                <Input name="admissao_em" type="date" defaultValue={toInputDateValue(editColab.admissao_em)} />
+                <Input
+                  name="admissao_em"
+                  type="date"
+                  defaultValue={toInputDateValue(editColab.admissao_em)}
+                />
               </div>
               <div>
                 <Label>Data de Nascimento</Label>

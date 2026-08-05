@@ -1,19 +1,36 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { db } from "@/integrations/database/client";
-import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useState, useMemo } from "react";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { List, Plus, Trash2 } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { List, Plus, Trash2, Building2 } from "lucide-react";
 import { toast } from "sonner";
+import { OperationFilterBar } from "@/components/OperationFilterBar";
 
 export const Route = createFileRoute("/_authenticated/lista-acessos")({ component: ListaAcessos });
 
-type Lista = { id: string; titulo: string; posicao: number; colunas: string[]; linhas: string[][] };
+type Lista = {
+  id: string;
+  titulo: string;
+  posicao: number;
+  colunas: string[];
+  linhas: string[][];
+  operacao_id?: string | null;
+};
 
 function ListaAcessos() {
   const qc = useQueryClient();
+  const [selectedOperacaoId, setSelectedOperacaoId] = useState("todas");
+
   const { data: listas = [] } = useQuery({
     queryKey: ["lista-acessos"],
     queryFn: async () => {
@@ -23,6 +40,29 @@ function ListaAcessos() {
     },
   });
 
+  const { data: operacoes = [] } = useQuery({
+    queryKey: ["operacoes-list"],
+    queryFn: async () => (await db.from("operacoes").select("id,nome").order("nome")).data ?? [],
+  });
+
+  const listaCounts = useMemo(() => {
+    const map: Record<string, number> = { todas: listas.length, sem_operacao: 0 };
+    for (const l of listas) {
+      if (!l.operacao_id) {
+        map["sem_operacao"] = (map["sem_operacao"] || 0) + 1;
+      } else {
+        map[l.operacao_id] = (map[l.operacao_id] || 0) + 1;
+      }
+    }
+    return map;
+  }, [listas]);
+
+  const filteredListas = useMemo(() => {
+    if (selectedOperacaoId === "todas") return listas;
+    if (selectedOperacaoId === "sem_operacao") return listas.filter((l) => !l.operacao_id);
+    return listas.filter((l) => l.operacao_id === selectedOperacaoId);
+  }, [listas, selectedOperacaoId]);
+
   const save = useMutation({
     mutationFn: async (l: Lista) => {
       const { error } = await (db as any)
@@ -31,6 +71,7 @@ function ListaAcessos() {
           titulo: l.titulo,
           colunas: l.colunas,
           linhas: l.linhas,
+          operacao_id: l.operacao_id || null,
         })
         .eq("id", l.id);
       if (error) throw error;
@@ -44,11 +85,16 @@ function ListaAcessos() {
 
   const create = useMutation({
     mutationFn: async () => {
+      const opId =
+        selectedOperacaoId !== "todas" && selectedOperacaoId !== "sem_operacao"
+          ? selectedOperacaoId
+          : null;
       const { error } = await (db as any).from("lista_acessos").insert({
         titulo: "Nova lista",
         posicao: listas.length,
         colunas: ["Coluna 1", "Coluna 2"],
         linhas: [["", ""]],
+        operacao_id: opId,
       });
       if (error) throw error;
     },
@@ -78,19 +124,26 @@ function ListaAcessos() {
         </Button>
       </div>
 
-      {listas.map((l) => (
+      <OperationFilterBar
+        selectedOperacaoId={selectedOperacaoId}
+        onChange={setSelectedOperacaoId}
+        counts={listaCounts}
+      />
+
+      {filteredListas.map((l) => (
         <ListaEditor
           key={l.id}
           lista={l}
+          operacoes={operacoes}
           onSave={(v) => save.mutate(v)}
           onDelete={() => remove.mutate(l.id)}
         />
       ))}
 
-      {listas.length === 0 && (
+      {filteredListas.length === 0 && (
         <Card>
           <CardContent className="pt-6 text-sm text-center text-muted-foreground">
-            Nenhuma tabela. Clique em "Nova tabela".
+            Nenhuma tabela encontrada nesta operação. Clique em "Nova tabela".
           </CardContent>
         </Card>
       )}
@@ -100,10 +153,12 @@ function ListaAcessos() {
 
 function ListaEditor({
   lista,
+  operacoes,
   onSave,
   onDelete,
 }: {
   lista: Lista;
+  operacoes: any[];
   onSave: (l: Lista) => void;
   onDelete: () => void;
 }) {
@@ -151,6 +206,26 @@ function ListaEditor({
           onChange={(e) => setState({ ...state, titulo: e.target.value })}
           className="flex-1 text-lg font-semibold border-0 focus-visible:ring-0 shadow-none px-0"
         />
+        <div className="w-44">
+          <Select
+            value={state.operacao_id || "none"}
+            onValueChange={(val) =>
+              setState({ ...state, operacao_id: val === "none" ? null : val })
+            }
+          >
+            <SelectTrigger className="h-8 text-xs">
+              <SelectValue placeholder="Operação..." />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">Geral (Sem Operação)</SelectItem>
+              {operacoes.map((o: any) => (
+                <SelectItem key={o.id} value={o.id}>
+                  {o.nome}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
         <Button size="sm" variant="outline" onClick={addLinha} className="gap-1">
           <Plus className="h-3 w-3" /> Linha
         </Button>

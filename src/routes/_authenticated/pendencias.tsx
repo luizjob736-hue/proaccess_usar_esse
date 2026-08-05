@@ -26,6 +26,7 @@ import { Plus, MessageSquare, Upload, FileDown, Settings, Trash2 } from "lucide-
 import { toast } from "sonner";
 import Papa from "papaparse";
 import { parseDateToISO } from "@/routes/_authenticated/importar";
+import { OperationFilterBar } from "@/components/OperationFilterBar";
 import {
   DndContext,
   DragEndEvent,
@@ -142,6 +143,7 @@ function Pendencias() {
   const [detailId, setDetailId] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [sistemaFiltro, setSistemaFiltro] = useState<string>("todos");
+  const [selectedOperacaoId, setSelectedOperacaoId] = useState("todas");
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   const { data: quadros = [] } = useQuery({
@@ -155,7 +157,9 @@ function Pendencias() {
       (
         await db
           .from("pendencias")
-          .select("*, colaborador:colaboradores(id, nome), sistema:sistemas(id, nome, sla_horas)")
+          .select(
+            "*, colaborador:colaboradores(id, nome, operacao_id), sistema:sistemas(id, nome, sla_horas)",
+          )
           .eq("arquivado", false)
           .order("posicao")
       ).data ?? [],
@@ -169,6 +173,10 @@ function Pendencias() {
     queryKey: ["sistemas-simple"],
     queryFn: async () =>
       (await db.from("sistemas").select("id,nome,sla_horas").order("nome")).data ?? [],
+  });
+  const { data: operacoes = [] } = useQuery({
+    queryKey: ["operacoes-simple"],
+    queryFn: async () => (await db.from("operacoes").select("id,nome").order("nome")).data ?? [],
   });
 
   const deletePendencia = useMutation({
@@ -250,10 +258,36 @@ function Pendencias() {
     onError: (e: any) => toast.error(e.message),
   });
 
-  const listFiltrada =
-    sistemaFiltro === "todos"
-      ? list
-      : list.filter((p: any) => p.sistema?.id === sistemaFiltro || p.sistema_id === sistemaFiltro);
+  const pendenciasCounts = useMemo(() => {
+    const map: Record<string, number> = { todas: list.length, sem_operacao: 0 };
+    for (const p of list) {
+      const opId = p.operacao_id || p.colaborador?.operacao_id;
+      if (!opId) {
+        map["sem_operacao"] = (map["sem_operacao"] || 0) + 1;
+      } else {
+        map[opId] = (map[opId] || 0) + 1;
+      }
+    }
+    return map;
+  }, [list]);
+
+  const listPorOperacao = useMemo(() => {
+    if (selectedOperacaoId === "todas") return list;
+    if (selectedOperacaoId === "sem_operacao") {
+      return list.filter((p: any) => !p.operacao_id && !p.colaborador?.operacao_id);
+    }
+    return list.filter(
+      (p: any) =>
+        p.operacao_id === selectedOperacaoId || p.colaborador?.operacao_id === selectedOperacaoId,
+    );
+  }, [list, selectedOperacaoId]);
+
+  const listFiltrada = useMemo(() => {
+    if (sistemaFiltro === "todos") return listPorOperacao;
+    return listPorOperacao.filter(
+      (p: any) => p.sistema?.id === sistemaFiltro || p.sistema_id === sistemaFiltro,
+    );
+  }, [listPorOperacao, sistemaFiltro]);
 
   const importCsv = useMutation({
     mutationFn: async (file: File) => {
@@ -461,6 +495,11 @@ function Pendencias() {
                     prioridade: fd.get("prioridade") || "media",
                     colaborador_id: (fd.get("colaborador_id") as string) || null,
                     sistema_id: selectedSisId,
+                    operacao_id:
+                      (fd.get("operacao_id") as string) ||
+                      (selectedOperacaoId !== "todas" && selectedOperacaoId !== "sem_operacao"
+                        ? selectedOperacaoId
+                        : null),
                     sla_em: finalSla,
                     data_inicio: (fd.get("data_inicio") as string) || undefined,
                     etiquetas: ((fd.get("etiquetas") as string) || "")
@@ -556,9 +595,33 @@ function Pendencias() {
                     <Input name="sla_em" type="datetime-local" />
                   </div>
                 </div>
-                <div>
-                  <Label>Etiquetas (separadas por vírgula)</Label>
-                  <Input name="etiquetas" placeholder="urgente, tributário" />
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label>Operação</Label>
+                    <Select
+                      name="operacao_id"
+                      defaultValue={
+                        selectedOperacaoId !== "todas" && selectedOperacaoId !== "sem_operacao"
+                          ? selectedOperacaoId
+                          : undefined
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="—" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {operacoes.map((o: any) => (
+                          <SelectItem key={o.id} value={o.id}>
+                            {o.nome}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>Etiquetas (separadas por vírgula)</Label>
+                    <Input name="etiquetas" placeholder="urgente, tributário" />
+                  </div>
                 </div>
 
                 <DialogFooter>
@@ -619,6 +682,12 @@ function Pendencias() {
           </Dialog>
         </div>
       </div>
+
+      <OperationFilterBar
+        selectedOperacaoId={selectedOperacaoId}
+        onChange={setSelectedOperacaoId}
+        counts={pendenciasCounts}
+      />
 
       {sistemaFiltro !== "todos" && (
         <div className="text-sm text-muted-foreground">
@@ -820,7 +889,9 @@ function toYMD(val: any): string {
   try {
     const d = new Date(val);
     if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
-  } catch {}
+  } catch {
+    // Ignore date parse errors
+  }
   return String(val ?? "").slice(0, 10);
 }
 

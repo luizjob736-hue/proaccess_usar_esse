@@ -11,7 +11,9 @@ async function check() {
   });
   await client.connect();
 
-  const res = await client.query(`SELECT id, nome, email, cpf, ultima_senha, ativo FROM public.profiles`);
+  const res = await client.query(
+    `SELECT id, nome, email, cpf, ultima_senha, ativo FROM public.profiles`,
+  );
   console.log("PROFILES:", res.rows);
 
   const roles = await client.query(`SELECT * FROM public.user_roles`);

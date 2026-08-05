@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { db } from "@/integrations/database/client";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,8 +23,9 @@ import {
   DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Plus, Server, AlertTriangle, Pencil, Trash2 } from "lucide-react";
+import { Plus, Server, AlertTriangle, Pencil, Trash2, Users } from "lucide-react";
 import { toast } from "sonner";
+import { OperationFilterBar } from "@/components/OperationFilterBar";
 
 export const Route = createFileRoute("/_authenticated/sistemas")({ component: Sistemas });
 
@@ -32,6 +33,7 @@ function Sistemas() {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [editSis, setEditSis] = useState<any | null>(null);
+  const [selectedOperacaoId, setSelectedOperacaoId] = useState("todas");
 
   const { data: list = [] } = useQuery({
     queryKey: ["sistemas"],
@@ -42,6 +44,43 @@ function Sistemas() {
     queryKey: ["profiles-simple"],
     queryFn: async () => (await db.from("profiles").select("id,nome").order("nome")).data ?? [],
   });
+
+  const { data: acessos = [] } = useQuery({
+    queryKey: ["sistemas-acessos-ops"],
+    queryFn: async () => {
+      const { data } = await db
+        .from("acessos")
+        .select("id, sistema_id, status, colaborador:colaboradores(id, operacao_id)");
+      return (data as any[]) ?? [];
+    },
+  });
+
+  const sysOperacaoCounts = useMemo(() => {
+    const map: Record<string, number> = { todas: list.length, sem_operacao: 0 };
+    const sysPerOp = new Map<string, Set<string>>();
+    for (const a of acessos) {
+      if (!a.sistema_id) continue;
+      const opId = a.colaborador?.operacao_id || "sem_operacao";
+      if (!sysPerOp.has(opId)) sysPerOp.set(opId, new Set());
+      sysPerOp.get(opId)!.add(a.sistema_id);
+    }
+    for (const [opId, set] of sysPerOp.entries()) {
+      map[opId] = set.size;
+    }
+    return map;
+  }, [list, acessos]);
+
+  const filteredSistemas = useMemo(() => {
+    if (selectedOperacaoId === "todas") return list;
+    return list.filter((s: any) => {
+      const hasAccessForOp = acessos.some((a: any) => {
+        if (a.sistema_id !== s.id) return false;
+        if (selectedOperacaoId === "sem_operacao") return !a.colaborador?.operacao_id;
+        return a.colaborador?.operacao_id === selectedOperacaoId;
+      });
+      return hasAccessForOp;
+    });
+  }, [list, acessos, selectedOperacaoId]);
 
   const create = useMutation({
     mutationFn: async (form: any) => {
@@ -184,67 +223,84 @@ function Sistemas() {
         </Dialog>
       </div>
 
+      <OperationFilterBar
+        selectedOperacaoId={selectedOperacaoId}
+        onChange={setSelectedOperacaoId}
+        counts={sysOperacaoCounts}
+      />
+
       <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-        {list.map((s: any) => (
-          <Card key={s.id}>
-            <CardHeader className="pb-3">
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-2">
-                  <Server className="h-4 w-4 text-accent" />
-                  <CardTitle className="text-base">{s.nome}</CardTitle>
+        {filteredSistemas.map((s: any) => {
+          const sysAcessosForOp = acessos.filter((a: any) => {
+            if (a.sistema_id !== s.id) return false;
+            if (selectedOperacaoId === "todas") return true;
+            if (selectedOperacaoId === "sem_operacao") return !a.colaborador?.operacao_id;
+            return a.colaborador?.operacao_id === selectedOperacaoId;
+          });
+
+          return (
+            <Card key={s.id}>
+              <CardHeader className="pb-3">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-2">
+                    <Server className="h-4 w-4 text-accent" />
+                    <CardTitle className="text-base">{s.nome}</CardTitle>
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <Badge
+                      variant="secondary"
+                      className="text-xs font-medium bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30"
+                    >
+                      ⏱ SLA: {s.sla_horas ?? 1} dia(s)
+                    </Badge>
+                    <Badge
+                      variant={
+                        s.criticidade === "critica" || s.criticidade === "alta"
+                          ? "destructive"
+                          : "outline"
+                      }
+                    >
+                      {s.criticidade}
+                    </Badge>
+                  </div>
                 </div>
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <Badge
-                    variant="secondary"
-                    className="text-xs font-medium bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30"
-                  >
-                    ⏱ SLA: {s.sla_horas ?? 1} dia(s)
-                  </Badge>
-                  <Badge
-                    variant={
-                      s.criticidade === "critica" || s.criticidade === "alta"
-                        ? "destructive"
-                        : "outline"
-                    }
-                  >
-                    {s.criticidade}
-                  </Badge>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground line-clamp-2">{s.descricao || "—"}</p>
+                <div className="mt-3 flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">
+                    Responsável:{" "}
+                    {s.responsavel?.nome || (
+                      <span className="inline-flex items-center gap-1 text-destructive">
+                        <AlertTriangle className="h-3 w-3" /> Sem responsável
+                      </span>
+                    )}
+                  </span>
+                  <span className="inline-flex items-center gap-1 text-primary font-medium">
+                    <Users className="h-3 w-3" /> {sysAcessosForOp.length} acesso(s)
+                  </span>
                 </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground line-clamp-2">{s.descricao || "—"}</p>
-              <div className="mt-3 flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">
-                  Responsável:{" "}
-                  {s.responsavel?.nome || (
-                    <span className="inline-flex items-center gap-1 text-destructive">
-                      <AlertTriangle className="h-3 w-3" /> Sem responsável
-                    </span>
-                  )}
-                </span>
-                <span className="text-muted-foreground">{s.categoria || "—"}</span>
-              </div>
-              <div className="mt-4 flex justify-end gap-2 border-t pt-2">
-                <Button size="sm" variant="ghost" onClick={() => setEditSis(s)}>
-                  <Pencil className="h-3.5 w-3.5 mr-1" /> Editar
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                  onClick={() => {
-                    if (window.confirm(`Tem certeza que deseja excluir o sistema ${s.nome}?`)) {
-                      remove.mutate(s.id);
-                    }
-                  }}
-                >
-                  <Trash2 className="h-3.5 w-3.5 mr-1" /> Excluir
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+                <div className="mt-4 flex justify-end gap-2 border-t pt-2">
+                  <Button size="sm" variant="ghost" onClick={() => setEditSis(s)}>
+                    <Pencil className="h-3.5 w-3.5 mr-1" /> Editar
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                    onClick={() => {
+                      if (window.confirm(`Tem certeza que deseja excluir o sistema ${s.nome}?`)) {
+                        remove.mutate(s.id);
+                      }
+                    }}
+                  >
+                    <Trash2 className="h-3.5 w-3.5 mr-1" /> Excluir
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
 
       <Dialog open={!!editSis} onOpenChange={(o) => !o && setEditSis(null)}>

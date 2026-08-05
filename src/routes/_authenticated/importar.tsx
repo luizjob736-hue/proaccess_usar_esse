@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { matchesColumnStatus } from "./pendencias";
+import { OperationFilterBar } from "@/components/OperationFilterBar";
 
 export function parseDateToISO(val: any): string | null {
   if (!val) return null;
@@ -40,7 +41,7 @@ export function parseDateToISO(val: any): string | null {
 
   // 2. Check Brazilian date format DD/MM/YYYY or DD/MM/YYYY HH:mm or DD/MM/YYYY HH:mm:ss
   const brMatch = str.match(
-    /^(\d{1,2})[\/\.-](\d{1,2})[\/\.-](\d{4})(?:[\sT]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/,
+    /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})(?:[\sT]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/,
   );
   if (brMatch) {
     const day = brMatch[1].padStart(2, "0");
@@ -58,7 +59,7 @@ export function parseDateToISO(val: any): string | null {
 
   // 3. Check ISO format YYYY-MM-DD or YYYY-MM-DD HH:mm or YYYY-MM-DDTHH:mm
   const isoMatch = str.match(
-    /^(\d{4})[\/\.-](\d{1,2})[\/\.-](\d{1,2})(?:[\sT]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/,
+    /^(\d{4})[/.-](\d{1,2})[/.-](\d{1,2})(?:[\sT]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/,
   );
   if (isoMatch) {
     const year = isoMatch[1];
@@ -343,6 +344,7 @@ function downloadCSV(key: TemplateKey, sistemasAll: any[] = []) {
 
 function Importar() {
   const [activeTab, setActiveTab] = useState<TabGroup>("cadastro");
+  const [selectedOperacaoId, setSelectedOperacaoId] = useState("todas");
 
   const { data: sistemasAll = [] } = useQuery({
     queryKey: ["sistemas-import"],
@@ -364,6 +366,11 @@ function Importar() {
         </p>
       </div>
 
+      <OperationFilterBar
+        selectedOperacaoId={selectedOperacaoId}
+        onChange={setSelectedOperacaoId}
+      />
+
       {/* Modern custom tab navigation */}
       <div className="flex border-b border-neutral-200 dark:border-neutral-800 space-x-1 overflow-x-auto pb-px">
         {TAB_GROUPS.map((g) => (
@@ -383,14 +390,27 @@ function Importar() {
 
       <div className="grid grid-cols-1 gap-6">
         {TAB_GROUPS.find((g) => g.value === activeTab)?.keys.map((k) => (
-          <ImportCard key={k} kind={k} sistemasAll={sistemasAll} />
+          <ImportCard
+            key={k}
+            kind={k}
+            sistemasAll={sistemasAll}
+            selectedOperacaoId={selectedOperacaoId}
+          />
         ))}
       </div>
     </div>
   );
 }
 
-function ImportCard({ kind, sistemasAll = [] }: { kind: TemplateKey; sistemasAll?: any[] }) {
+function ImportCard({
+  kind,
+  sistemasAll = [],
+  selectedOperacaoId = "todas",
+}: {
+  kind: TemplateKey;
+  sistemasAll?: any[];
+  selectedOperacaoId?: string;
+}) {
   let t;
   if (kind === "matriz" || kind === "inativos") {
     const headers = [
@@ -452,7 +472,7 @@ function ImportCard({ kind, sistemasAll = [] }: { kind: TemplateKey; sistemasAll
               setBusy(false);
               return;
             }
-            const out = await importRows(kind, rows);
+            const out = await importRows(kind, rows, selectedOperacaoId);
             setResult(out);
             if (out.ok > 0) {
               qc.invalidateQueries();
@@ -565,7 +585,11 @@ function ImportCard({ kind, sistemasAll = [] }: { kind: TemplateKey; sistemasAll
   );
 }
 
-export async function importRows(kind: TemplateKey, rows: Record<string, string>[]) {
+export async function importRows(
+  kind: TemplateKey,
+  rows: Record<string, string>[],
+  selectedOperacaoId = "todas",
+) {
   const errors: string[] = [];
   let ok = 0,
     fail = 0;
@@ -963,6 +987,9 @@ export async function importRows(kind: TemplateKey, rows: Record<string, string>
         sla_em: parseDateToISO(r.sla_em || r.sla || r.vencimento || r.data_limite),
         etiquetas: rawEtiquetas,
         criado_por: loggedIn.user?.id ?? null,
+        ...(selectedOperacaoId !== "todas" && selectedOperacaoId !== "sem_operacao"
+          ? { operacao_id: selectedOperacaoId }
+          : {}),
       };
 
       // Check if similar task already exists for this collaborator + system or title
@@ -1182,6 +1209,9 @@ export async function importRows(kind: TemplateKey, rows: Record<string, string>
         cargo: cargo || null,
         status: status as any,
         inativado_em,
+        ...(selectedOperacaoId !== "todas" && selectedOperacaoId !== "sem_operacao"
+          ? { operacao_id: selectedOperacaoId }
+          : {}),
       };
 
       let colId: string;

@@ -60,22 +60,39 @@ export const createUserAccount = createServerFn({ method: "POST" })
       },
     });
     if (error) {
-      if (String(error.message).toLowerCase().includes("already") && data.role === "operador") {
+      const errMsg = String(error.message).toLowerCase();
+      if (errMsg.includes("already") || errMsg.includes("duplicate") || errMsg.includes("unique")) {
         const { data: existingProfile } = await dbAdmin
           .from("profiles")
           .select("id")
-          .eq("email", email)
+          .ilike("email", email)
           .maybeSingle();
         if (existingProfile) {
+          await dbAdmin.auth.admin.updateUserById(existingProfile.id, {
+            password: senha,
+            user_metadata: {
+              nome: data.nome,
+              cpf: cpfDigits || undefined,
+              username: login || email,
+            },
+          });
           await dbAdmin.from("user_roles").delete().eq("user_id", existingProfile.id);
+          await dbAdmin.from("user_roles").insert({ user_id: existingProfile.id, role: data.role });
           await dbAdmin
-            .from("user_roles")
-            .insert({ user_id: existingProfile.id, role: "operador" });
+            .from("profiles")
+            .update({
+              nome: data.nome,
+              ultima_senha: senha,
+              cpf: cpfDigits || undefined,
+              email: data.email || email,
+            } as any)
+            .eq("id", existingProfile.id);
+
           return {
             user_id: existingProfile.id,
-            senha_provisoria: "123456",
-            login: cpfDigits,
-            message: "Acesso de operador vinculado ao usuário existente",
+            senha_provisoria: senha,
+            login: login || email,
+            message: `Acesso atualizado para o papel ${data.role}`,
           };
         }
       }

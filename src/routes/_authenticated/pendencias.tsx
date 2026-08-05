@@ -788,6 +788,17 @@ function CardView({ p, onOpen, onDelete }: any) {
   );
 }
 
+function toYMD(val: any): string {
+  if (!val) return "";
+  if (typeof val === "string") return val.slice(0, 10);
+  if (val instanceof Date) return val.toISOString().slice(0, 10);
+  try {
+    const d = new Date(val);
+    if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+  } catch {}
+  return String(val ?? "").slice(0, 10);
+}
+
 function PendenciaDetail({ p, quadros, onClose }: any) {
   const qc = useQueryClient();
   const [text, setText] = useState("");
@@ -909,7 +920,7 @@ function PendenciaDetail({ p, quadros, onClose }: any) {
             <Label className="text-xs">Data de início</Label>
             <Input
               type="date"
-              defaultValue={(p.data_inicio ?? p.criado_em)?.slice(0, 10)}
+              defaultValue={toYMD(p.data_inicio ?? p.criado_em)}
               onBlur={async (e) => {
                 await db
                   .from("pendencias")
@@ -924,7 +935,7 @@ function PendenciaDetail({ p, quadros, onClose }: any) {
             <Label className="text-xs">Data de resolução</Label>
             <Input
               type="date"
-              defaultValue={p.data_resolucao?.slice(0, 10) ?? ""}
+              defaultValue={toYMD(p.data_resolucao)}
               onBlur={async (e) => {
                 await db
                   .from("pendencias")

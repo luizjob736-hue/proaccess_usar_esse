@@ -48,6 +48,29 @@ export const Route = createFileRoute("/_authenticated/matriz-acessos")({
   component: MatrizAcessos,
 });
 
+function formatDateBR(val: string | Date | null | undefined): string {
+  if (!val) return "—";
+  if (typeof val === "string") {
+    const match = val.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (match) {
+      const [, y, m, d] = match;
+      return `${d}/${m}/${y}`;
+    }
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(val)) {
+      return val;
+    }
+  }
+  const dateObj = typeof val === "string" ? new Date(val) : val;
+  if (!dateObj || isNaN(dateObj.getTime())) return "—";
+  return dateObj.toLocaleDateString("pt-BR", { timeZone: "UTC" });
+}
+
+function toInputDateValue(val: string | null | undefined): string {
+  if (!val) return "";
+  const match = String(val).match(/^(\d{4}-\d{2}-\d{2})/);
+  return match ? match[1] : "";
+}
+
 const ValCell = memo(function ValCell({
   v,
   label,
@@ -367,17 +390,13 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
       const base: any = {
         Nome: r.nome,
         CPF: r.cpf ?? "",
-        "Data de Nascimento": r.data_nascimento
-          ? new Date(r.data_nascimento + "T00:00:00").toLocaleDateString("pt-BR")
-          : "",
+        "Data de Nascimento": formatDateBR(r.data_nascimento),
         Email: r.email ?? "",
         Telefone: r.telefone ?? "",
         Cargo: r.cargo ?? "",
       };
       if (onlyInativos) {
-        base["Data Inativação"] = r.inativado_em
-          ? new Date(r.inativado_em).toLocaleDateString("pt-BR")
-          : "—";
+        base["Data Inativação"] = formatDateBR(r.inativado_em);
       }
       for (const s of sistemas) {
         base[`${s.nome} - Usuário`] = r.acessos[s.id]?.login ?? "";
@@ -772,9 +791,7 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
                       {r.cpf ?? "—"}
                     </td>
                     <td className="p-2 border-r text-[11px]">
-                      {r.data_nascimento
-                        ? new Date(r.data_nascimento + "T00:00:00").toLocaleDateString("pt-BR")
-                        : "—"}
+                      {formatDateBR(r.data_nascimento)}
                     </td>
                     <td
                       className="p-2 border-r text-[11px] truncate max-w-[160px]"
@@ -791,9 +808,7 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
                     </td>
                     {onlyInativos && (
                       <td className="p-2 border-r text-[11px]">
-                        {r.inativado_em
-                          ? new Date(r.inativado_em).toLocaleDateString("pt-BR")
-                          : "—"}
+                        {formatDateBR(r.inativado_em)}
                       </td>
                     )}
                     <td className="p-2 border-r">
@@ -1107,14 +1122,14 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
               </div>
               <div>
                 <Label>Admissão</Label>
-                <Input name="admissao_em" type="date" defaultValue={editColab.admissao_em ?? ""} />
+                <Input name="admissao_em" type="date" defaultValue={toInputDateValue(editColab.admissao_em)} />
               </div>
               <div>
                 <Label>Data de Nascimento</Label>
                 <Input
                   name="data_nascimento"
                   type="date"
-                  defaultValue={editColab.data_nascimento ?? ""}
+                  defaultValue={toInputDateValue(editColab.data_nascimento)}
                 />
               </div>
               <div>

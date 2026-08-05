@@ -253,16 +253,6 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
     );
   }, [linhas, q]);
 
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(25);
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-  const currentPage = Math.min(page, totalPages);
-  const paginatedRows = useMemo(() => {
-    const start = (currentPage - 1) * pageSize;
-    return filtered.slice(start, start + pageSize);
-  }, [filtered, currentPage, pageSize]);
-
   function copy(v: string | null, label: string) {
     if (!v) return;
     navigator.clipboard.writeText(v);
@@ -500,37 +490,19 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
       </div>
 
       <Card>
-        <CardContent className="py-4">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-3">
-            <div className="relative w-full md:w-96">
+        <CardContent className="py-3 px-4">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="relative w-full sm:w-96">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                className="pl-9 h-9 text-sm"
+                className="pl-9 h-9 text-xs"
                 placeholder="Buscar por nome, CPF, e-mail ou telefone..."
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
               />
             </div>
-            <div className="flex items-center gap-2 self-end md:self-auto text-xs text-muted-foreground">
-              <span>Exibir</span>
-              <Select
-                value={String(pageSize)}
-                onValueChange={(val) => {
-                  setPageSize(Number(val));
-                  setPage(1);
-                }}
-              >
-                <SelectTrigger className="h-8 w-[70px] text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="15">15</SelectItem>
-                  <SelectItem value="25">25</SelectItem>
-                  <SelectItem value="50">50</SelectItem>
-                  <SelectItem value="100">100</SelectItem>
-                </SelectContent>
-              </Select>
-              <span>itens por página</span>
+            <div className="text-xs text-muted-foreground font-medium">
+              Total: {filtered.length} colaborador{filtered.length === 1 ? "" : "es"}
             </div>
           </div>
         </CardContent>
@@ -544,16 +516,14 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
               {filtered.length} registro{filtered.length === 1 ? "" : "s"}
             </Badge>
           </CardTitle>
-          <div className="text-xs text-muted-foreground">
-            Página {currentPage} de {totalPages}
-          </div>
+          <div className="text-xs text-muted-foreground font-medium">Tabela única e contínua</div>
         </CardHeader>
 
-        <CardContent className="p-0 overflow-x-auto">
-          <table className="text-xs border-collapse w-full">
-            <thead className="bg-muted/70 uppercase text-[11px] font-semibold text-muted-foreground">
+        <CardContent className="p-0 overflow-auto max-h-[calc(100vh-250px)] relative">
+          <table className="text-xs border-collapse w-full relative">
+            <thead className="bg-muted uppercase text-[11px] font-semibold text-muted-foreground sticky top-0 z-30 shadow-sm">
               <tr>
-                <th className="p-2.5 text-left border-b border-r sticky left-0 bg-muted/90 z-20 min-w-[180px] shadow-sm">
+                <th className="p-2.5 text-left border-b border-r sticky left-0 top-0 bg-muted z-40 min-w-[180px] shadow-sm">
                   Nome
                 </th>
                 <th className="p-2.5 text-left border-b border-r min-w-[110px]">CPF</th>
@@ -570,14 +540,14 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
                   <th
                     key={s.id}
                     colSpan={2}
-                    className="p-2 text-center border-b border-r bg-primary/5 font-semibold text-foreground min-w-[200px]"
+                    className="p-2 text-center border-b border-r bg-primary/10 font-semibold text-foreground min-w-[200px]"
                   >
                     {s.nome}
                   </th>
                 ))}
               </tr>
-              <tr className="bg-muted/40 border-b text-[10px]">
-                <th className="border-r sticky left-0 bg-muted/80 z-20 shadow-sm" />
+              <tr className="bg-muted/80 border-b text-[10px]">
+                <th className="border-r sticky left-0 bg-muted z-40 shadow-sm" />
                 <th className="border-r" />
                 <th className="border-r" />
                 <th className="border-r" />
@@ -595,7 +565,7 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
               </tr>
             </thead>
             <tbody className="divide-y">
-              {paginatedRows.map((r: any) => (
+              {filtered.map((r: any) => (
                 <tr
                   key={r.id}
                   className={
@@ -605,7 +575,7 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
                       : "")
                   }
                 >
-                  <td className="p-2 border-r font-medium sticky left-0 bg-background z-10 shadow-sm">
+                  <td className="p-2 border-r font-medium sticky left-0 bg-background z-20 shadow-sm">
                     <div className="flex items-center justify-between gap-1">
                       <span className="truncate max-w-[160px]" title={r.nome}>
                         {r.nome}
@@ -750,56 +720,10 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
           </table>
         </CardContent>
 
-        {/* Pagination Footer */}
-        {filtered.length > 0 && (
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3 bg-muted/20 border-t text-xs">
-            <span className="text-muted-foreground">
-              Mostrando {Math.min((currentPage - 1) * pageSize + 1, filtered.length)} a{" "}
-              {Math.min(currentPage * pageSize, filtered.length)} de {filtered.length} colaboradores
-            </span>
-            <div className="flex items-center gap-1">
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 px-2 text-xs"
-                disabled={currentPage <= 1}
-                onClick={() => setPage(1)}
-              >
-                Primeira
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 px-2 text-xs"
-                disabled={currentPage <= 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-              >
-                Anterior
-              </Button>
-              <span className="px-2 font-medium">
-                {currentPage} / {totalPages}
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 px-2 text-xs"
-                disabled={currentPage >= totalPages}
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              >
-                Próxima
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 px-2 text-xs"
-                disabled={currentPage >= totalPages}
-                onClick={() => setPage(totalPages)}
-              >
-                Última
-              </Button>
-            </div>
-          </div>
-        )}
+        <div className="px-4 py-2 bg-muted/20 border-t text-xs text-muted-foreground flex items-center justify-between">
+          <span>Exibindo todos os {filtered.length} colaboradores na visão única</span>
+          <span>Use o scroll para navegar verticalmente e horizontalmente</span>
+        </div>
       </Card>
 
       <Dialog open={!!addAcessoFor} onOpenChange={(o) => !o && setAddAcessoFor(null)}>

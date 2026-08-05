@@ -2,7 +2,16 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { db } from "@/integrations/database/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Users, Server, KeyRound, AlertTriangle, TrendingUp, ShieldCheck, PieChart as PieIcon, Layers } from "lucide-react";
+import {
+  Users,
+  Server,
+  KeyRound,
+  AlertTriangle,
+  TrendingUp,
+  ShieldCheck,
+  PieChart as PieIcon,
+  Layers,
+} from "lucide-react";
 import {
   BarChart,
   Bar,
@@ -57,7 +66,8 @@ function Dashboard() {
         ).length;
 
         const acessosAtivosCount = accList.filter((a: any) => {
-          const isAccAtivo = a.status === "ativo" || a.status === "ATIVO" || (!a.status || a.status !== "inativo");
+          const isAccAtivo =
+            a.status === "ativo" || a.status === "ATIVO" || !a.status || a.status !== "inativo";
           if (!isAccAtivo) return false;
           if (a.colaborador_id) {
             const cStatus = colabStatusMap.get(a.colaborador_id);
@@ -142,7 +152,9 @@ function Dashboard() {
   const sisMap = new Map((data?.sistData ?? []).map((s: any) => [s.id, s.nome]));
   const pendBySisMap: Record<string, number> = {};
   pendData.forEach((p: any) => {
-    const sisNome = p.sistema_id ? sisMap.get(p.sistema_id) || "Sistema Removido" : "Geral / Sem Sistema";
+    const sisNome = p.sistema_id
+      ? sisMap.get(p.sistema_id) || "Sistema Removido"
+      : "Geral / Sem Sistema";
     pendBySisMap[sisNome] = (pendBySisMap[sisNome] || 0) + 1;
   });
   const pendBySistemaChart = Object.entries(pendBySisMap).map(([name, value]) => ({ name, value }));
@@ -159,7 +171,10 @@ function Dashboard() {
     const label = prioLabels[p.prioridade] || p.prioridade || "Média";
     pendByPrioMap[label] = (pendByPrioMap[label] || 0) + 1;
   });
-  const pendByPriorityChart = Object.entries(pendByPrioMap).map(([name, value]) => ({ name, value }));
+  const pendByPriorityChart = Object.entries(pendByPrioMap).map(([name, value]) => ({
+    name,
+    value,
+  }));
 
   // Acessos por Status
   const statusMap = data?.colabStatusMap;
@@ -253,8 +268,11 @@ function Dashboard() {
           </CardHeader>
           <CardContent>
             <div className="h-[260px] w-full flex items-center justify-center">
-              {pendBySistemaChart.length === 0 || pendBySistemaChart.every((item) => item.value === 0) ? (
-                <p className="text-sm text-muted-foreground">Nenhuma pendência vinculada a sistemas</p>
+              {pendBySistemaChart.length === 0 ||
+              pendBySistemaChart.every((item) => item.value === 0) ? (
+                <p className="text-sm text-muted-foreground">
+                  Nenhuma pendência vinculada a sistemas
+                </p>
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={pendBySistemaChart} layout="vertical">
@@ -279,17 +297,21 @@ function Dashboard() {
           </CardHeader>
           <CardContent>
             <div className="h-[260px] w-full flex items-center justify-center">
-              {pendByPriorityChart.length === 0 || pendByPriorityChart.every((item) => item.value === 0) ? (
+              {pendByPriorityChart.length === 0 ||
+              pendByPriorityChart.every((item) => item.value === 0) ? (
                 <p className="text-sm text-muted-foreground">Nenhuma pendência cadastrada</p>
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
-                    <Pie data={pendByPriorityChart} dataKey="value" nameKey="name" outerRadius={85} label>
+                    <Pie
+                      data={pendByPriorityChart}
+                      dataKey="value"
+                      nameKey="name"
+                      outerRadius={85}
+                      label
+                    >
                       {pendByPriorityChart.map((entry, i) => (
-                        <Cell
-                          key={i}
-                          fill={PRIO_COLORS[entry.name] || COLORS[i % COLORS.length]}
-                        />
+                        <Cell key={i} fill={PRIO_COLORS[entry.name] || COLORS[i % COLORS.length]} />
                       ))}
                     </Pie>
                     <Tooltip />
@@ -394,4 +416,3 @@ function HealthItem({ label, value, good }: { label: string; value: number; good
     </div>
   );
 }
-

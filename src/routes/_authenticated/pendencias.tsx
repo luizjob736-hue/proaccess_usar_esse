@@ -155,7 +155,7 @@ function Pendencias() {
       (
         await db
           .from("pendencias")
-          .select("*, colaborador:colaboradores(nome), sistema:sistemas(nome)")
+          .select("*, colaborador:colaboradores(id, nome), sistema:sistemas(id, nome, sla_horas)")
           .eq("arquivado", false)
           .order("posicao")
       ).data ?? [],
@@ -167,7 +167,20 @@ function Pendencias() {
   });
   const { data: sistemas = [] } = useQuery({
     queryKey: ["sistemas-simple"],
-    queryFn: async () => (await db.from("sistemas").select("id,nome").order("nome")).data ?? [],
+    queryFn: async () =>
+      (await db.from("sistemas").select("id,nome,sla_horas").order("nome")).data ?? [],
+  });
+
+  const deletePendencia = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await db.from("pendencias").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Pendência excluída");
+      qc.invalidateQueries({ queryKey: ["pendencias"] });
+    },
+    onError: (e: any) => toast.error(e.message),
   });
 
   const { data: isAdmin = false } = useQuery({
@@ -231,7 +244,7 @@ function Pendencias() {
   const importCsv = useMutation({
     mutationFn: async (file: File) => {
       let text = await file.text();
-      if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+      if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
       text = text.replace(/^sep=\s*;\s*\r?\n/i, "");
 
       const parsed = Papa.parse<any>(text, {
@@ -306,8 +319,7 @@ function Pendencias() {
             status: statusVal,
             colaborador_id: colId,
             sistema_id: sisId,
-            data_inicio:
-              parseDateToISO(dataInicioVal) || new Date().toISOString().split("T")[0],
+            data_inicio: parseDateToISO(dataInicioVal) || new Date().toISOString().split("T")[0],
             sla_em: parseDateToISO(slaVal),
             etiquetas: r.etiquetas
               ? String(r.etiquetas)
@@ -416,14 +428,26 @@ function Pendencias() {
                 onSubmit={(e) => {
                   e.preventDefault();
                   const fd = new FormData(e.currentTarget);
+                  const selectedSisId = (fd.get("sistema_id") as string) || null;
+                  let finalSla = (fd.get("sla_em") as string) || null;
+
+                  if (!finalSla && selectedSisId) {
+                    const sisObj = sistemas.find((s: any) => s.id === selectedSisId);
+                    const horas = sisObj?.sla_horas ?? 24;
+                    const startVal = (fd.get("data_inicio") as string) || new Date().toISOString();
+                    const startDate = new Date(startVal);
+                    const slaDate = new Date(startDate.getTime() + horas * 3600 * 1000);
+                    finalSla = slaDate.toISOString();
+                  }
+
                   create.mutate({
                     titulo: fd.get("titulo"),
                     descricao: fd.get("descricao"),
                     tipo: fd.get("tipo") || "outro",
                     prioridade: fd.get("prioridade") || "media",
                     colaborador_id: (fd.get("colaborador_id") as string) || null,
-                    sistema_id: (fd.get("sistema_id") as string) || null,
-                    sla_em: (fd.get("sla_em") as string) || null,
+                    sistema_id: selectedSisId,
+                    sla_em: finalSla,
                     data_inicio: (fd.get("data_inicio") as string) || undefined,
                     etiquetas: ((fd.get("etiquetas") as string) || "")
                       .split(",")
@@ -609,6 +633,11 @@ function Pendencias() {
                 color={col.cor}
                 items={items}
                 onOpen={setDetailId}
+                onDelete={(id: string) => {
+                  if (confirm("Deseja realmente excluir esta pendência?")) {
+                    deletePendencia.mutate(id);
+                  }
+                }}
               />
             );
           })}
@@ -618,14 +647,16 @@ function Pendencias() {
 
       <Dialog open={!!detail} onOpenChange={(o) => !o && setDetailId(null)}>
         <DialogContent className="max-w-2xl">
-          {detail && <PendenciaDetail p={detail} quadros={quadros} />}
+          {detail && (
+            <PendenciaDetail p={detail} quadros={quadros} onClose={() => setDetailId(null)} />
+          )}
         </DialogContent>
       </Dialog>
     </div>
   );
 }
 
-function Column({ id, title, color, items, onOpen }: any) {
+function Column({ id, title, color, items, onOpen, onDelete }: any) {
   const { setNodeRef, isOver } = useDroppable({ id });
   return (
     <div
@@ -640,14 +671,14 @@ function Column({ id, title, color, items, onOpen }: any) {
       </div>
       <div className="flex-1 space-y-2 overflow-y-auto p-2">
         {items.map((p: any) => (
-          <DraggableCard key={p.id} p={p} onOpen={onOpen} />
+          <DraggableCard key={p.id} p={p} onOpen={onOpen} onDelete={onDelete} />
         ))}
       </div>
     </div>
   );
 }
 
-function DraggableCard({ p, onOpen }: any) {
+function DraggableCard({ p, onOpen, onDelete }: any) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: p.id });
   return (
     <div
@@ -655,28 +686,68 @@ function DraggableCard({ p, onOpen }: any) {
       style={{ transform: CSS.Translate.toString(transform), opacity: isDragging ? 0.4 : 1 }}
       {...listeners}
       {...attributes}
-      onClick={() => onOpen(p.id)}
     >
-      <CardView p={p} />
+      <CardView p={p} onOpen={onOpen} onDelete={onDelete} />
     </div>
   );
 }
 
-function CardView({ p }: any) {
+function CardView({ p, onOpen, onDelete }: any) {
   const inicio = p.data_inicio ? new Date(p.data_inicio) : new Date(p.criado_em);
-  const fim = p.data_resolucao ? new Date(p.data_resolucao) : new Date();
+  const fim =
+    p.data_resolucao || p.concluido_em ? new Date(p.data_resolucao || p.concluido_em) : new Date();
   const dias = Math.max(0, Math.floor((fim.getTime() - inicio.getTime()) / 86400000));
-  const alerta = !p.data_resolucao && dias > 5;
+
+  let slaTarget: Date | null = null;
+  if (p.sla_em) {
+    slaTarget = new Date(p.sla_em);
+  } else if (p.sistema?.sla_horas) {
+    slaTarget = new Date(inicio.getTime() + p.sistema.sla_horas * 3600 * 1000);
+  } else {
+    slaTarget = new Date(inicio.getTime() + 24 * 3600 * 1000);
+  }
+
+  const isConcluido = !!(p.data_resolucao || p.concluido_em);
+  const isAtrasado = !isConcluido && new Date() > slaTarget;
+
   return (
-    <div className="cursor-grab rounded-md border bg-background p-3 shadow-sm hover:shadow-md">
-      <div className="flex items-start gap-2">
-        <div className={`mt-1 h-2 w-2 shrink-0 rounded-full ${PRIO_COLOR[p.prioridade]}`} />
-        <p className="flex-1 text-sm font-medium">{p.titulo}</p>
+    <div
+      className="group cursor-grab rounded-md border bg-background p-3 shadow-sm hover:shadow-md transition-shadow relative"
+      onClick={() => onOpen && onOpen(p.id)}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-start gap-2 flex-1">
+          <div className={`mt-1 h-2 w-2 shrink-0 rounded-full ${PRIO_COLOR[p.prioridade]}`} />
+          <p className="flex-1 text-sm font-medium leading-tight">{p.titulo}</p>
+        </div>
+        {onDelete && (
+          <button
+            type="button"
+            className="opacity-0 group-hover:opacity-100 p-1 text-muted-foreground hover:text-destructive transition-opacity"
+            title="Excluir pendência"
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              onDelete(p.id);
+            }}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        )}
       </div>
+
       {p.colaborador?.nome && (
-        <p className="mt-1 text-xs text-muted-foreground">👤 {p.colaborador.nome}</p>
+        <p className="mt-1 text-xs text-muted-foreground truncate">👤 {p.colaborador.nome}</p>
       )}
-      {p.sistema?.nome && <p className="text-xs text-muted-foreground">🖥 {p.sistema.nome}</p>}
+      {p.sistema?.nome && (
+        <p className="text-xs text-muted-foreground truncate flex items-center gap-1">
+          🖥 {p.sistema.nome}
+          {p.sistema.sla_horas && (
+            <span className="text-[10px] text-muted-foreground">({p.sistema.sla_horas}h SLA)</span>
+          )}
+        </p>
+      )}
+
       {p.etiquetas?.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-1">
           {p.etiquetas.map((t: string) => (
@@ -686,45 +757,71 @@ function CardView({ p }: any) {
           ))}
         </div>
       )}
+
       <div className="mt-2 flex items-center justify-between gap-2 text-[10px]">
         <span className="text-muted-foreground">Início: {inicio.toLocaleDateString("pt-BR")}</span>
         <Badge
           className={
-            alerta ? "bg-destructive text-destructive-foreground" : "bg-muted text-foreground"
+            isConcluido
+              ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30"
+              : isAtrasado
+                ? "bg-destructive text-destructive-foreground animate-pulse"
+                : "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30"
           }
         >
-          {p.data_resolucao ? `${dias}d (resolvido)` : `${dias} dia${dias === 1 ? "" : "s"}`}
+          {isConcluido
+            ? `${dias}d (concluído)`
+            : isAtrasado
+              ? `SLA Atrasado (${dias}d)`
+              : `Em dia (${dias}d)`}
         </Badge>
       </div>
-      {p.sla_em && (
-        <p className="mt-1 text-[10px] text-muted-foreground">
-          SLA: {new Date(p.sla_em).toLocaleString("pt-BR")}
+      {slaTarget && (
+        <p
+          className={`mt-1 text-[10px] ${isAtrasado ? "text-destructive font-semibold" : "text-muted-foreground"}`}
+        >
+          Limite SLA:{" "}
+          {slaTarget.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}
         </p>
       )}
     </div>
   );
 }
 
-function PendenciaDetail({ p, quadros }: any) {
+function PendenciaDetail({ p, quadros, onClose }: any) {
   const qc = useQueryClient();
   const [text, setText] = useState("");
   const { data: coments = [] } = useQuery({
     queryKey: ["coments", p.id],
-    queryFn: async () =>
-      (
-        await db
+    queryFn: async () => {
+      try {
+        const { data, error } = await db
           .from("pendencia_comentarios")
-          .select("*, autor:profiles!pendencia_comentarios_autor_id_fkey(nome)")
+          .select("*, autor:profiles(nome)")
           .eq("pendencia_id", p.id)
-          .order("criado_em")
-      ).data ?? [],
+          .order("criado_em");
+        if (error) {
+          const { data: raw } = await db
+            .from("pendencia_comentarios")
+            .select("*")
+            .eq("pendencia_id", p.id)
+            .order("criado_em");
+          return raw ?? [];
+        }
+        return data ?? [];
+      } catch {
+        return [];
+      }
+    },
   });
+
   const add = useMutation({
     mutationFn: async () => {
       const { data: u } = await db.auth.getUser();
+      if (!u.user) throw new Error("Usuário não autenticado");
       await db
         .from("pendencia_comentarios")
-        .insert({ pendencia_id: p.id, autor_id: u.user!.id, conteudo: text });
+        .insert({ pendencia_id: p.id, autor_id: u.user.id, conteudo: text });
     },
     onSuccess: () => {
       setText("");
@@ -747,6 +844,7 @@ function PendenciaDetail({ p, quadros }: any) {
     await db.from("pendencias").delete().eq("id", p.id);
     qc.invalidateQueries({ queryKey: ["pendencias"] });
     toast.success("Removido");
+    if (onClose) onClose();
   };
 
   const archiveItem = async () => {
@@ -757,6 +855,7 @@ function PendenciaDetail({ p, quadros }: any) {
       .eq("id", p.id);
     qc.invalidateQueries({ queryKey: ["pendencias"] });
     toast.success("Pendência finalizada e enviada para o histórico.");
+    if (onClose) onClose();
   };
 
   return (
@@ -784,8 +883,8 @@ function PendenciaDetail({ p, quadros }: any) {
           {(() => {
             const quadrosNomes = quadros?.map((x: any) => x.nome) ?? [];
             const selectedStatus =
-              quadros?.find((q: any) => matchesColumnStatus(p.status, q.nome, quadrosNomes))?.nome ??
-              p.status;
+              quadros?.find((q: any) => matchesColumnStatus(p.status, q.nome, quadrosNomes))
+                ?.nome ?? p.status;
             return (
               <Select value={selectedStatus} onValueChange={updateStatus}>
                 <SelectTrigger className="h-7 text-xs w-[140px]">

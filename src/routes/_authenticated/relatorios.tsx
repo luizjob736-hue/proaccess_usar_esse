@@ -61,11 +61,32 @@ async function fetchRel(k: string) {
           )
       ).data ?? []
     );
-  if (k === "pendencias")
-    return (
-      (await db.from("pendencias").select("titulo,tipo,status,prioridade,sla_em,concluido_em"))
-        .data ?? []
-    );
+  if (k === "pendencias") {
+    const { data: raw = [] } = await db
+      .from("pendencias")
+      .select(
+        "titulo,descricao,tipo,status,prioridade,criado_em,data_inicio,sla_em,concluido_em,colaborador:colaboradores(nome,operacao:operacoes(nome)),sistema:sistemas(nome)",
+      );
+    return (raw as any[]).map((p) => ({
+      Título: p.titulo ?? "",
+      Descrição: p.descricao ?? "",
+      Tipo: p.tipo ?? "",
+      Status: p.status ?? "",
+      Prioridade: p.prioridade ?? "",
+      "Produto / Sistema": p.sistema?.nome ?? "—",
+      Colaborador: p.colaborador?.nome ?? "—",
+      Operação: p.colaborador?.operacao?.nome ?? "—",
+      "Data Início": p.data_inicio
+        ? new Date(p.data_inicio).toLocaleDateString("pt-BR")
+        : p.criado_em
+          ? new Date(p.criado_em).toLocaleDateString("pt-BR")
+          : "",
+      "SLA (Data Limite)": p.sla_em ? new Date(p.sla_em).toLocaleString("pt-BR") : "",
+      "Concluído em": p.concluido_em
+        ? new Date(p.concluido_em).toLocaleString("pt-BR")
+        : "Em aberto",
+    }));
+  }
   if (k === "matriz" || k === "inativos") {
     const { data: colabs = [] } = await db
       .from("colaboradores")

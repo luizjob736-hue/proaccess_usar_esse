@@ -159,7 +159,10 @@ export const neonAuthServerFn = createServerFn({ method: "POST" })
               const u = authUserRes.rows[0];
               const uId = String(u.id);
               const uEmail = u.email || ident;
-              const meta = typeof u.raw_user_meta_data === "string" ? JSON.parse(u.raw_user_meta_data) : u.raw_user_meta_data || {};
+              const meta =
+                typeof u.raw_user_meta_data === "string"
+                  ? JSON.parse(u.raw_user_meta_data)
+                  : u.raw_user_meta_data || {};
               const uName = meta.nome || uEmail.split("@")[0];
 
               await client.query(

@@ -58,7 +58,12 @@ class QueryBuilder {
   }
 
   select(cols = "*", opts?: { count?: "exact"; head?: boolean }) {
-    if (this.action !== "insert" && this.action !== "update" && this.action !== "upsert" && this.action !== "delete") {
+    if (
+      this.action !== "insert" &&
+      this.action !== "update" &&
+      this.action !== "upsert" &&
+      this.action !== "delete"
+    ) {
       this.action = "select";
     }
     this.selectCols = cols;

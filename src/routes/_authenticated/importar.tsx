@@ -40,7 +40,7 @@ export function parseDateToISO(val: any): string | null {
 
   // 2. Check Brazilian date format DD/MM/YYYY or DD/MM/YYYY HH:mm or DD/MM/YYYY HH:mm:ss
   const brMatch = str.match(
-    /^(\d{1,2})[\/\.-](\d{1,2})[\/\.-](\d{4})(?:[\sT]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/
+    /^(\d{1,2})[\/\.-](\d{1,2})[\/\.-](\d{4})(?:[\sT]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/,
   );
   if (brMatch) {
     const day = brMatch[1].padStart(2, "0");
@@ -58,7 +58,7 @@ export function parseDateToISO(val: any): string | null {
 
   // 3. Check ISO format YYYY-MM-DD or YYYY-MM-DD HH:mm or YYYY-MM-DDTHH:mm
   const isoMatch = str.match(
-    /^(\d{4})[\/\.-](\d{1,2})[\/\.-](\d{1,2})(?:[\sT]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/
+    /^(\d{4})[\/\.-](\d{1,2})[\/\.-](\d{1,2})(?:[\sT]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/,
   );
   if (isoMatch) {
     const year = isoMatch[1];
@@ -426,7 +426,7 @@ function ImportCard({ kind, sistemasAll = [] }: { kind: TemplateKey; sistemasAll
     try {
       let text = await file.text();
       // Remove UTF-8 BOM if present
-      if (text.charCodeAt(0) === 0xFEFF) {
+      if (text.charCodeAt(0) === 0xfeff) {
         text = text.slice(1);
       }
       // Remove sep=; directive line if present at start of CSV

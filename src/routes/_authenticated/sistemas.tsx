@@ -93,6 +93,7 @@ function Sistemas() {
       criticidade: fd.get("criticidade") || "media",
       responsavel_id: (fd.get("responsavel_id") as string) || null,
       url: fd.get("url"),
+      sla_horas: fd.get("sla_horas") ? Number(fd.get("sla_horas")) : 24,
     });
   }
 
@@ -162,6 +163,19 @@ function Sistemas() {
                 <Label>URL</Label>
                 <Input name="url" placeholder="https://..." />
               </div>
+              <div>
+                <Label>SLA de Atendimento / Criação (Horas)</Label>
+                <Input
+                  name="sla_horas"
+                  type="number"
+                  min="1"
+                  defaultValue="24"
+                  placeholder="Ex: 24, 48"
+                />
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  Prazo padrão de atendimento refletido nas pendências deste sistema.
+                </p>
+              </div>
               <DialogFooter>
                 <Button type="submit">Salvar</Button>
               </DialogFooter>
@@ -179,15 +193,23 @@ function Sistemas() {
                   <Server className="h-4 w-4 text-accent" />
                   <CardTitle className="text-base">{s.nome}</CardTitle>
                 </div>
-                <Badge
-                  variant={
-                    s.criticidade === "critica" || s.criticidade === "alta"
-                      ? "destructive"
-                      : "outline"
-                  }
-                >
-                  {s.criticidade}
-                </Badge>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <Badge
+                    variant="secondary"
+                    className="text-xs font-medium bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30"
+                  >
+                    ⏱ SLA: {s.sla_horas ?? 24}h
+                  </Badge>
+                  <Badge
+                    variant={
+                      s.criticidade === "critica" || s.criticidade === "alta"
+                        ? "destructive"
+                        : "outline"
+                    }
+                  >
+                    {s.criticidade}
+                  </Badge>
+                </div>
               </div>
             </CardHeader>
             <CardContent>
@@ -243,6 +265,7 @@ function Sistemas() {
                   criticidade: fd.get("criticidade"),
                   responsavel_id: (fd.get("responsavel_id") as string) || null,
                   url: fd.get("url"),
+                  sla_horas: fd.get("sla_horas") ? Number(fd.get("sla_horas")) : 24,
                 });
               }}
               className="space-y-3"
@@ -293,6 +316,16 @@ function Sistemas() {
               <div>
                 <Label>URL</Label>
                 <Input name="url" defaultValue={editSis.url ?? ""} placeholder="https://..." />
+              </div>
+              <div>
+                <Label>SLA de Atendimento / Criação (Horas)</Label>
+                <Input
+                  name="sla_horas"
+                  type="number"
+                  min="1"
+                  defaultValue={editSis.sla_horas ?? 24}
+                  placeholder="Ex: 24, 48"
+                />
               </div>
               <DialogFooter>
                 <Button type="submit" disabled={update.isPending}>

@@ -101,7 +101,7 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
         await db
           .from("colaboradores")
           .select(
-            "id, nome, cpf, email, email_senha, telefone, cargo, status, operacao_id, matricula, admissao_em, inativado_em" as any,
+            "id, nome, cpf, email, email_senha, telefone, cargo, status, operacao_id, matricula, admissao_em, inativado_em, data_nascimento" as any,
           )
           .order("nome")
       ).data ?? [],
@@ -253,6 +253,16 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
     );
   }, [linhas, q]);
 
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const paginatedRows = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filtered.slice(start, start + pageSize);
+  }, [filtered, currentPage, pageSize]);
+
   function copy(v: string | null, label: string) {
     if (!v) return;
     navigator.clipboard.writeText(v);
@@ -264,6 +274,9 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
       const base: any = {
         Nome: r.nome,
         CPF: r.cpf ?? "",
+        "Data de Nascimento": r.data_nascimento
+          ? new Date(r.data_nascimento + "T00:00:00").toLocaleDateString("pt-BR")
+          : "",
         Email: r.email ?? "",
         Telefone: r.telefone ?? "",
         Cargo: r.cargo ?? "",
@@ -412,6 +425,7 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
                         cargo: (fd.get("cargo") as string) || null,
                         operacao_id: (fd.get("operacao_id") as string) || null,
                         admissao_em: (fd.get("admissao_em") as string) || null,
+                        data_nascimento: (fd.get("data_nascimento") as string) || null,
                         observacoes: (fd.get("observacoes") as string) || null,
                       });
                     }}
@@ -464,6 +478,10 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
                       <Label>Admissão</Label>
                       <Input name="admissao_em" type="date" />
                     </div>
+                    <div>
+                      <Label>Data de Nascimento</Label>
+                      <Input name="data_nascimento" type="date" />
+                    </div>
                     <div className="col-span-2">
                       <Label>Observações</Label>
                       <Input name="observacoes" />
@@ -482,113 +500,173 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
       </div>
 
       <Card>
-        <CardContent className="pt-6">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              className="pl-9"
-              placeholder="Buscar por nome, CPF, e-mail ou telefone..."
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-            />
+        <CardContent className="py-4">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-3">
+            <div className="relative w-full md:w-96">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                className="pl-9 h-9 text-sm"
+                placeholder="Buscar por nome, CPF, e-mail ou telefone..."
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+              />
+            </div>
+            <div className="flex items-center gap-2 self-end md:self-auto text-xs text-muted-foreground">
+              <span>Exibir</span>
+              <Select
+                value={String(pageSize)}
+                onValueChange={(val) => {
+                  setPageSize(Number(val));
+                  setPage(1);
+                }}
+              >
+                <SelectTrigger className="h-8 w-[70px] text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="15">15</SelectItem>
+                  <SelectItem value="25">25</SelectItem>
+                  <SelectItem value="50">50</SelectItem>
+                  <SelectItem value="100">100</SelectItem>
+                </SelectContent>
+              </Select>
+              <span>itens por página</span>
+            </div>
           </div>
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Grid3x3 className="h-4 w-4" /> Colaboradores × Sistemas
-            <Badge variant="outline" className="ml-2">
-              {filtered.length} × {sistemas.length}
+      <Card className="overflow-hidden border shadow-sm">
+        <CardHeader className="py-3 px-4 bg-muted/20 border-b flex flex-row items-center justify-between">
+          <CardTitle className="text-base font-medium flex items-center gap-2">
+            <Grid3x3 className="h-4 w-4 text-primary" /> Colaboradores × Sistemas
+            <Badge variant="secondary" className="ml-1 text-xs">
+              {filtered.length} registro{filtered.length === 1 ? "" : "s"}
             </Badge>
           </CardTitle>
+          <div className="text-xs text-muted-foreground">
+            Página {currentPage} de {totalPages}
+          </div>
         </CardHeader>
+
         <CardContent className="p-0 overflow-x-auto">
-          <table className="text-sm border-collapse w-full">
-            <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
+          <table className="text-xs border-collapse w-full">
+            <thead className="bg-muted/70 uppercase text-[11px] font-semibold text-muted-foreground">
               <tr>
-                <th className="p-2 text-left border sticky left-0 bg-muted z-10">Nome</th>
-                <th className="p-2 text-left border">CPF</th>
-                <th className="p-2 text-left border">E-mail</th>
-                <th className="p-2 text-left border">Senha e-mail</th>
-                <th className="p-2 text-left border">Telefone</th>
-                <th className="p-2 text-left border">Cargo</th>
-                {onlyInativos && <th className="p-2 text-left border">Inativado em</th>}
-                <th className="p-2 text-left border">Ações</th>
+                <th className="p-2.5 text-left border-b border-r sticky left-0 bg-muted/90 z-20 min-w-[180px] shadow-sm">
+                  Nome
+                </th>
+                <th className="p-2.5 text-left border-b border-r min-w-[110px]">CPF</th>
+                <th className="p-2.5 text-left border-b border-r min-w-[100px]">Nascimento</th>
+                <th className="p-2.5 text-left border-b border-r min-w-[160px]">E-mail</th>
+                <th className="p-2.5 text-left border-b border-r min-w-[120px]">Senha e-mail</th>
+                <th className="p-2.5 text-left border-b border-r min-w-[110px]">Telefone</th>
+                <th className="p-2.5 text-left border-b border-r min-w-[120px]">Cargo</th>
+                {onlyInativos && (
+                  <th className="p-2.5 text-left border-b border-r min-w-[110px]">Inativado em</th>
+                )}
+                <th className="p-2.5 text-center border-b border-r min-w-[100px]">Ações</th>
                 {sistemas.map((s) => (
-                  <th key={s.id} colSpan={2} className="p-2 text-center border bg-accent/10">
+                  <th
+                    key={s.id}
+                    colSpan={2}
+                    className="p-2 text-center border-b border-r bg-primary/5 font-semibold text-foreground min-w-[200px]"
+                  >
                     {s.nome}
                   </th>
                 ))}
               </tr>
-              <tr>
-                <th className="border sticky left-0 bg-muted z-10" />
-                <th className="border" />
-                <th className="border" />
-                <th className="border" />
-                <th className="border" />
-                <th className="border" />
-                {onlyInativos && <th className="border" />}
-                <th className="border" />
+              <tr className="bg-muted/40 border-b text-[10px]">
+                <th className="border-r sticky left-0 bg-muted/80 z-20 shadow-sm" />
+                <th className="border-r" />
+                <th className="border-r" />
+                <th className="border-r" />
+                <th className="border-r" />
+                <th className="border-r" />
+                <th className="border-r" />
+                {onlyInativos && <th className="border-r" />}
+                <th className="border-r" />
                 {sistemas.map((s) => (
                   <Fragment key={s.id}>
-                    <th className="p-1 text-[10px] text-left border">Usuário</th>
-                    <th className="p-1 text-[10px] text-left border">Senha</th>
+                    <th className="p-1 text-left border-r font-medium">Usuário</th>
+                    <th className="p-1 text-left border-r font-medium">Senha</th>
                   </Fragment>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y">
-              {filtered.map((r: any) => (
+              {paginatedRows.map((r: any) => (
                 <tr
                   key={r.id}
                   className={
-                    "hover:bg-muted/30 " +
-                    (r.status === "inativo" || r.status === "desligado" ? "opacity-70" : "")
+                    "hover:bg-muted/40 transition-colors " +
+                    (r.status === "inativo" || r.status === "desligado"
+                      ? "opacity-75 bg-muted/10"
+                      : "")
                   }
                 >
-                  <td className="p-2 border font-medium sticky left-0 bg-background">
-                    {r.nome}
-                    {(r.status === "inativo" || r.status === "desligado") && (
-                      <Badge variant="destructive" className="ml-2 text-[9px]">
-                        {r.status}
-                      </Badge>
-                    )}
+                  <td className="p-2 border-r font-medium sticky left-0 bg-background z-10 shadow-sm">
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="truncate max-w-[160px]" title={r.nome}>
+                        {r.nome}
+                      </span>
+                      {(r.status === "inativo" || r.status === "desligado") && (
+                        <Badge variant="destructive" className="text-[9px] px-1 py-0 h-4">
+                          {r.status}
+                        </Badge>
+                      )}
+                    </div>
                   </td>
-                  <td className="p-2 border font-mono text-xs">{r.cpf ?? "—"}</td>
-                  <td className="p-2 border text-xs">{r.email ?? "—"}</td>
-                  <td className="p-2 border">
+                  <td className="p-2 border-r font-mono text-[11px] text-muted-foreground">
+                    {r.cpf ?? "—"}
+                  </td>
+                  <td className="p-2 border-r text-[11px]">
+                    {r.data_nascimento
+                      ? new Date(r.data_nascimento + "T00:00:00").toLocaleDateString("pt-BR")
+                      : "—"}
+                  </td>
+                  <td
+                    className="p-2 border-r text-[11px] truncate max-w-[160px]"
+                    title={r.email ?? ""}
+                  >
+                    {r.email ?? "—"}
+                  </td>
+                  <td className="p-2 border-r">
                     <Val v={r.email_senha} label="Senha e-mail" />
                   </td>
-                  <td className="p-2 border text-xs">{r.telefone ?? "—"}</td>
-                  <td className="p-2 border text-xs">{r.cargo ?? "—"}</td>
+                  <td className="p-2 border-r text-[11px]">{r.telefone ?? "—"}</td>
+                  <td className="p-2 border-r text-[11px] truncate max-w-[120px]">
+                    {r.cargo ?? "—"}
+                  </td>
                   {onlyInativos && (
-                    <td className="p-2 border text-xs">
-                      {r.inativado_em ? new Date(r.inativado_em).toLocaleString("pt-BR") : "—"}
+                    <td className="p-2 border-r text-[11px]">
+                      {r.inativado_em ? new Date(r.inativado_em).toLocaleDateString("pt-BR") : "—"}
                     </td>
                   )}
-                  <td className="p-2 border">
-                    <div className="flex gap-1">
+                  <td className="p-2 border-r">
+                    <div className="flex items-center justify-center gap-1">
                       <Button
-                        size="sm"
+                        size="icon"
                         variant="ghost"
+                        className="h-6 w-6"
                         title="Editar"
                         onClick={() => setEditColab(r)}
                       >
                         <Pencil className="h-3 w-3" />
                       </Button>
                       <Button
-                        size="sm"
+                        size="icon"
                         variant="ghost"
+                        className="h-6 w-6"
                         title="Adicionar acesso"
                         onClick={() => setAddAcessoFor(r)}
                       >
                         <Plus className="h-3 w-3" />
                       </Button>
                       <Button
-                        size="sm"
+                        size="icon"
                         variant="ghost"
+                        className="h-6 w-6"
                         title={r.status === "inativo" ? "Reativar" : "Marcar inativo"}
                         onClick={() =>
                           flagInativo.mutate({ id: r.id, inativo: r.status !== "inativo" })
@@ -602,10 +680,10 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
                       </Button>
                       {isMaster && (
                         <Button
-                          size="sm"
+                          size="icon"
                           variant="ghost"
                           title="Excluir colaborador"
-                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                          className="h-6 w-6 text-destructive hover:text-destructive hover:bg-destructive/10"
                           onClick={() => {
                             if (window.confirm(`Tem certeza que deseja excluir ${r.nome}?`)) {
                               excluirColab.mutate(r.id);
@@ -621,21 +699,35 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
                     const a = r.acessos[s.id];
                     return (
                       <Fragment key={s.id}>
-                        <td className="p-2 border">
+                        <td className="p-2 border-r">
                           <Val
                             v={a?.login}
                             label="Usuário"
                             onEdit={
-                              a ? () => setEditAcesso({ ...a, colab_nome: r.nome }) : undefined
+                              a
+                                ? () =>
+                                    setEditAcesso({
+                                      ...a,
+                                      colab_nome: r.nome,
+                                      sistema_nome: s.nome,
+                                    })
+                                : undefined
                             }
                           />
                         </td>
-                        <td className="p-2 border">
+                        <td className="p-2 border-r">
                           <Val
                             v={a?.senha}
                             label="Senha"
                             onEdit={
-                              a ? () => setEditAcesso({ ...a, colab_nome: r.nome }) : undefined
+                              a
+                                ? () =>
+                                    setEditAcesso({
+                                      ...a,
+                                      colab_nome: r.nome,
+                                      sistema_nome: s.nome,
+                                    })
+                                : undefined
                             }
                           />
                         </td>
@@ -647,16 +739,67 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
               {filtered.length === 0 && (
                 <tr>
                   <td
-                    colSpan={7 + (onlyInativos ? 1 : 0) + sistemas.length * 2}
-                    className="p-6 text-center text-muted-foreground"
+                    colSpan={8 + (onlyInativos ? 1 : 0) + sistemas.length * 2}
+                    className="p-8 text-center text-muted-foreground text-sm"
                   >
-                    Sem colaboradores.
+                    Nenhum colaborador encontrado.
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
         </CardContent>
+
+        {/* Pagination Footer */}
+        {filtered.length > 0 && (
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3 bg-muted/20 border-t text-xs">
+            <span className="text-muted-foreground">
+              Mostrando {Math.min((currentPage - 1) * pageSize + 1, filtered.length)} a{" "}
+              {Math.min(currentPage * pageSize, filtered.length)} de {filtered.length} colaboradores
+            </span>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-2 text-xs"
+                disabled={currentPage <= 1}
+                onClick={() => setPage(1)}
+              >
+                Primeira
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-2 text-xs"
+                disabled={currentPage <= 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+              >
+                Anterior
+              </Button>
+              <span className="px-2 font-medium">
+                {currentPage} / {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-2 text-xs"
+                disabled={currentPage >= totalPages}
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              >
+                Próxima
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-2 text-xs"
+                disabled={currentPage >= totalPages}
+                onClick={() => setPage(totalPages)}
+              >
+                Última
+              </Button>
+            </div>
+          </div>
+        )}
       </Card>
 
       <Dialog open={!!addAcessoFor} onOpenChange={(o) => !o && setAddAcessoFor(null)}>
@@ -731,6 +874,7 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
                   cargo: (fd.get("cargo") as string) || null,
                   operacao_id: (fd.get("operacao_id") as string) || null,
                   admissao_em: (fd.get("admissao_em") as string) || null,
+                  data_nascimento: (fd.get("data_nascimento") as string) || null,
                   status: (fd.get("status") as string) || "ativo",
                 });
               }}
@@ -782,6 +926,14 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
               <div>
                 <Label>Admissão</Label>
                 <Input name="admissao_em" type="date" defaultValue={editColab.admissao_em ?? ""} />
+              </div>
+              <div>
+                <Label>Data de Nascimento</Label>
+                <Input
+                  name="data_nascimento"
+                  type="date"
+                  defaultValue={editColab.data_nascimento ?? ""}
+                />
               </div>
               <div>
                 <Label>Status</Label>

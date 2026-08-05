@@ -84,11 +84,14 @@ export const createUserAccount = createServerFn({ method: "POST" })
     const uid = created.user!.id;
     await dbAdmin.from("user_roles").delete().eq("user_id", uid);
     await dbAdmin.from("user_roles").insert({ user_id: uid, role: data.role });
-    await dbAdmin.from("profiles").update({
-      ultima_senha: senha,
-      cpf: cpfDigits || undefined,
-      email: data.email || email,
-    } as any).eq("id", uid);
+    await dbAdmin
+      .from("profiles")
+      .update({
+        ultima_senha: senha,
+        cpf: cpfDigits || undefined,
+        email: data.email || email,
+      } as any)
+      .eq("id", uid);
     return { user_id: uid, senha_provisoria: senha, login: login || email };
   });
 

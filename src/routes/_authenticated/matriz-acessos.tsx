@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { db } from "@/integrations/database/client";
-import { useMemo, useState, Fragment } from "react";
+import { useMemo, useState, Fragment, memo, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -37,6 +37,8 @@ import {
   Pencil,
   Trash2,
   CheckSquare,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
@@ -44,6 +46,44 @@ import { createOperadorFromColaborador } from "@/lib/admin-users.functions";
 
 export const Route = createFileRoute("/_authenticated/matriz-acessos")({
   component: MatrizAcessos,
+});
+
+const ValCell = memo(function ValCell({
+  v,
+  label,
+  reveal,
+  onEdit,
+  onCopy,
+}: {
+  v: string | null | undefined;
+  label: string;
+  reveal: boolean;
+  onEdit?: () => void;
+  onCopy: (v: string, label: string) => void;
+}) {
+  return (
+    <div className="flex items-center gap-1 group min-w-0">
+      <span className="font-mono text-[11px] truncate">{v ? (reveal ? v : "••••") : "—"}</span>
+      {v && (
+        <button
+          onClick={() => onCopy(v, label)}
+          className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-opacity"
+          title="Copiar"
+        >
+          <Copy className="h-3 w-3" />
+        </button>
+      )}
+      {onEdit && (
+        <button
+          onClick={onEdit}
+          className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-opacity"
+          title="Editar"
+        >
+          <Pencil className="h-3 w-3" />
+        </button>
+      )}
+    </div>
+  );
 });
 
 export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean }) {
@@ -55,8 +95,13 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
   const [addAcessoFor, setAddAcessoFor] = useState<any | null>(null);
   const [editColab, setEditColab] = useState<any | null>(null);
   const [editAcesso, setEditAcesso] = useState<any | null>(null);
+
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(50);
+
   const { data: me } = useQuery({
     queryKey: ["me-matriz"],
+    staleTime: 1000 * 60 * 5,
     queryFn: async () => {
       const { data: u } = await db.auth.getUser();
       if (!u.user) return null;
@@ -85,6 +130,7 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
 
   const { data: acessos = [] } = useQuery({
     queryKey: ["matriz-acessos-full"],
+    staleTime: 1000 * 60 * 5,
     queryFn: async () => {
       const { data, error } = await db
         .from("acessos")
@@ -98,6 +144,7 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
 
   const { data: colabsRaw = [] } = useQuery({
     queryKey: ["colabs-full"],
+    staleTime: 1000 * 60 * 5,
     queryFn: async () =>
       (
         await db
@@ -111,11 +158,13 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
 
   const { data: sistemasAll = [] } = useQuery({
     queryKey: ["sistemas-all"],
+    staleTime: 1000 * 60 * 5,
     queryFn: async () => (await db.from("sistemas").select("id,nome").order("nome")).data ?? [],
   });
 
   const { data: operacoes = [] } = useQuery({
     queryKey: ["operacoes-all"],
+    staleTime: 1000 * 60 * 5,
     queryFn: async () => (await db.from("operacoes").select("id,nome").order("nome")).data ?? [],
   });
 
@@ -255,6 +304,14 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
     );
   }, [linhas, q]);
 
+  const totalPages = pageSize > 0 ? Math.ceil(filtered.length / pageSize) : 1;
+  const currentPage = Math.min(Math.max(1, page), totalPages || 1);
+  const paginatedRows = useMemo(() => {
+    if (pageSize === 0) return filtered;
+    const start = (currentPage - 1) * pageSize;
+    return filtered.slice(start, start + pageSize);
+  }, [filtered, currentPage, pageSize]);
+
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const toggleSelect = (id: string) => {
@@ -292,11 +349,11 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
     setSelectedIds(new Set());
   };
 
-  function copy(v: string | null, label: string) {
+  const copy = useCallback((v: string | null, label: string) => {
     if (!v) return;
     navigator.clipboard.writeText(v);
     toast.success(`${label} copiado`);
-  }
+  }, []);
 
   function exportar(onlySelected = false) {
     const targetRows = onlySelected ? filtered.filter((r: any) => selectedIds.has(r.id)) : filtered;
@@ -563,7 +620,10 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
                 className="pl-9 h-9 text-xs"
                 placeholder="Buscar por nome, CPF, e-mail ou telefone..."
                 value={q}
-                onChange={(e) => setQ(e.target.value)}
+                onChange={(e) => {
+                  setQ(e.target.value);
+                  setPage(1);
+                }}
               />
             </div>
             <div className="text-xs text-muted-foreground font-medium">
@@ -617,10 +677,12 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
               </Badge>
             )}
           </CardTitle>
-          <div className="text-xs text-muted-foreground font-medium">Tabela única e contínua</div>
+          <div className="text-xs text-muted-foreground font-medium">
+            Página {currentPage} de {totalPages || 1}
+          </div>
         </CardHeader>
 
-        <CardContent className="p-0 overflow-auto max-h-[calc(100vh-250px)] relative">
+        <CardContent className="p-0 overflow-auto max-h-[calc(100vh-280px)] relative">
           <table className="text-xs border-collapse w-full relative">
             <thead className="bg-muted uppercase text-[11px] font-semibold text-muted-foreground sticky top-0 z-30 shadow-sm">
               <tr>
@@ -673,7 +735,7 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
               </tr>
             </thead>
             <tbody className="divide-y">
-              {filtered.map((r: any) => {
+              {paginatedRows.map((r: any) => {
                 const isSelected = selectedIds.has(r.id);
                 return (
                   <tr
@@ -721,7 +783,7 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
                       {r.email ?? "—"}
                     </td>
                     <td className="p-2 border-r">
-                      <Val v={r.email_senha} label="Senha e-mail" />
+                      <ValCell v={r.email_senha} label="Senha e-mail" reveal={reveal} onCopy={copy} />
                     </td>
                     <td className="p-2 border-r text-[11px]">{r.telefone ?? "—"}</td>
                     <td className="p-2 border-r text-[11px] truncate max-w-[120px]">
@@ -791,9 +853,11 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
                       return (
                         <Fragment key={s.id}>
                           <td className="p-2 border-r">
-                            <Val
+                            <ValCell
                               v={a?.login}
                               label="Usuário"
+                              reveal={reveal}
+                              onCopy={copy}
                               onEdit={
                                 a
                                   ? () =>
@@ -807,9 +871,11 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
                             />
                           </td>
                           <td className="p-2 border-r">
-                            <Val
+                            <ValCell
                               v={a?.senha}
                               label="Senha"
+                              reveal={reveal}
+                              onCopy={copy}
                               onEdit={
                                 a
                                   ? () =>
@@ -842,9 +908,79 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
           </table>
         </CardContent>
 
-        <div className="px-4 py-2 bg-muted/20 border-t text-xs text-muted-foreground flex items-center justify-between">
-          <span>Exibindo todos os {filtered.length} colaboradores na visão única</span>
-          <span>Use o scroll para navegar verticalmente e horizontalmente</span>
+        <div className="px-4 py-3 bg-muted/20 border-t text-xs text-muted-foreground flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <span>
+              Exibindo{" "}
+              {filtered.length === 0
+                ? 0
+                : pageSize > 0
+                ? Math.min((currentPage - 1) * pageSize + 1, filtered.length)
+                : 1}{" "}
+              -{" "}
+              {pageSize > 0
+                ? Math.min(currentPage * pageSize, filtered.length)
+                : filtered.length}{" "}
+              de <strong>{filtered.length}</strong> colaboradores
+            </span>
+            {selectedIds.size > 0 && (
+              <Badge variant="secondary" className="text-[11px] font-normal">
+                {selectedIds.size} selecionado(s)
+              </Badge>
+            )}
+          </div>
+
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-1.5">
+              <span>Por página:</span>
+              <Select
+                value={String(pageSize)}
+                onValueChange={(v) => {
+                  setPageSize(Number(v));
+                  setPage(1);
+                }}
+              >
+                <SelectTrigger className="h-7 text-xs w-[80px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="25">25</SelectItem>
+                  <SelectItem value="50">50</SelectItem>
+                  <SelectItem value="100">100</SelectItem>
+                  <SelectItem value="250">250</SelectItem>
+                  <SelectItem value="0">Todos</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {pageSize > 0 && totalPages > 1 && (
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 px-2 text-xs"
+                  disabled={currentPage <= 1}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                >
+                  <ChevronLeft className="h-3.5 w-3.5 mr-1" />
+                  Anterior
+                </Button>
+                <span className="px-2 text-xs font-medium">
+                  {currentPage} / {totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 px-2 text-xs"
+                  disabled={currentPage >= totalPages}
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                >
+                  Próxima
+                  <ChevronRight className="h-3.5 w-3.5 ml-1" />
+                </Button>
+              </div>
+            )}
+          </div>
         </div>
       </Card>
 

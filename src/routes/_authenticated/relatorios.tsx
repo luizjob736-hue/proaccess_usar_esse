@@ -98,52 +98,62 @@ async function fetchRel(k: string) {
   if (k === "matriz" || k === "inativos") {
     const { data: colabs = [] } = await db
       .from("colaboradores")
-      .select("id,nome,cpf,email,email_senha,telefone,cargo,status,inativado_em" as any);
+      .select(
+        "id,nome,cpf,email,email_senha,telefone,cargo,status,inativado_em,data_nascimento" as any,
+      );
     const { data: acessos = [] } = await db
       .from("acessos")
-      .select("login,senha,colaborador_id,sistema:sistemas(nome)");
+      .select("login,senha,colaborador_id,sistema:sistemas(id,nome)");
+    const { data: sistemas = [] } = await db.from("sistemas").select("id,nome").order("nome");
+
+    const formatDate = (val: any) => {
+      if (!val) return "";
+      const dateObj = typeof val === "string" ? new Date(val) : val;
+      if (!dateObj || isNaN(dateObj.getTime())) return "";
+      return dateObj.toLocaleDateString("pt-BR", { timeZone: "UTC" });
+    };
+
+    const accessMap = new Map<string, Record<string, { login: string; senha: string }>>();
+    for (const a of (acessos || []) as any[]) {
+      if (a.colaborador_id && a.sistema) {
+        if (!accessMap.has(a.colaborador_id)) {
+          accessMap.set(a.colaborador_id, {});
+        }
+        accessMap.get(a.colaborador_id)![a.sistema.id] = {
+          login: a.login ?? "",
+          senha: a.senha ?? "",
+        };
+      }
+    }
+
     const rows: any[] = [];
     for (const c of colabs as any[]) {
-      if (k === "inativos" && !["inativo", "desligado"].includes(c.status)) continue;
-      const acs = (acessos as any[]).filter((a) => a.colaborador_id === c.id);
-      if (acs.length === 0) {
-        const base: any = {
-          Nome: c.nome,
-          CPF: c.cpf ?? "",
-          Email: c.email ?? "",
-          "Senha e-mail": c.email_senha ?? "",
-          Telefone: c.telefone ?? "",
-          Cargo: c.cargo ?? "",
-          Status: c.status,
-          Sistema: "",
-          Usuario: "",
-          Senha: "",
-        };
-        if (k === "inativos")
-          base["Inativado em"] = c.inativado_em
-            ? new Date(c.inativado_em).toLocaleString("pt-BR")
-            : "";
-        rows.push(base);
-      } else
-        for (const a of acs) {
-          const base: any = {
-            Nome: c.nome,
-            CPF: c.cpf ?? "",
-            Email: c.email ?? "",
-            "Senha e-mail": c.email_senha ?? "",
-            Telefone: c.telefone ?? "",
-            Cargo: c.cargo ?? "",
-            Status: c.status,
-            Sistema: a.sistema?.nome ?? "",
-            Usuario: a.login ?? "",
-            Senha: a.senha ?? "",
-          };
-          if (k === "inativos")
-            base["Inativado em"] = c.inativado_em
-              ? new Date(c.inativado_em).toLocaleString("pt-BR")
-              : "";
-          rows.push(base);
-        }
+      const isInactive = ["inativo", "desligado"].includes(c.status);
+      if (k === "inativos" && !isInactive) continue;
+      if (k === "matriz" && isInactive) continue;
+
+      const cAcs = accessMap.get(c.id) || {};
+      const base: any = {
+        Nome: c.nome,
+        CPF: c.cpf ?? "",
+        "Data de Nascimento": formatDate(c.data_nascimento),
+        Email: c.email ?? "",
+        "Senha e-mail": c.email_senha ?? "",
+        Telefone: c.telefone ?? "",
+        Cargo: c.cargo ?? "",
+        Status: c.status,
+      };
+
+      if (k === "inativos") {
+        base["Data Inativação"] = formatDate(c.inativado_em);
+      }
+
+      for (const s of sistemas as any[]) {
+        base[`${s.nome} - Usuário`] = cAcs[s.id]?.login ?? "";
+        base[`${s.nome} - Senha`] = cAcs[s.id]?.senha ?? "";
+      }
+
+      rows.push(base);
     }
     return rows;
   }

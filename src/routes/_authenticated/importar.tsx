@@ -286,26 +286,41 @@ function downloadCSV(key: TemplateKey, sistemasAll: any[] = []) {
   let sample: Record<string, string>[];
 
   if (key === "matriz" || key === "inativos") {
-    headers = ["nome", "cpf", "email", "telefone", "cargo", "status", "data inativação"];
+    headers = [
+      "Nome",
+      "CPF",
+      "Data de Nascimento",
+      "Email",
+      "Senha e-mail",
+      "Telefone",
+      "Cargo",
+      "Status",
+    ];
+    if (key === "inativos") {
+      headers.push("Data Inativação");
+    }
     const baseSample: Record<string, string> =
       key === "matriz"
         ? {
-            nome: "João da Silva",
-            cpf: "123.456.789-00",
-            email: "joao@empresa.com",
-            telefone: "11999999999",
-            cargo: "Analista de Suporte",
-            status: "ativo",
-            "data inativação": "",
+            Nome: "João da Silva",
+            CPF: "123.456.789-00",
+            "Data de Nascimento": "15/05/1995",
+            Email: "joao@empresa.com",
+            "Senha e-mail": "SenhaForteEmail123",
+            Telefone: "11999999999",
+            Cargo: "Analista de Suporte",
+            Status: "ativo",
           }
         : {
-            nome: "Maria Oliveira",
-            cpf: "987.654.321-00",
-            email: "maria@empresa.com",
-            telefone: "11988888888",
-            cargo: "Operador",
-            status: "inativo",
-            "data inativação": "2026-07-30",
+            Nome: "Maria Oliveira",
+            CPF: "987.654.321-00",
+            "Data de Nascimento": "20/10/1992",
+            Email: "maria@empresa.com",
+            "Senha e-mail": "SenhaForteEmail987",
+            Telefone: "11988888888",
+            Cargo: "Operador",
+            Status: "inativo",
+            "Data Inativação": "30/07/2026",
           };
     for (const s of sistemasAll) {
       baseSample[`${s.nome} - Usuário`] = key === "matriz" ? "joao.silva" : "maria.oliveira";
@@ -1129,7 +1144,9 @@ export async function importRows(
 
     const { data: existentes } = await db
       .from("colaboradores")
-      .select("id, nome, cpf, email, telefone, cargo, status, inativado_em");
+      .select(
+        "id, nome, cpf, email, email_senha, telefone, cargo, status, inativado_em, data_nascimento" as any,
+      );
 
     const colabMap = new Map<string, any>();
     for (const c of existentes ?? []) {
@@ -1151,10 +1168,12 @@ export async function importRows(
       let nome = "";
       let rawCpf = "";
       let email = "";
+      let emailSenha = "";
       let telefone = "";
       let cargo = "";
       let rawStatus = "";
       let dataInativacao = "";
+      let dataNascimento = "";
 
       const dataInativacaoKeys = [
         "data inativação",
@@ -1163,6 +1182,23 @@ export async function importRows(
         "datainativacao",
         "inativado em",
         "inativado_em",
+      ];
+
+      const dataNascimentoKeys = [
+        "data de nascimento",
+        "data_nascimento",
+        "datanascimento",
+        "nascimento",
+        "data nascimento",
+      ];
+
+      const emailSenhaKeys = [
+        "senha e-mail",
+        "senha email",
+        "senha_email",
+        "senha_do_email",
+        "email_senha",
+        "emailsenha",
       ];
 
       for (const [rowKey, rowValue] of Object.entries(r)) {
@@ -1175,6 +1211,9 @@ export async function importRows(
         else if (lowerKey === "status") rawStatus = String(rowValue ?? "").trim();
         else if (dataInativacaoKeys.includes(lowerKey))
           dataInativacao = String(rowValue ?? "").trim();
+        else if (dataNascimentoKeys.includes(lowerKey))
+          dataNascimento = String(rowValue ?? "").trim();
+        else if (emailSenhaKeys.includes(lowerKey)) emailSenha = String(rowValue ?? "").trim();
       }
 
       if (!nome) {
@@ -1189,9 +1228,13 @@ export async function importRows(
       const colabExistente =
         (cpfKey && colabMap.get(`cpf:${cpfKey}`)) || colabMap.get(`nome:${nomeKey}`);
 
-      const status = validStatuses.includes(rawStatus.toLowerCase())
-        ? rawStatus.toLowerCase()
-        : "ativo";
+      let status = "ativo";
+      if (kind === "inativos") {
+        status = "inativo";
+      }
+      if (rawStatus && validStatuses.includes(rawStatus.toLowerCase())) {
+        status = rawStatus.toLowerCase();
+      }
 
       let inativado_em = null;
       if (status === "inativo" || status === "desligado") {
@@ -1205,10 +1248,12 @@ export async function importRows(
         nome,
         cpf: rawCpf || null,
         email: email || null,
+        email_senha: emailSenha || colabExistente?.email_senha || null,
         telefone: telefone || null,
         cargo: cargo || null,
         status: status as any,
         inativado_em,
+        data_nascimento: parseDateToISO(dataNascimento) || colabExistente?.data_nascimento || null,
         ...(selectedOperacaoId !== "todas" && selectedOperacaoId !== "sem_operacao"
           ? { operacao_id: selectedOperacaoId }
           : {}),

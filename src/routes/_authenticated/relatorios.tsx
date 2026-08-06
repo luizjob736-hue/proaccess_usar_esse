@@ -62,37 +62,128 @@ async function fetchRel(k: string) {
       ).data ?? []
     );
   if (k === "pendencias") {
-    const { data: raw = [] } = await db
+    const { data: activePendencias = [] } = await db
       .from("pendencias")
-      .select(
-        "titulo,descricao,tipo,status,prioridade,criado_em,data_inicio,sla_em,concluido_em,colaborador_id,sistema:sistemas(nome)",
-      );
+      .select("colaborador_id, sistema_id, status, tipo, titulo")
+      .eq("arquivado", false);
+
+    const { data: sistemas = [] } = await db.from("sistemas").select("id, nome").order("nome");
+
+    const colabIds = Array.from(
+      new Set(activePendencias.map((p) => p.colaborador_id).filter(Boolean)),
+    );
+
+    if (colabIds.length === 0) return [];
+
     const { data: colabs = [] } = await db
       .from("colaboradores")
-      .select("id,nome,operacao:operacoes(nome)");
-    const colabMap = new Map((colabs || []).map((c: any) => [c.id, c]));
+      .select("id, nome, cpf, data_nascimento, email")
+      .in("id", colabIds);
 
-    return (raw as any[]).map((p) => {
-      const colab = colabMap.get(p.colaborador_id);
-      return {
-        Título: p.titulo ?? "",
-        Descrição: p.descricao ?? "",
-        Tipo: p.tipo ?? "",
-        Status: p.status ?? "",
-        Prioridade: p.prioridade ?? "",
-        "Produto / Sistema": p.sistema?.nome ?? "—",
-        Colaborador: colab?.nome ?? "—",
-        Operação: colab?.operacao?.nome ?? "—",
-        "Data Início": p.data_inicio
-          ? new Date(p.data_inicio).toLocaleDateString("pt-BR")
-          : p.criado_em
-            ? new Date(p.criado_em).toLocaleDateString("pt-BR")
-            : "",
-        "SLA (Data Limite)": p.sla_em ? new Date(p.sla_em).toLocaleString("pt-BR") : "",
-        "Concluído em": p.concluido_em
-          ? new Date(p.concluido_em).toLocaleString("pt-BR")
-          : "Em aberto",
+    colabs.sort((a: any, b: any) => (a.nome || "").localeCompare(b.nome || ""));
+
+    const formatCPF = (val: string | null | undefined) => {
+      if (!val) return "";
+      return val.replace(/\D/g, "");
+    };
+
+    const formatDateBR = (val: string | Date | null | undefined): string => {
+      if (!val) return "";
+      if (typeof val === "string") {
+        const match = val.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (match) {
+          const [, y, m, d] = match;
+          return `${d}/${m}/${y}`;
+        }
+      }
+      const d = typeof val === "string" ? new Date(val) : val;
+      if (!d || isNaN(d.getTime())) return "";
+      const pad = (n: number) => String(n).padStart(2, "0");
+      return `${pad(d.getUTCDate())}/${pad(d.getUTCMonth() + 1)}/${d.getUTCFullYear()}`;
+    };
+
+    const getPendenciaLabel = (p: any) => {
+      const statusNorm = p.status ? p.status.toUpperCase().trim() : "";
+
+      if (statusNorm === "COM ERRO" || statusNorm === "ERRO") {
+        return "ERRO";
+      }
+      if (statusNorm === "REDEFINIR SENHA") {
+        return "REDEFINIR SENHA";
+      }
+
+      const tipo = p.tipo ?? "";
+      const titulo = (p.titulo ?? "").toUpperCase();
+
+      if (
+        tipo === "solicitacao_acesso" ||
+        titulo.includes("CRIAÇÃO") ||
+        titulo.includes("CRIACAO") ||
+        titulo === "CRIAÇÃO"
+      ) {
+        return "CRIAÇÃO";
+      }
+      if (
+        tipo === "exclusao_acesso" ||
+        titulo.includes("EXCLUSÃO") ||
+        titulo.includes("EXCLUSAO") ||
+        titulo.includes("INATIVAÇÃO") ||
+        titulo.includes("INATIVACAO")
+      ) {
+        return "EXCLUSÃO";
+      }
+      if (
+        tipo === "revisao" ||
+        titulo.includes("DESBLOQUEIO") ||
+        titulo.includes("REVISÃO") ||
+        titulo.includes("REVISAO")
+      ) {
+        return "DESBLOQUEIO";
+      }
+      if (tipo === "alteracao" || titulo.includes("ALTERAÇÃO") || titulo.includes("ALTERACAO")) {
+        return "ALTERAÇÃO";
+      }
+
+      if (tipo === "solicitacao_acesso") return "CRIAÇÃO";
+      if (tipo === "exclusao_acesso") return "EXCLUSÃO";
+      if (tipo === "revisao") return "DESBLOQUEIO";
+      if (tipo === "alteracao") return "ALTERAÇÃO";
+
+      return statusNorm || "PENDENTE";
+    };
+
+    const pendenciasMap = new Map<string, any[]>();
+    for (const p of activePendencias) {
+      if (p.colaborador_id && p.sistema_id) {
+        const key = `${p.colaborador_id}:${p.sistema_id}`;
+        if (!pendenciasMap.has(key)) {
+          pendenciasMap.set(key, []);
+        }
+        pendenciasMap.get(key)!.push(p);
+      }
+    }
+
+    return colabs.map((c: any) => {
+      const row: any = {
+        Nome: c.nome ? c.nome.toUpperCase() : "",
+        CPF: formatCPF(c.cpf),
+        "Data de Nascimento": formatDateBR(c.data_nascimento),
+        Email: c.email ? c.email.toLowerCase() : "",
       };
+
+      for (const s of sistemas) {
+        const key = `${c.id}:${s.id}`;
+        const pList = pendenciasMap.get(key) || [];
+        if (pList.length === 0) {
+          row[s.nome] = "-";
+        } else {
+          const labels = pList.map(getPendenciaLabel);
+          const uniqueLabels = Array.from(new Set(labels));
+          row[s.nome] = uniqueLabels.join(", ");
+        }
+      }
+
+      return row;
     });
   }
   if (k === "matriz" || k === "inativos") {

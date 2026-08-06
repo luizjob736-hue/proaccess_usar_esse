@@ -40,6 +40,7 @@ import {
   CheckSquare,
   ChevronLeft,
   ChevronRight,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
@@ -113,6 +114,17 @@ const ValCell = memo(function ValCell({
 export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean }) {
   const qc = useQueryClient();
   const [q, setQ] = useState("");
+  const [colFilterNome, setColFilterNome] = useState("");
+  const [colFilterCpf, setColFilterCpf] = useState("");
+  const [colFilterNascimento, setColFilterNascimento] = useState("");
+  const [colFilterEmail, setColFilterEmail] = useState("");
+  const [colFilterSenhaEmail, setColFilterSenhaEmail] = useState("");
+  const [colFilterTelefone, setColFilterTelefone] = useState("");
+  const [colFilterCargo, setColFilterCargo] = useState("");
+  const [colFilterInativado, setColFilterInativado] = useState("");
+  const [colFilterSistemas, setColFilterSistemas] = useState<
+    Record<string, { usuario: string; senha: string }>
+  >({});
   const [selectedOperacaoId, setSelectedOperacaoId] = useState("todas");
   const [reveal, setReveal] = useState(false);
   const [newSisOpen, setNewSisOpen] = useState(false);
@@ -339,16 +351,113 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
   }, [linhas, selectedOperacaoId]);
 
   const filtered = useMemo(() => {
-    const t = q.trim().toLowerCase();
-    if (!t) return filteredByOp;
-    return filteredByOp.filter((r: any) =>
-      [r.nome, r.email, r.telefone, r.cpf].some((v) =>
-        String(v ?? "")
+    return filteredByOp.filter((r: any) => {
+      // 1. Global filter (q)
+      const t = q.trim().toLowerCase();
+      if (t) {
+        const matchesGlobal = [r.nome, r.email, r.telefone, r.cpf].some((v) =>
+          String(v ?? "")
+            .toLowerCase()
+            .includes(t),
+        );
+        if (!matchesGlobal) return false;
+      }
+
+      // 2. Column filters
+      if (
+        colFilterNome.trim() &&
+        !String(r.nome ?? "")
           .toLowerCase()
-          .includes(t),
-      ),
-    );
-  }, [filteredByOp, q]);
+          .includes(colFilterNome.trim().toLowerCase())
+      ) {
+        return false;
+      }
+      if (
+        colFilterCpf.trim() &&
+        !String(r.cpf ?? "")
+          .toLowerCase()
+          .includes(colFilterCpf.trim().toLowerCase())
+      ) {
+        return false;
+      }
+      if (colFilterNascimento.trim()) {
+        const dateStr = formatDateBR(r.data_nascimento).toLowerCase();
+        if (!dateStr.includes(colFilterNascimento.trim().toLowerCase())) {
+          return false;
+        }
+      }
+      if (
+        colFilterEmail.trim() &&
+        !String(r.email ?? "")
+          .toLowerCase()
+          .includes(colFilterEmail.trim().toLowerCase())
+      ) {
+        return false;
+      }
+      if (
+        colFilterSenhaEmail.trim() &&
+        !String(r.email_senha ?? "")
+          .toLowerCase()
+          .includes(colFilterSenhaEmail.trim().toLowerCase())
+      ) {
+        return false;
+      }
+      if (
+        colFilterTelefone.trim() &&
+        !String(r.telefone ?? "")
+          .toLowerCase()
+          .includes(colFilterTelefone.trim().toLowerCase())
+      ) {
+        return false;
+      }
+      if (
+        colFilterCargo.trim() &&
+        !String(r.cargo ?? "")
+          .toLowerCase()
+          .includes(colFilterCargo.trim().toLowerCase())
+      ) {
+        return false;
+      }
+      if (onlyInativos && colFilterInativado.trim()) {
+        const dateStr = formatDateBR(r.inativado_em).toLowerCase();
+        if (!dateStr.includes(colFilterInativado.trim().toLowerCase())) {
+          return false;
+        }
+      }
+
+      // 3. Dynamic systems filters
+      for (const [sisId, sFilter] of Object.entries(colFilterSistemas)) {
+        const acesso = r.acessos?.[sisId];
+        if (sFilter.usuario.trim()) {
+          const userVal = String(acesso?.login ?? "").toLowerCase();
+          if (!userVal.includes(sFilter.usuario.trim().toLowerCase())) {
+            return false;
+          }
+        }
+        if (sFilter.senha.trim()) {
+          const passVal = String(acesso?.senha ?? "").toLowerCase();
+          if (!passVal.includes(sFilter.senha.trim().toLowerCase())) {
+            return false;
+          }
+        }
+      }
+
+      return true;
+    });
+  }, [
+    filteredByOp,
+    q,
+    colFilterNome,
+    colFilterCpf,
+    colFilterNascimento,
+    colFilterEmail,
+    colFilterSenhaEmail,
+    colFilterTelefone,
+    colFilterCargo,
+    colFilterInativado,
+    colFilterSistemas,
+    onlyInativos,
+  ]);
 
   const totalPages = pageSize > 0 ? Math.ceil(filtered.length / pageSize) : 1;
   const currentPage = Math.min(Math.max(1, page), totalPages || 1);
@@ -785,6 +894,172 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
                   <Fragment key={s.id}>
                     <th className="p-1 text-left border-r font-medium">Usuário</th>
                     <th className="p-1 text-left border-r font-medium">Senha</th>
+                  </Fragment>
+                ))}
+              </tr>
+              <tr className="bg-muted/50 border-b text-[10px] h-9">
+                <th className="p-1 border-r sticky left-0 bg-muted z-40 shadow-sm min-w-[210px]">
+                  <Input
+                    value={colFilterNome}
+                    onChange={(e) => {
+                      setColFilterNome(e.target.value);
+                      setPage(1);
+                    }}
+                    placeholder="Filtrar nome..."
+                    className="h-6 text-[10px] px-1.5 py-0 bg-background border border-muted-foreground/20 rounded font-normal w-full"
+                  />
+                </th>
+                <th className="p-1 border-r min-w-[110px]">
+                  <Input
+                    value={colFilterCpf}
+                    onChange={(e) => {
+                      setColFilterCpf(e.target.value);
+                      setPage(1);
+                    }}
+                    placeholder="Filtrar CPF..."
+                    className="h-6 text-[10px] px-1.5 py-0 bg-background border border-muted-foreground/20 rounded font-normal w-full"
+                  />
+                </th>
+                <th className="p-1 border-r min-w-[100px]">
+                  <Input
+                    value={colFilterNascimento}
+                    onChange={(e) => {
+                      setColFilterNascimento(e.target.value);
+                      setPage(1);
+                    }}
+                    placeholder="Filtrar nasc..."
+                    className="h-6 text-[10px] px-1.5 py-0 bg-background border border-muted-foreground/20 rounded font-normal w-full"
+                  />
+                </th>
+                <th className="p-1 border-r min-w-[160px]">
+                  <Input
+                    value={colFilterEmail}
+                    onChange={(e) => {
+                      setColFilterEmail(e.target.value);
+                      setPage(1);
+                    }}
+                    placeholder="Filtrar e-mail..."
+                    className="h-6 text-[10px] px-1.5 py-0 bg-background border border-muted-foreground/20 rounded font-normal w-full"
+                  />
+                </th>
+                <th className="p-1 border-r min-w-[120px]">
+                  <Input
+                    value={colFilterSenhaEmail}
+                    onChange={(e) => {
+                      setColFilterSenhaEmail(e.target.value);
+                      setPage(1);
+                    }}
+                    placeholder="Filtrar senha..."
+                    className="h-6 text-[10px] px-1.5 py-0 bg-background border border-muted-foreground/20 rounded font-normal w-full"
+                  />
+                </th>
+                <th className="p-1 border-r min-w-[110px]">
+                  <Input
+                    value={colFilterTelefone}
+                    onChange={(e) => {
+                      setColFilterTelefone(e.target.value);
+                      setPage(1);
+                    }}
+                    placeholder="Filtrar tel..."
+                    className="h-6 text-[10px] px-1.5 py-0 bg-background border border-muted-foreground/20 rounded font-normal w-full"
+                  />
+                </th>
+                <th className="p-1 border-r min-w-[120px]">
+                  <Input
+                    value={colFilterCargo}
+                    onChange={(e) => {
+                      setColFilterCargo(e.target.value);
+                      setPage(1);
+                    }}
+                    placeholder="Filtrar cargo..."
+                    className="h-6 text-[10px] px-1.5 py-0 bg-background border border-muted-foreground/20 rounded font-normal w-full"
+                  />
+                </th>
+                {onlyInativos && (
+                  <th className="p-1 border-r min-w-[110px]">
+                    <Input
+                      value={colFilterInativado}
+                      onChange={(e) => {
+                        setColFilterInativado(e.target.value);
+                        setPage(1);
+                      }}
+                      placeholder="Filtrar inativ..."
+                      className="h-6 text-[10px] px-1.5 py-0 bg-background border border-muted-foreground/20 rounded font-normal w-full"
+                    />
+                  </th>
+                )}
+                <th className="p-1 border-r min-w-[100px] text-center">
+                  {!!(
+                    colFilterNome ||
+                    colFilterCpf ||
+                    colFilterNascimento ||
+                    colFilterEmail ||
+                    colFilterSenhaEmail ||
+                    colFilterTelefone ||
+                    colFilterCargo ||
+                    colFilterInativado ||
+                    Object.values(colFilterSistemas).some((sf) => sf.usuario || sf.senha)
+                  ) && (
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      title="Limpar todos os filtros"
+                      className="h-5 w-5 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                      onClick={() => {
+                        setColFilterNome("");
+                        setColFilterCpf("");
+                        setColFilterNascimento("");
+                        setColFilterEmail("");
+                        setColFilterSenhaEmail("");
+                        setColFilterTelefone("");
+                        setColFilterCargo("");
+                        setColFilterInativado("");
+                        setColFilterSistemas({});
+                        setPage(1);
+                      }}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  )}
+                </th>
+                {sistemas.map((s) => (
+                  <Fragment key={s.id}>
+                    <th className="p-1 border-r min-w-[100px]">
+                      <Input
+                        value={colFilterSistemas[s.id]?.usuario ?? ""}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setColFilterSistemas((prev) => ({
+                            ...prev,
+                            [s.id]: {
+                              usuario: val,
+                              senha: prev[s.id]?.senha ?? "",
+                            },
+                          }));
+                          setPage(1);
+                        }}
+                        placeholder="User..."
+                        className="h-6 text-[10px] px-1.5 py-0 bg-background border border-muted-foreground/20 rounded font-normal w-full"
+                      />
+                    </th>
+                    <th className="p-1 border-r min-w-[100px]">
+                      <Input
+                        value={colFilterSistemas[s.id]?.senha ?? ""}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setColFilterSistemas((prev) => ({
+                            ...prev,
+                            [s.id]: {
+                              usuario: prev[s.id]?.usuario ?? "",
+                              senha: val,
+                            },
+                          }));
+                          setPage(1);
+                        }}
+                        placeholder="Senha..."
+                        className="h-6 text-[10px] px-1.5 py-0 bg-background border border-muted-foreground/20 rounded font-normal w-full"
+                      />
+                    </th>
                   </Fragment>
                 ))}
               </tr>

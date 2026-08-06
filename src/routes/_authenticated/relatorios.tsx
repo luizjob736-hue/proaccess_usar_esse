@@ -64,22 +64,43 @@ async function fetchRel(k: string) {
   if (k === "pendencias") {
     const { data: activePendencias = [] } = await db
       .from("pendencias")
-      .select("colaborador_id, sistema_id, status, tipo, titulo")
+      .select("colaborador_id, sistema_id, status, tipo, titulo, criado_em")
       .eq("arquivado", false);
 
     const { data: sistemas = [] } = await db.from("sistemas").select("id, nome").order("nome");
 
-    const colabIds = Array.from(
-      new Set(activePendencias.map((p) => p.colaborador_id).filter(Boolean)),
-    );
-
-    if (colabIds.length === 0) return [];
-
-    const { data: colabs = [] } = await db
+    const { data: colabsAll = [] } = await db
       .from("colaboradores")
-      .select("id, nome, cpf, data_nascimento, email")
-      .in("id", colabIds);
+      .select("id, nome, cpf, data_nascimento, email");
 
+    const colabById = new Map<string, any>();
+    const colabByName = new Map<string, any>();
+    for (const c of colabsAll ?? []) {
+      colabById.set(c.id, c);
+      if (c.nome) {
+        colabByName.set(c.nome.trim().toLowerCase(), c);
+      }
+    }
+
+    const colabPendencias = new Map<string, any[]>();
+    for (const p of activePendencias ?? []) {
+      let matchedColabId = p.colaborador_id;
+      if (!matchedColabId && p.titulo) {
+        const matchedColab = colabByName.get(p.titulo.trim().toLowerCase());
+        if (matchedColab) {
+          matchedColabId = matchedColab.id;
+        }
+      }
+
+      if (matchedColabId) {
+        if (!colabPendencias.has(matchedColabId)) {
+          colabPendencias.set(matchedColabId, []);
+        }
+        colabPendencias.get(matchedColabId)!.push(p);
+      }
+    }
+
+    const colabs = (colabsAll ?? []).filter((c: any) => colabPendencias.has(c.id));
     colabs.sort((a: any, b: any) => (a.nome || "").localeCompare(b.nome || ""));
 
     const formatCPF = (val: string | null | undefined) => {
@@ -100,6 +121,14 @@ async function fetchRel(k: string) {
       if (!d || isNaN(d.getTime())) return "";
       const pad = (n: number) => String(n).padStart(2, "0");
       return `${pad(d.getUTCDate())}/${pad(d.getUTCMonth() + 1)}/${d.getUTCFullYear()}`;
+    };
+
+    const formatDateTimeBR = (val: string | Date | null | undefined): string => {
+      if (!val) return "";
+      const d = typeof val === "string" ? new Date(val) : val;
+      if (!d || isNaN(d.getTime())) return "";
+      const pad = (n: number) => String(n).padStart(2, "0");
+      return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
     };
 
     const getPendenciaLabel = (p: any) => {
@@ -152,17 +181,6 @@ async function fetchRel(k: string) {
       return statusNorm || "PENDENTE";
     };
 
-    const pendenciasMap = new Map<string, any[]>();
-    for (const p of activePendencias) {
-      if (p.colaborador_id && p.sistema_id) {
-        const key = `${p.colaborador_id}:${p.sistema_id}`;
-        if (!pendenciasMap.has(key)) {
-          pendenciasMap.set(key, []);
-        }
-        pendenciasMap.get(key)!.push(p);
-      }
-    }
-
     return colabs.map((c: any) => {
       const row: any = {
         Nome: c.nome ? c.nome.toUpperCase() : "",
@@ -172,8 +190,7 @@ async function fetchRel(k: string) {
       };
 
       for (const s of sistemas) {
-        const key = `${c.id}:${s.id}`;
-        const pList = pendenciasMap.get(key) || [];
+        const pList = (colabPendencias.get(c.id) || []).filter((p: any) => p.sistema_id === s.id);
         if (pList.length === 0) {
           row[s.nome] = "-";
         } else {
@@ -182,6 +199,17 @@ async function fetchRel(k: string) {
           row[s.nome] = uniqueLabels.join(", ");
         }
       }
+
+      const pListAll = colabPendencias.get(c.id) || [];
+      let latestDate: string | null = null;
+      for (const p of pListAll) {
+        if (p.criado_em) {
+          if (!latestDate || new Date(p.criado_em) > new Date(latestDate)) {
+            latestDate = p.criado_em;
+          }
+        }
+      }
+      row["Data"] = latestDate ? formatDateTimeBR(latestDate) : "";
 
       return row;
     });

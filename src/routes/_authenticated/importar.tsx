@@ -365,7 +365,9 @@ function Importar() {
     queryKey: ["sistemas-import"],
     queryFn: async () => {
       const { data } = await db.from("sistemas").select("id, nome").order("nome");
-      return data ?? [];
+      return (data ?? []).filter(
+        (s: any) => s.nome.toLowerCase() !== "e-mail" && s.nome.toLowerCase() !== "email",
+      );
     },
   });
 
@@ -1140,7 +1142,9 @@ export async function importRows(
   // 8. IMPORT MATRIZ DE ACESSOS UNIFICADA
   else if (kind === "matriz" || kind === "inativos") {
     const { data: sis } = await db.from("sistemas").select("id, nome");
-    const sistemasList = sis ?? [];
+    const sistemasList = (sis ?? []).filter(
+      (s: any) => s.nome.toLowerCase() !== "e-mail" && s.nome.toLowerCase() !== "email",
+    );
 
     const { data: existentes } = await db
       .from("colaboradores")
@@ -1311,23 +1315,39 @@ export async function importRows(
 
       let rowCredErrors = false;
       for (const s of sistemasList) {
-        const userKeys = [
-          `${s.nome} - Usuário`,
-          `${s.nome} - Usuario`,
-          `${s.nome} - usuario`,
-          `${s.nome} - usuário`,
-        ].map((k) => k.toLowerCase());
-        const passKeys = [`${s.nome} - Senha`, `${s.nome} - senha`].map((k) => k.toLowerCase());
+        const nameLower = s.nome.toLowerCase();
+        const baseNames = [nameLower];
+        if (nameLower.includes("intergrall") || nameLower.includes("integrall")) {
+          baseNames.push("intergrall", "integrall", "integral", "intergral");
+        }
+
+        const userKeys: string[] = [];
+        const passKeys: string[] = [];
+        for (const base of baseNames) {
+          userKeys.push(
+            `${base} - usuário`,
+            `${base} - usuario`,
+            `${base} - usuario`,
+            `${base} - usuário`,
+            `${base} usuario`,
+            `${base} usuário`,
+            `${base}_usuario`,
+            `${base}_usuário`,
+          );
+          passKeys.push(`${base} - senha`, `${base} - senha`, `${base} senha`, `${base}_senha`);
+        }
+        const userKeysLower = userKeys.map((k) => k.toLowerCase());
+        const passKeysLower = passKeys.map((k) => k.toLowerCase());
 
         let userVal = "";
         let passVal = "";
 
         for (const [rowKey, rowValue] of Object.entries(r)) {
           const lowerKey = rowKey.toLowerCase().trim();
-          if (userKeys.includes(lowerKey)) {
+          if (userKeysLower.includes(lowerKey)) {
             userVal = String(rowValue ?? "").trim();
           }
-          if (passKeys.includes(lowerKey)) {
+          if (passKeysLower.includes(lowerKey)) {
             passVal = String(rowValue ?? "").trim();
           }
         }

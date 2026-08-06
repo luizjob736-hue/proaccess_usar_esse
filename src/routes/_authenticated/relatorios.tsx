@@ -67,7 +67,10 @@ async function fetchRel(k: string) {
       .select("colaborador_id, sistema_id, status, tipo, titulo, criado_em")
       .eq("arquivado", false);
 
-    const { data: sistemas = [] } = await db.from("sistemas").select("id, nome").order("nome");
+    const { data: rawSistemas = [] } = await db.from("sistemas").select("id, nome").order("nome");
+    const sistemas = (rawSistemas ?? []).filter(
+      (s: any) => s.nome.toLowerCase() !== "e-mail" && s.nome.toLowerCase() !== "email",
+    );
 
     const { data: colabsAll = [] } = await db
       .from("colaboradores")
@@ -223,7 +226,10 @@ async function fetchRel(k: string) {
     const { data: acessos = [] } = await db
       .from("acessos")
       .select("login,senha,colaborador_id,sistema:sistemas(id,nome)");
-    const { data: sistemas = [] } = await db.from("sistemas").select("id,nome").order("nome");
+    const { data: rawSistemas = [] } = await db.from("sistemas").select("id,nome").order("nome");
+    const sistemas = (rawSistemas ?? []).filter(
+      (s: any) => s.nome.toLowerCase() !== "e-mail" && s.nome.toLowerCase() !== "email",
+    );
 
     const formatDate = (val: any) => {
       if (!val) return "";

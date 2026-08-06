@@ -184,7 +184,12 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
   const { data: sistemasAll = [] } = useQuery({
     queryKey: ["sistemas-all"],
     staleTime: 1000 * 60 * 5,
-    queryFn: async () => (await db.from("sistemas").select("id,nome").order("nome")).data ?? [],
+    queryFn: async () => {
+      const data = (await db.from("sistemas").select("id,nome").order("nome")).data ?? [];
+      return data.filter(
+        (s: any) => s.nome.toLowerCase() !== "e-mail" && s.nome.toLowerCase() !== "email",
+      );
+    },
   });
 
   const { data: operacoes = [] } = useQuery({
@@ -288,11 +293,9 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
   });
 
   const { sistemas, linhas } = useMemo(() => {
-    const sisMap = new Map<string, string>();
     const colabMap = new Map<string, any>();
     for (const c of colabsRaw as any[]) colabMap.set(c.id, { ...c, acessos: {} });
     for (const a of acessos as any[]) {
-      if (a.sistema) sisMap.set(a.sistema.id, a.sistema.nome);
       if (a.colaborador) {
         const id = a.colaborador.id;
         if (!colabMap.has(id)) colabMap.set(id, { ...a.colaborador, acessos: {} });
@@ -304,8 +307,8 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
         };
       }
     }
-    const sistemas = Array.from(sisMap.entries())
-      .map(([id, nome]) => ({ id, nome }))
+    const sistemas = (sistemasAll as any[])
+      .filter((s: any) => s.nome.toLowerCase() !== "e-mail" && s.nome.toLowerCase() !== "email")
       .sort((a, b) => a.nome.localeCompare(b.nome));
     const linhas = Array.from(colabMap.values())
       .filter((c: any) =>
@@ -315,7 +318,7 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
       )
       .sort((a, b) => a.nome.localeCompare(b.nome));
     return { sistemas, linhas };
-  }, [acessos, colabsRaw, onlyInativos]);
+  }, [acessos, colabsRaw, sistemasAll, onlyInativos]);
 
   const operacaoCounts = useMemo(() => {
     const counts: Record<string, number> = { todas: linhas.length, sem_operacao: 0 };
@@ -907,16 +910,17 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
                               label="Usuário"
                               reveal={reveal}
                               onCopy={copy}
-                              onEdit={
-                                a
-                                  ? () =>
-                                      setEditAcesso({
-                                        ...a,
-                                        colab_nome: r.nome,
-                                        sistema_nome: s.nome,
-                                      })
-                                  : undefined
-                              }
+                              onEdit={() => {
+                                if (a) {
+                                  setEditAcesso({
+                                    ...a,
+                                    colab_nome: r.nome,
+                                    sistema_nome: s.nome,
+                                  });
+                                } else {
+                                  setAddAcessoFor({ colab: r, sistemaId: s.id });
+                                }
+                              }}
                             />
                           </td>
                           <td className="p-2 border-r">
@@ -925,16 +929,17 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
                               label="Senha"
                               reveal={reveal}
                               onCopy={copy}
-                              onEdit={
-                                a
-                                  ? () =>
-                                      setEditAcesso({
-                                        ...a,
-                                        colab_nome: r.nome,
-                                        sistema_nome: s.nome,
-                                      })
-                                  : undefined
-                              }
+                              onEdit={() => {
+                                if (a) {
+                                  setEditAcesso({
+                                    ...a,
+                                    colab_nome: r.nome,
+                                    sistema_nome: s.nome,
+                                  });
+                                } else {
+                                  setAddAcessoFor({ colab: r, sistemaId: s.id });
+                                }
+                              }}
                             />
                           </td>
                         </Fragment>
@@ -1033,51 +1038,61 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
       <Dialog open={!!addAcessoFor} onOpenChange={(o) => !o && setAddAcessoFor(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Adicionar acesso — {addAcessoFor?.nome}</DialogTitle>
+            <DialogTitle>
+              Adicionar acesso — {addAcessoFor?.colab?.nome || addAcessoFor?.nome}
+            </DialogTitle>
           </DialogHeader>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              const fd = new FormData(e.currentTarget);
-              criarAcesso.mutate({
-                colaborador_id: addAcessoFor.id,
-                sistema_id: fd.get("sistema_id"),
-                login: fd.get("login") || null,
-                senha: fd.get("senha") || null,
-                status: "ativo",
-              });
-            }}
-            className="space-y-3"
-          >
-            <div>
-              <Label>Sistema *</Label>
-              <Select name="sistema_id" required>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione" />
-                </SelectTrigger>
-                <SelectContent>
-                  {sistemasAll.map((s: any) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.nome}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Usuário *</Label>
-              <Input name="login" required />
-            </div>
-            <div>
-              <Label>Senha *</Label>
-              <Input name="senha" required />
-            </div>
-            <DialogFooter>
-              <Button type="submit" disabled={criarAcesso.isPending}>
-                Salvar
-              </Button>
-            </DialogFooter>
-          </form>
+          {addAcessoFor && (
+            <form
+              key={
+                (addAcessoFor?.colab?.id || addAcessoFor?.id) +
+                "-" +
+                (addAcessoFor?.sistemaId ?? "new")
+              }
+              onSubmit={(e) => {
+                e.preventDefault();
+                const fd = new FormData(e.currentTarget);
+                const colabId = addAcessoFor?.colab?.id || addAcessoFor?.id;
+                criarAcesso.mutate({
+                  colaborador_id: colabId,
+                  sistema_id: fd.get("sistema_id"),
+                  login: fd.get("login") || null,
+                  senha: fd.get("senha") || null,
+                  status: "ativo",
+                });
+              }}
+              className="space-y-3"
+            >
+              <div>
+                <Label>Sistema *</Label>
+                <Select name="sistema_id" defaultValue={addAcessoFor?.sistemaId} required>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sistemasAll.map((s: any) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.nome}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Usuário *</Label>
+                <Input name="login" required />
+              </div>
+              <div>
+                <Label>Senha *</Label>
+                <Input name="senha" required />
+              </div>
+              <DialogFooter>
+                <Button type="submit" disabled={criarAcesso.isPending}>
+                  Salvar
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
         </DialogContent>
       </Dialog>
 

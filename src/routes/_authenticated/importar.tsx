@@ -862,12 +862,24 @@ export async function importRows(
       const rawStatus = (r.status ?? "").trim().toLowerCase();
       const status = validStatuses.includes(rawStatus) ? rawStatus : "pendente";
 
+      let loginVal = "";
+      let senhaVal = "";
+      for (const [rowKey, rowValue] of Object.entries(r)) {
+        const lowerKey = rowKey.toLowerCase().trim();
+        if (["login", "usuario", "usuário", "user"].includes(lowerKey)) {
+          loginVal = String(rowValue ?? "");
+        }
+        if (["senha", "password"].includes(lowerKey)) {
+          senhaVal = String(rowValue ?? "");
+        }
+      }
+
       const payload: any = {
         colaborador_id: colId,
         sistema_id: sisId,
         perfil_acesso_id: perfilId,
-        login: r.login?.trim() || null,
-        senha: r.senha?.trim() || null,
+        login: loginVal || null,
+        senha: senhaVal || null,
         status: status as any,
         concedido_por: u.user?.id ?? null,
         concedido_em: status === "ativo" ? new Date().toISOString() : null,
@@ -1146,10 +1158,13 @@ export async function importRows(
       (s: any) => s.nome.toLowerCase() !== "e-mail" && s.nome.toLowerCase() !== "email",
     );
 
+    const { data: existingOps } = await db.from("operacoes").select("id, nome");
+    const operationsList = [...(existingOps ?? [])];
+
     const { data: existentes } = await db
       .from("colaboradores")
       .select(
-        "id, nome, cpf, email, email_senha, telefone, cargo, status, inativado_em, data_nascimento" as any,
+        "id, nome, cpf, email, email_senha, telefone, cargo, status, inativado_em, data_nascimento, operacao_id" as any,
       );
 
     const colabMap = new Map<string, any>();
@@ -1178,6 +1193,7 @@ export async function importRows(
       let rawStatus = "";
       let dataInativacao = "";
       let dataNascimento = "";
+      let rowOperacao = "";
 
       const dataInativacaoKeys = [
         "data inativação",
@@ -1205,6 +1221,16 @@ export async function importRows(
         "emailsenha",
       ];
 
+      const operacaoKeys = [
+        "operação",
+        "operacao",
+        "fila",
+        "op",
+        "operation",
+        "setor",
+        "departamento",
+      ];
+
       for (const [rowKey, rowValue] of Object.entries(r)) {
         const lowerKey = rowKey.toLowerCase().trim();
         if (lowerKey === "nome") nome = String(rowValue ?? "").trim();
@@ -1218,6 +1244,7 @@ export async function importRows(
         else if (dataNascimentoKeys.includes(lowerKey))
           dataNascimento = String(rowValue ?? "").trim();
         else if (emailSenhaKeys.includes(lowerKey)) emailSenha = String(rowValue ?? "").trim();
+        else if (operacaoKeys.includes(lowerKey)) rowOperacao = String(rowValue ?? "").trim();
       }
 
       if (!nome) {
@@ -1248,6 +1275,33 @@ export async function importRows(
           new Date().toISOString();
       }
 
+      let resolvedOperacaoId = null;
+      if (rowOperacao) {
+        let matchedOp = operationsList.find(
+          (o: any) => o.nome.toLowerCase().trim() === rowOperacao.toLowerCase().trim(),
+        );
+        if (!matchedOp) {
+          const { data: newOp, error: newOpErr } = await db
+            .from("operacoes")
+            .insert({ nome: rowOperacao, ativo: true })
+            .select("id, nome")
+            .maybeSingle();
+          if (!newOpErr && newOp) {
+            matchedOp = newOp;
+            operationsList.push(newOp);
+          }
+        }
+        if (matchedOp) {
+          resolvedOperacaoId = matchedOp.id;
+        }
+      }
+
+      const finalOperacaoId =
+        resolvedOperacaoId ||
+        (selectedOperacaoId !== "todas" && selectedOperacaoId !== "sem_operacao"
+          ? selectedOperacaoId
+          : colabExistente?.operacao_id || null);
+
       const colabPayload: any = {
         nome,
         cpf: rawCpf || null,
@@ -1258,9 +1312,7 @@ export async function importRows(
         status: status as any,
         inativado_em,
         data_nascimento: parseDateToISO(dataNascimento) || colabExistente?.data_nascimento || null,
-        ...(selectedOperacaoId !== "todas" && selectedOperacaoId !== "sem_operacao"
-          ? { operacao_id: selectedOperacaoId }
-          : {}),
+        ...(finalOperacaoId ? { operacao_id: finalOperacaoId } : {}),
       };
 
       let colId: string;
@@ -1315,40 +1367,35 @@ export async function importRows(
 
       let rowCredErrors = false;
       for (const s of sistemasList) {
-        const nameLower = s.nome.toLowerCase();
+        const nameLower = s.nome.toLowerCase().trim();
         const baseNames = [nameLower];
         if (nameLower.includes("intergrall") || nameLower.includes("integrall")) {
           baseNames.push("intergrall", "integrall", "integral", "intergral");
         }
 
-        const userKeys: string[] = [];
-        const passKeys: string[] = [];
-        for (const base of baseNames) {
-          userKeys.push(
-            `${base} - usuário`,
-            `${base} - usuario`,
-            `${base} - usuario`,
-            `${base} - usuário`,
-            `${base} usuario`,
-            `${base} usuário`,
-            `${base}_usuario`,
-            `${base}_usuário`,
-          );
-          passKeys.push(`${base} - senha`, `${base} - senha`, `${base} senha`, `${base}_senha`);
-        }
-        const userKeysLower = userKeys.map((k) => k.toLowerCase());
-        const passKeysLower = passKeys.map((k) => k.toLowerCase());
-
         let userVal = "";
         let passVal = "";
 
         for (const [rowKey, rowValue] of Object.entries(r)) {
-          const lowerKey = rowKey.toLowerCase().trim();
-          if (userKeysLower.includes(lowerKey)) {
-            userVal = String(rowValue ?? "").trim();
-          }
-          if (passKeysLower.includes(lowerKey)) {
-            passVal = String(rowValue ?? "").trim();
+          const colLower = rowKey.toLowerCase().trim();
+          const hasBase = baseNames.some((base) => colLower.includes(base));
+          if (hasBase) {
+            const isPassword =
+              colLower.includes("senha") || colLower.includes("pass") || colLower.includes("pw");
+
+            if (isPassword) {
+              passVal = String(rowValue ?? "").trim();
+            } else {
+              const isUser =
+                colLower.includes("usu") ||
+                colLower.includes("usr") ||
+                colLower.includes("log") ||
+                colLower.includes("user");
+
+              if (isUser) {
+                userVal = String(rowValue ?? "").trim();
+              }
+            }
           }
         }
 

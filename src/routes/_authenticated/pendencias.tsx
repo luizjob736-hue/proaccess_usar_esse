@@ -144,6 +144,7 @@ function Pendencias() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [sistemaFiltro, setSistemaFiltro] = useState<string>("todos");
   const [selectedOperacaoId, setSelectedOperacaoId] = useState("todas");
+  const [selectedSistemas, setSelectedSistemas] = useState<string[]>([]);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   const { data: quadros = [] } = useQuery({
@@ -202,13 +203,18 @@ function Pendencias() {
   });
 
   const create = useMutation({
-    mutationFn: async (form: any) => {
+    mutationFn: async (form: any | any[]) => {
       const { data: u } = await db.auth.getUser();
-      const { error } = await db.from("pendencias").insert({ ...form, criado_por: u.user?.id });
+      const items = Array.isArray(form) ? form : [form];
+      const payloads = items.map((item) => ({
+        ...item,
+        criado_por: u.user?.id || null,
+      }));
+      const { error } = await db.from("pendencias").insert(payloads);
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success("Pendência criada");
+      toast.success("Pendências criadas com sucesso");
       setOpen(false);
       qc.invalidateQueries({ queryKey: ["pendencias"] });
     },
@@ -463,7 +469,13 @@ function Pendencias() {
               </Link>
             </Button>
           )}
-          <Dialog open={open} onOpenChange={setOpen}>
+          <Dialog
+            open={open}
+            onOpenChange={(o) => {
+              setOpen(o);
+              if (!o) setSelectedSistemas([]);
+            }}
+          >
             <Button onClick={() => setOpen(true)} className="gap-2">
               <Plus className="h-4 w-4" />
               Nova pendência
@@ -476,37 +488,53 @@ function Pendencias() {
                 onSubmit={(e) => {
                   e.preventDefault();
                   const fd = new FormData(e.currentTarget);
-                  const selectedSisId = (fd.get("sistema_id") as string) || null;
-                  let finalSla = (fd.get("sla_em") as string) || null;
-
-                  if (!finalSla && selectedSisId) {
-                    const sisObj = sistemas.find((s: any) => s.id === selectedSisId);
-                    const diasSla = sisObj?.sla_horas ?? 1;
-                    const startVal = (fd.get("data_inicio") as string) || new Date().toISOString();
-                    const startDate = new Date(startVal);
-                    const slaDate = new Date(startDate.getTime() + diasSla * 24 * 3600 * 1000);
-                    finalSla = slaDate.toISOString();
-                  }
-
-                  create.mutate({
+                  const basePayload = {
                     titulo: fd.get("titulo"),
                     descricao: fd.get("descricao"),
                     tipo: fd.get("tipo") || "outro",
                     prioridade: fd.get("prioridade") || "media",
                     colaborador_id: (fd.get("colaborador_id") as string) || null,
-                    sistema_id: selectedSisId,
                     operacao_id:
                       (fd.get("operacao_id") as string) ||
                       (selectedOperacaoId !== "todas" && selectedOperacaoId !== "sem_operacao"
                         ? selectedOperacaoId
                         : null),
-                    sla_em: finalSla,
                     data_inicio: (fd.get("data_inicio") as string) || undefined,
                     etiquetas: ((fd.get("etiquetas") as string) || "")
                       .split(",")
                       .map((s) => s.trim())
                       .filter(Boolean),
-                  });
+                  };
+
+                  if (selectedSistemas.length > 0) {
+                    const payloads = selectedSistemas.map((sisId) => {
+                      const sisObj = sistemas.find((s: any) => s.id === sisId);
+                      const diasSla = sisObj?.sla_horas ?? 1;
+                      const startVal =
+                        (fd.get("data_inicio") as string) || new Date().toISOString();
+                      const startDate = new Date(startVal);
+                      const slaDate = new Date(startDate.getTime() + diasSla * 24 * 3600 * 1000);
+                      const finalSla = (fd.get("sla_em") as string) || slaDate.toISOString();
+
+                      return {
+                        ...basePayload,
+                        sistema_id: sisId,
+                        sla_em: finalSla,
+                      };
+                    });
+                    create.mutate(payloads);
+                  } else {
+                    const startVal = (fd.get("data_inicio") as string) || new Date().toISOString();
+                    const startDate = new Date(startVal);
+                    const slaDate = new Date(startDate.getTime() + 1 * 24 * 3600 * 1000);
+                    const finalSla = (fd.get("sla_em") as string) || slaDate.toISOString();
+
+                    create.mutate({
+                      ...basePayload,
+                      sistema_id: null,
+                      sla_em: finalSla,
+                    });
+                  }
                 }}
                 className="space-y-3"
               >
@@ -566,19 +594,32 @@ function Pendencias() {
                     </Select>
                   </div>
                   <div>
-                    <Label>Sistema</Label>
-                    <Select name="sistema_id">
-                      <SelectTrigger>
-                        <SelectValue placeholder="—" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {sistemas.map((s: any) => (
-                          <SelectItem key={s.id} value={s.id}>
-                            {s.nome}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <Label>Sistemas (Marcação múltipla)</Label>
+                    <div className="border border-input rounded-md p-2 max-h-32 overflow-y-auto bg-background space-y-1 mt-1">
+                      {sistemas.map((s: any) => {
+                        const isChecked = selectedSistemas.includes(s.id);
+                        return (
+                          <label
+                            key={s.id}
+                            className="flex items-center gap-2 text-sm font-normal cursor-pointer hover:bg-accent/50 p-1 rounded-sm transition-colors"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedSistemas((prev) => [...prev, s.id]);
+                                } else {
+                                  setSelectedSistemas((prev) => prev.filter((id) => id !== s.id));
+                                }
+                              }}
+                              className="rounded border-gray-300 text-primary focus:ring-primary h-4 w-4"
+                            />
+                            <span className="truncate">{s.nome}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">

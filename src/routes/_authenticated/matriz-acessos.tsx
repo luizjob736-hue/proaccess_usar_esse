@@ -172,7 +172,7 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
       const { data, error } = await db
         .from("acessos")
         .select(
-          "id, login, senha, sistema:sistemas(id,nome), colaborador:colaboradores(id, nome, cpf, email, email_senha, telefone, cargo, status, operacao_id, matricula, admissao_em)",
+          "id, login, senha, sistema:sistemas(id,nome), colaborador:colaboradores(id, nome, cpf, email, email_senha, telefone, cargo, status, operacao_id, matricula, admissao_em, inativado_em, data_nascimento)",
         );
       if (error) throw error;
       return data ?? [];

@@ -38,7 +38,12 @@ import {
   Pencil,
 } from "lucide-react";
 import { toast } from "sonner";
-import { createUserAccount, resetUserPassword } from "@/lib/admin-users.functions";
+import {
+  createUserAccount,
+  resetUserPassword,
+  updateUserAccount,
+  getUsersList,
+} from "@/lib/admin-users.functions";
 
 export const Route = createFileRoute("/_authenticated/administracao")({ component: Adm });
 
@@ -85,12 +90,21 @@ function UsuariosTab() {
   const [open, setOpen] = useState(false);
   const [reveal, setReveal] = useState(false);
   const [resetFor, setResetFor] = useState<any | null>(null);
+  const [editUser, setEditUser] = useState<any | null>(null);
   const createFn = useServerFn(createUserAccount);
   const resetFn = useServerFn(resetUserPassword);
+  const updateFn = useServerFn(updateUserAccount);
+  const getUsersFn = useServerFn(getUsersList);
 
   const { data = [] } = useQuery({
     queryKey: ["adm-users"],
     queryFn: async () => {
+      try {
+        const users = await getUsersFn();
+        if (users && Array.isArray(users)) return users;
+      } catch (_e) {
+        // fallback to client DB query
+      }
       const { data: profs } = await db.from("profiles").select("*").order("nome");
       const { data: roles } = await db.from("user_roles").select("*");
       return (profs ?? []).map((p: any) => ({
@@ -127,6 +141,16 @@ function UsuariosTab() {
     onSuccess: (r: any) => {
       toast.success(`Senha redefinida: ${r.senha}`);
       setResetFor(null);
+      qc.invalidateQueries({ queryKey: ["adm-users"] });
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const updateUser = useMutation({
+    mutationFn: async (payload: any) => await updateFn({ data: payload }),
+    onSuccess: () => {
+      toast.success("Dados do usuário atualizados com sucesso");
+      setEditUser(null);
       qc.invalidateQueries({ queryKey: ["adm-users"] });
     },
     onError: (e: any) => toast.error(e.message),
@@ -246,8 +270,26 @@ function UsuariosTab() {
           {data.map((u: any) => (
             <div key={u.id} className="flex items-center gap-3 p-4 flex-wrap">
               <div className="flex-1 min-w-[200px]">
-                <p className="font-medium">{u.nome}</p>
+                <div className="flex items-center gap-2">
+                  <p className="font-medium">{u.nome}</p>
+                  {u.ativo === false && <Badge variant="destructive">Inativo</Badge>}
+                </div>
                 <p className="text-xs text-muted-foreground">{u.email}</p>
+                {(u.login || u.cpf) && (
+                  <p className="text-[11px] text-muted-foreground/80 mt-0.5">
+                    {u.login && (
+                      <span>
+                        Login: <strong>{u.login}</strong>
+                      </span>
+                    )}
+                    {u.login && u.cpf && <span className="mx-1">•</span>}
+                    {u.cpf && (
+                      <span>
+                        CPF: <strong>{u.cpf}</strong>
+                      </span>
+                    )}
+                  </p>
+                )}
               </div>
               <div className="flex items-center gap-1 text-xs">
                 <KeyRound className="h-3 w-3 text-muted-foreground" />
@@ -278,6 +320,9 @@ function UsuariosTab() {
                   ))}
                 </SelectContent>
               </Select>
+              <Button size="sm" variant="outline" onClick={() => setEditUser(u)} className="gap-1">
+                <Pencil className="h-3 w-3" /> Editar
+              </Button>
               <Button size="sm" variant="outline" onClick={() => setResetFor(u)} className="gap-1">
                 <KeyRound className="h-3 w-3" /> Redefinir
               </Button>
@@ -298,6 +343,88 @@ function UsuariosTab() {
           ))}
         </div>
       </CardContent>
+
+      <Dialog open={!!editUser} onOpenChange={(o) => !o && setEditUser(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Editar dados do usuário</DialogTitle>
+          </DialogHeader>
+          {editUser && (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const fd = new FormData(e.currentTarget);
+                updateUser.mutate({
+                  user_id: editUser.id,
+                  nome: fd.get("nome"),
+                  email: fd.get("email"),
+                  cpf: fd.get("cpf"),
+                  login: fd.get("login"),
+                  role: fd.get("role") as any,
+                  ativo: fd.get("ativo") === "true",
+                });
+              }}
+              className="grid grid-cols-2 gap-3"
+            >
+              <div className="col-span-2">
+                <Label>Nome completo *</Label>
+                <Input name="nome" defaultValue={editUser.nome} required />
+              </div>
+              <div className="col-span-2">
+                <Label>E-mail *</Label>
+                <Input name="email" type="email" defaultValue={editUser.email} required />
+              </div>
+              <div>
+                <Label>CPF</Label>
+                <Input name="cpf" defaultValue={editUser.cpf ?? ""} placeholder="000.000.000-00" />
+              </div>
+              <div>
+                <Label>Usuário / Login</Label>
+                <Input
+                  name="login"
+                  defaultValue={editUser.login ?? ""}
+                  placeholder="login.usuario"
+                />
+              </div>
+              <div>
+                <Label>Hierarquia / Papel</Label>
+                <Select name="role" defaultValue={editUser.roles?.[0] ?? "consulta"}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ROLES.map((r) => (
+                      <SelectItem key={r} value={r}>
+                        {r}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Status do Acesso</Label>
+                <Select name="ativo" defaultValue={editUser.ativo !== false ? "true" : "false"}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="true">Ativo</SelectItem>
+                    <SelectItem value="false">Inativo</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <DialogFooter className="col-span-2 mt-2">
+                <Button type="button" variant="outline" onClick={() => setEditUser(null)}>
+                  Cancelar
+                </Button>
+                <Button type="submit" disabled={updateUser.isPending}>
+                  {updateUser.isPending ? "Salvando..." : "Salvar alterações"}
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!resetFor} onOpenChange={(o) => !o && setResetFor(null)}>
         <DialogContent>

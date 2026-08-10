@@ -168,7 +168,9 @@ function Dashboard() {
       : "Geral / Sem Sistema";
     pendBySisMap[sisNome] = (pendBySisMap[sisNome] || 0) + 1;
   });
-  const pendBySistemaChart = Object.entries(pendBySisMap).map(([name, value]) => ({ name, value }));
+  const pendBySistemaChart = Object.entries(pendBySisMap)
+    .map(([name, value]) => ({ name, value }))
+    .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name));
 
   // Pendências por Prioridade
   const prioLabels: Record<string, string> = {

@@ -31,6 +31,14 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
   component: Dashboard,
 });
 
+function isValidAccess(a: any) {
+  const hasLogin =
+    a.login && a.login.trim() !== "" && a.login.trim() !== "-" && a.login.trim() !== "—";
+  const hasSenha =
+    a.senha && a.senha.trim() !== "" && a.senha.trim() !== "-" && a.senha.trim() !== "—";
+  return Boolean(hasLogin || hasSenha);
+}
+
 function Dashboard() {
   const { data } = useQuery({
     queryKey: ["dashboard"],
@@ -39,15 +47,21 @@ function Dashboard() {
         const [colabRes, sistRes, accRes, pendRes, quadrosRes] = await Promise.all([
           db.from("colaboradores").select("id, status", { count: "exact" }),
           db.from("sistemas").select("id, nome, responsavel_id", { count: "exact" }),
-          db.from("acessos").select("id, status, sistema_id, colaborador_id", { count: "exact" }),
-          db.from("pendencias").select("id, status, prioridade, sistema_id", { count: "exact" }),
+          db.from("acessos").select("id, status, sistema_id, colaborador_id, login, senha", {
+            count: "exact",
+          }),
+          db.from("pendencias").select("id, status, prioridade, sistema_id, arquivado", {
+            count: "exact",
+          }),
           db.from("pendencia_quadros").select("*").order("ordem"),
         ]);
 
         const colabList = colabRes.data ?? [];
         const sistList = sistRes.data ?? [];
-        const accList = accRes.data ?? [];
-        const pendList = pendRes.data ?? [];
+        const rawAccList = accRes.data ?? [];
+        const accList = rawAccList.filter(isValidAccess);
+        const rawPendList = pendRes.data ?? [];
+        const pendList = rawPendList.filter((p: any) => !p.arquivado);
         const quadrosList = quadrosRes.data ?? [];
 
         const colabStatusMap = new Map(colabList.map((c: any) => [c.id, c.status]));
@@ -59,10 +73,7 @@ function Dashboard() {
         );
 
         const orfaosCount = accList.filter(
-          (a: any) =>
-            (a.status === "ativo" || !a.status) &&
-            a.colaborador_id &&
-            desligadosIds.has(a.colaborador_id),
+          (a: any) => a.colaborador_id && desligadosIds.has(a.colaborador_id),
         ).length;
 
         const acessosAtivosCount = accList.filter((a: any) => {
@@ -85,11 +96,11 @@ function Dashboard() {
           colabAtivos: colabList.filter((c: any) => c.status === "ativo").length,
           sistTotal: sistRes.count ?? sistList.length,
           sistData: sistList,
-          acessosTotal: accRes.count ?? accList.length,
+          acessosTotal: accList.length,
           acessosAtivos: acessosAtivosCount,
           acessosData: accList,
           colabStatusMap,
-          pendTotal: pendRes.count ?? pendList.length,
+          pendTotal: pendList.length,
           pendData: pendList,
           orfaos: orfaosCount,
           semResp: semRespCount,

@@ -25,6 +25,7 @@ import {
   UserX,
   List,
   LifeBuoy,
+  Archive,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -55,6 +56,7 @@ const NAV_FULL = [
   { to: "/matriz-acessos", icon: Grid3x3, label: "Matriz de Acessos" },
   { to: "/sistemas", icon: Server, label: "Sistemas" },
   { to: "/inativos", icon: UserX, label: "Usuários Inativos" },
+  { to: "/backups", icon: Archive, label: "Backup da Matriz" },
   { to: "/lista-acessos", icon: List, label: "Lista de Acessos" },
   { to: "/importar", icon: Upload, label: "Importar CSV" },
   { to: "/pendencias", icon: Kanban, label: "Pendências" },

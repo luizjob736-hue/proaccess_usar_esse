@@ -15,7 +15,7 @@ INSERT INTO public.pendencia_quadros (nome, cor, ordem) VALUES
 ('PENDENTE', 'bg-slate-500', 1),
 ('COM ERRO', 'bg-amber-500', 2),
 ('REDEFINIR SENHA', 'bg-blue-500', 3),
-('DESBLOQUEIO', 'bg-success', 4)
+('DESBLOQUEIO', 'bg-emerald-600', 4)
 ON CONFLICT (nome) DO NOTHING;
 
 -- Change status column in pendencias to TEXT

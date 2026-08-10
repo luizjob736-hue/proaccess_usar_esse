@@ -60,6 +60,12 @@ export function normalizeStatus(s: string): string {
     .replace(/\s+/g, " ");
 }
 
+export function getQuadroColor(cor: string): string {
+  const c = cor || "bg-slate-500";
+  if (c === "bg-success") return "bg-emerald-600";
+  return c;
+}
+
 export function matchesColumnStatus(
   pStatus: string,
   colNome: string,
@@ -683,7 +689,7 @@ function Pendencias() {
               <div className="space-y-4">
                 {quadros.map((q: any) => (
                   <div key={q.id} className="flex items-center justify-between gap-3">
-                    <Badge className={q.cor}>{q.nome}</Badge>
+                    <Badge className={getQuadroColor(q.cor)}>{q.nome}</Badge>
                     <Button
                       variant="ghost"
                       size="icon"
@@ -754,7 +760,7 @@ function Pendencias() {
                 key={col.id}
                 id={col.nome}
                 title={col.nome}
-                color={col.cor}
+                color={getQuadroColor(col.cor)}
                 items={items}
                 onOpen={setDetailId}
                 onDelete={(id: string) => {

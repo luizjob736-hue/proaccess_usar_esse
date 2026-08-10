@@ -243,16 +243,35 @@ function Dashboard() {
             </CardTitle>
           </CardHeader>
           <CardContent>
+            {pendChart.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-4">
+                {pendChart.map((item) => (
+                  <div
+                    key={item.name}
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg border bg-muted/40 text-xs shadow-2xs"
+                  >
+                    <span className="font-medium text-foreground">{item.name}:</span>
+                    <span className="font-bold text-accent text-sm">{item.value}</span>
+                  </div>
+                ))}
+              </div>
+            )}
             <div className="h-[260px] w-full flex items-center justify-center">
               {pendChart.length === 0 || pendChart.every((item) => item.value === 0) ? (
                 <p className="text-sm text-muted-foreground">Nenhuma pendência cadastrada</p>
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={pendChart}>
+                  <BarChart data={pendChart} margin={{ top: 20, right: 10, left: -15, bottom: 0 }}>
                     <XAxis dataKey="name" fontSize={11} interval={0} />
                     <YAxis fontSize={12} allowDecimals={false} />
                     <Tooltip />
-                    <Bar dataKey="value" name="Pendências" fill="#F58220" radius={[6, 6, 0, 0]} />
+                    <Bar
+                      dataKey="value"
+                      name="Pendências"
+                      fill="#F58220"
+                      radius={[6, 6, 0, 0]}
+                      label={{ position: "top", fill: "#475569", fontSize: 11, fontWeight: 600 }}
+                    />
                   </BarChart>
                 </ResponsiveContainer>
               )}
@@ -267,7 +286,12 @@ function Dashboard() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="h-[260px] w-full flex items-center justify-center">
+            <div
+              className="w-full flex items-center justify-center"
+              style={{
+                height: `${Math.max(280, pendBySistemaChart.length * 32)}px`,
+              }}
+            >
               {pendBySistemaChart.length === 0 ||
               pendBySistemaChart.every((item) => item.value === 0) ? (
                 <p className="text-sm text-muted-foreground">
@@ -275,11 +299,28 @@ function Dashboard() {
                 </p>
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={pendBySistemaChart} layout="vertical">
+                  <BarChart
+                    data={pendBySistemaChart}
+                    layout="vertical"
+                    margin={{ top: 10, right: 30, left: 10, bottom: 10 }}
+                  >
                     <XAxis type="number" fontSize={12} allowDecimals={false} />
-                    <YAxis type="category" dataKey="name" fontSize={11} width={110} />
+                    <YAxis
+                      type="category"
+                      dataKey="name"
+                      fontSize={11}
+                      width={140}
+                      interval={0}
+                      tick={{ fontSize: 11 }}
+                    />
                     <Tooltip />
-                    <Bar dataKey="value" name="Pendências" fill="#0B1F3A" radius={[0, 6, 6, 0]} />
+                    <Bar
+                      dataKey="value"
+                      name="Pendências"
+                      fill="#0B1F3A"
+                      radius={[0, 6, 6, 0]}
+                      label={{ position: "right", fill: "#475569", fontSize: 11, fontWeight: 600 }}
+                    />
                   </BarChart>
                 </ResponsiveContainer>
               )}

@@ -524,8 +524,10 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
         CPF: r.cpf ?? "",
         "Data de Nascimento": formatDateBR(r.data_nascimento),
         Email: r.email ?? "",
+        "Senha e-mail": r.email_senha ?? "",
         Telefone: r.telefone ?? "",
         Cargo: r.cargo ?? "",
+        Status: r.status ?? "ativo",
       };
       if (onlyInativos) {
         base["Data Inativação"] = formatDateBR(r.inativado_em);

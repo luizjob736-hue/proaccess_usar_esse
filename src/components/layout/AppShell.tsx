@@ -170,7 +170,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen bg-background">
       {/* Sidebar */}
-      <aside className="hidden w-60 flex-col bg-sidebar text-sidebar-foreground lg:flex">
+      <aside className="hidden w-60 min-w-60 shrink-0 flex-col bg-sidebar text-sidebar-foreground lg:flex">
         <div className="flex h-16 items-center gap-2 border-b border-sidebar-border px-4">
           <Shield className="h-6 w-6 text-accent" />
           <span className="text-lg font-bold">ProAccess</span>

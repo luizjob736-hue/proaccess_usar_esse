@@ -74,7 +74,7 @@ async function fetchRel(k: string) {
 
     const { data: colabsAll = [] } = await db
       .from("colaboradores")
-      .select("id, nome, cpf, data_nascimento, email");
+      .select("id, nome, cpf, data_nascimento, email, telefone, email_senha");
 
     const colabById = new Map<string, any>();
     const colabByName = new Map<string, any>();
@@ -190,6 +190,8 @@ async function fetchRel(k: string) {
         CPF: formatCPF(c.cpf),
         "Data de Nascimento": formatDateBR(c.data_nascimento),
         Email: c.email ? c.email.toLowerCase() : "",
+        Telefone: c.telefone ?? "",
+        "Senha E-mail": c.email_senha ?? "",
       };
 
       for (const s of sistemas) {

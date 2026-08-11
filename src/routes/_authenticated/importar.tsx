@@ -30,34 +30,53 @@ export function parseDateToISO(val: any): string | null {
   const str = String(val).trim();
   if (!str) return null;
 
-  // 1. Check Excel serial date number (e.g. 45869)
-  if (!isNaN(Number(str)) && Number(str) > 20000 && Number(str) < 90000) {
+  // 1. Check Excel serial date number (e.g. 33009 for 1990-05-15, 45869 for 2025)
+  if (!isNaN(Number(str)) && Number(str) > 1000 && Number(str) < 90000) {
     const excelNum = Number(str);
     const dateObj = new Date((excelNum - (25567 + 2)) * 86400 * 1000);
     if (!isNaN(dateObj.getTime())) {
-      return dateObj.toISOString();
+      const y = dateObj.getUTCFullYear();
+      const m = String(dateObj.getUTCMonth() + 1).padStart(2, "0");
+      const d = String(dateObj.getUTCDate()).padStart(2, "0");
+      return `${y}-${m}-${d}`;
     }
   }
 
-  // 2. Check Brazilian date format DD/MM/YYYY or DD/MM/YYYY HH:mm or DD/MM/YYYY HH:mm:ss
+  // 2. Check Brazilian date format DD/MM/YYYY or DD/MM/YY (supports /, ., -)
   const brMatch = str.match(
-    /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})(?:[\sT]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/,
+    /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})(?:[\sT]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/,
   );
   if (brMatch) {
-    const day = brMatch[1].padStart(2, "0");
-    const month = brMatch[2].padStart(2, "0");
-    const year = brMatch[3];
+    const p1 = Number(brMatch[1]);
+    const p2 = Number(brMatch[2]);
+    let yearStr = brMatch[3];
+
+    if (yearStr.length === 2) {
+      const numY = Number(yearStr);
+      yearStr = numY > 30 ? `19${yearStr}` : `20${yearStr}`;
+    }
+
+    let day = p1;
+    let month = p2;
+
+    if (p2 > 12 && p1 <= 12) {
+      day = p2;
+      month = p1;
+    }
+
+    const dayStr = String(day).padStart(2, "0");
+    const monthStr = String(month).padStart(2, "0");
     const hour = brMatch[4] ? brMatch[4].padStart(2, "0") : null;
     const min = brMatch[5] ? brMatch[5].padStart(2, "0") : null;
     const sec = brMatch[6] ? brMatch[6].padStart(2, "0") : "00";
 
     if (hour !== null && min !== null) {
-      return `${year}-${month}-${day}T${hour}:${min}:${sec}`;
+      return `${yearStr}-${monthStr}-${dayStr}T${hour}:${min}:${sec}`;
     }
-    return `${year}-${month}-${day}`;
+    return `${yearStr}-${monthStr}-${dayStr}`;
   }
 
-  // 3. Check ISO format YYYY-MM-DD or YYYY-MM-DD HH:mm or YYYY-MM-DDTHH:mm
+  // 3. Check ISO format YYYY-MM-DD or YYYY/MM/DD or YYYY.MM.DD
   const isoMatch = str.match(
     /^(\d{4})[/.-](\d{1,2})[/.-](\d{1,2})(?:[\sT]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/,
   );
@@ -78,7 +97,10 @@ export function parseDateToISO(val: any): string | null {
   // 4. Fallback to standard JS Date constructor
   const d = new Date(str);
   if (!isNaN(d.getTime())) {
-    return d.toISOString();
+    const y = d.getUTCFullYear();
+    const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+    const dayVal = String(d.getUTCDate()).padStart(2, "0");
+    return `${y}-${m}-${dayVal}`;
   }
 
   return null;
@@ -243,7 +265,17 @@ const TEMPLATES: Record<
     title: "Matriz de Acessos Unificada",
     desc: "Importe ou atualize todos os colaboradores, seus dados cadastrais, status (ativo/inativo) e todas as suas credenciais de acesso de uma só vez usando um único arquivo de planilha unificado.",
     icon: Grid3x3,
-    headers: ["nome", "cpf", "email", "telefone", "cargo", "status", "data inativação"],
+    headers: [
+      "nome",
+      "cpf",
+      "data de nascimento",
+      "email",
+      "senha e-mail",
+      "telefone",
+      "cargo",
+      "status",
+      "data inativação",
+    ],
     sample: [
       {
         nome: "João da Silva",
@@ -648,11 +680,17 @@ export async function importRows(
       return String(existing).trim().toLowerCase() !== String(incoming).trim().toLowerCase();
     }
 
-    if (k === "admissao_em" || k === "inativado_em" || k === "sla_em" || k === "data_inicio") {
+    if (
+      k === "admissao_em" ||
+      k === "inativado_em" ||
+      k === "sla_em" ||
+      k === "data_inicio" ||
+      k === "data_nascimento"
+    ) {
       const iso1 = parseDateToISO(existing);
       const iso2 = parseDateToISO(incoming);
-      if (!iso1 || !iso2) return String(existing).trim() !== String(incoming).trim();
-      return iso1 !== iso2;
+      if (!iso1 || !iso2) return String(existing ?? "").trim() !== String(incoming ?? "").trim();
+      return iso1.split("T")[0] !== iso2.split("T")[0];
     }
 
     return String(existing).trim() !== String(incoming).trim();
@@ -1210,6 +1248,22 @@ export async function importRows(
         "datanascimento",
         "nascimento",
         "data nascimento",
+        "data nasc",
+        "data_nasc",
+        "datanasc",
+        "dt nascimento",
+        "dt_nascimento",
+        "dtnascimento",
+        "dt nasc",
+        "dt_nasc",
+        "dtnasc",
+        "d. nascimento",
+        "d.nascimento",
+        "d.nasc",
+        "aniversario",
+        "aniversário",
+        "dob",
+        "birthdate",
       ];
 
       const emailSenhaKeys = [
@@ -1233,18 +1287,36 @@ export async function importRows(
 
       for (const [rowKey, rowValue] of Object.entries(r)) {
         const lowerKey = rowKey.toLowerCase().trim();
-        if (lowerKey === "nome") nome = String(rowValue ?? "").trim();
-        else if (lowerKey === "cpf") rawCpf = String(rowValue ?? "").trim();
-        else if (lowerKey === "email") email = String(rowValue ?? "").trim();
-        else if (lowerKey === "telefone") telefone = String(rowValue ?? "").trim();
-        else if (lowerKey === "cargo") cargo = String(rowValue ?? "").trim();
-        else if (lowerKey === "status") rawStatus = String(rowValue ?? "").trim();
-        else if (dataInativacaoKeys.includes(lowerKey))
+        const cleanedKey = cleanKey(lowerKey);
+
+        if (lowerKey === "nome" || cleanedKey === "nome") nome = String(rowValue ?? "").trim();
+        else if (lowerKey === "cpf" || cleanedKey === "cpf") rawCpf = String(rowValue ?? "").trim();
+        else if (lowerKey === "email" || cleanedKey === "email")
+          email = String(rowValue ?? "").trim();
+        else if (lowerKey === "telefone" || cleanedKey === "telefone")
+          telefone = String(rowValue ?? "").trim();
+        else if (lowerKey === "cargo" || cleanedKey === "cargo")
+          cargo = String(rowValue ?? "").trim();
+        else if (lowerKey === "status" || cleanedKey === "status")
+          rawStatus = String(rowValue ?? "").trim();
+        else if (dataInativacaoKeys.includes(lowerKey) || cleanedKey.includes("inativac"))
           dataInativacao = String(rowValue ?? "").trim();
-        else if (dataNascimentoKeys.includes(lowerKey))
+        else if (
+          dataNascimentoKeys.includes(lowerKey) ||
+          cleanedKey.includes("nasciment") ||
+          cleanedKey.includes("datanasc") ||
+          cleanedKey.includes("dtnasc") ||
+          cleanedKey.includes("aniversar")
+        )
           dataNascimento = String(rowValue ?? "").trim();
-        else if (emailSenhaKeys.includes(lowerKey)) emailSenha = String(rowValue ?? "").trim();
-        else if (operacaoKeys.includes(lowerKey)) rowOperacao = String(rowValue ?? "").trim();
+        else if (emailSenhaKeys.includes(lowerKey) || cleanedKey.includes("senha"))
+          emailSenha = String(rowValue ?? "").trim();
+        else if (
+          operacaoKeys.includes(lowerKey) ||
+          cleanedKey.includes("operac") ||
+          cleanedKey === "setor"
+        )
+          rowOperacao = String(rowValue ?? "").trim();
       }
 
       if (!nome) {

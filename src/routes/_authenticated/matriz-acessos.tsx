@@ -67,10 +67,15 @@ function formatDateBR(val: string | Date | null | undefined): string {
   return dateObj.toLocaleDateString("pt-BR", { timeZone: "UTC" });
 }
 
-function toInputDateValue(val: string | null | undefined): string {
+function toInputDateValue(val: any): string {
   if (!val) return "";
-  const match = String(val).match(/^(\d{4}-\d{2}-\d{2})/);
-  return match ? match[1] : "";
+  const d = typeof val === "string" ? new Date(val) : val;
+  if (!d || isNaN(d.getTime())) {
+    const match = String(val).match(/^(\d{4}-\d{2}-\d{2})/);
+    return match ? match[1] : "";
+  }
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
 }
 
 const ValCell = memo(function ValCell({

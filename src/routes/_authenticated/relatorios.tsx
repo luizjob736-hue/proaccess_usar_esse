@@ -119,11 +119,13 @@ async function fetchRel(k: string) {
           const [, y, m, d] = match;
           return `${d}/${m}/${y}`;
         }
+        if (/^\d{2}\/\d{2}\/\d{4}$/.test(val)) {
+          return val;
+        }
       }
       const d = typeof val === "string" ? new Date(val) : val;
       if (!d || isNaN(d.getTime())) return "";
-      const pad = (n: number) => String(n).padStart(2, "0");
-      return `${pad(d.getUTCDate())}/${pad(d.getUTCMonth() + 1)}/${d.getUTCFullYear()}`;
+      return d.toLocaleDateString("pt-BR", { timeZone: "UTC" });
     };
 
     const formatDateTimeBR = (val: string | Date | null | undefined): string => {

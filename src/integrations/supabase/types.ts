@@ -607,6 +607,7 @@ export type Database = {
           status: Database["public"]["Enums"]["pendencia_status"];
           tipo: Database["public"]["Enums"]["pendencia_tipo"];
           titulo: string;
+          solicitado: boolean;
         };
         Insert: {
           acesso_id?: string | null;
@@ -629,6 +630,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["pendencia_status"];
           tipo?: Database["public"]["Enums"]["pendencia_tipo"];
           titulo: string;
+          solicitado?: boolean;
         };
         Update: {
           acesso_id?: string | null;
@@ -651,6 +653,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["pendencia_status"];
           tipo?: Database["public"]["Enums"]["pendencia_tipo"];
           titulo?: string;
+          solicitado?: boolean;
         };
         Relationships: [
           {

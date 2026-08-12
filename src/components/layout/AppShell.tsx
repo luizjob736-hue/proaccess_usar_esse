@@ -26,6 +26,7 @@ import {
   List,
   LifeBuoy,
   Archive,
+  UserCheck,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -59,6 +60,7 @@ const NAV_FULL = [
   { to: "/backups", icon: Archive, label: "Backup da Matriz" },
   { to: "/lista-acessos", icon: List, label: "Lista de Acessos" },
   { to: "/importar", icon: Upload, label: "Importar CSV" },
+  { to: "/usuarios-a-solicitar", icon: UserCheck, label: "Usuários a solicitar" },
   { to: "/pendencias", icon: Kanban, label: "Pendências" },
   { to: "/chamados", icon: LifeBuoy, label: "Chamados" },
   { to: "/historico", icon: History, label: "Histórico" },

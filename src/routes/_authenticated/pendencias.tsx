@@ -319,11 +319,12 @@ function Pendencias() {
   }, [list]);
 
   const listPorOperacao = useMemo(() => {
-    if (selectedOperacaoId === "todas") return list;
+    const listSolicitados = list.filter((p: any) => p.solicitado === true);
+    if (selectedOperacaoId === "todas") return listSolicitados;
     if (selectedOperacaoId === "sem_operacao") {
-      return list.filter((p: any) => !p.operacao_id && !p.colaborador?.operacao_id);
+      return listSolicitados.filter((p: any) => !p.operacao_id && !p.colaborador?.operacao_id);
     }
-    return list.filter(
+    return listSolicitados.filter(
       (p: any) =>
         p.operacao_id === selectedOperacaoId || p.colaborador?.operacao_id === selectedOperacaoId,
     );
@@ -533,6 +534,7 @@ function Pendencias() {
                 onSubmit={(e) => {
                   e.preventDefault();
                   const fd = new FormData(e.currentTarget);
+                  const isAlreadySolicitado = fd.get("solicitado") === "on";
                   const basePayload = {
                     titulo: fd.get("titulo"),
                     descricao: fd.get("descricao"),
@@ -549,6 +551,7 @@ function Pendencias() {
                       .split(",")
                       .map((s) => s.trim())
                       .filter(Boolean),
+                    solicitado: isAlreadySolicitado,
                   };
 
                   if (selectedSistemas.length > 0) {
@@ -715,6 +718,18 @@ function Pendencias() {
                     <Label>Etiquetas (separadas por vírgula)</Label>
                     <Input name="etiquetas" placeholder="urgente, tributário" />
                   </div>
+                </div>
+
+                <div className="flex items-center gap-2 p-2.5 bg-accent/40 rounded-lg">
+                  <input
+                    type="checkbox"
+                    name="solicitado"
+                    id="solicitado"
+                    className="rounded border-gray-300 text-primary focus:ring-primary h-4 w-4"
+                  />
+                  <Label htmlFor="solicitado" className="cursor-pointer text-xs font-semibold">
+                    Iniciar já solicitado (Ir direto para o Quadro Kanban de Pendências)
+                  </Label>
                 </div>
 
                 <DialogFooter>

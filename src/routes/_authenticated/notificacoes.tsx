@@ -1,10 +1,10 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { db } from "@/integrations/database/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Bell, Check } from "lucide-react";
+import { Bell, Check, ExternalLink } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/notificacoes")({ component: Notif });
 
@@ -71,11 +71,32 @@ function Notif() {
                     {new Date(n.criado_em).toLocaleString("pt-BR")}
                   </p>
                 </div>
-                {!n.lida && (
-                  <Button size="sm" variant="ghost" onClick={() => markRead.mutate(n.id)}>
-                    Marcar
-                  </Button>
-                )}
+                <div className="flex items-center gap-2 shrink-0">
+                  {n.link && (
+                    <Link
+                      to={n.link.includes("?") ? (n.link.split("?")[0] as any) : (n.link as any)}
+                      search={n.link.includes("id=") ? { id: n.link.split("id=")[1] } : undefined}
+                      onClick={() => {
+                        if (!n.lida) markRead.mutate(n.id);
+                      }}
+                    >
+                      <Button size="sm" variant="outline" className="gap-1 h-8 text-xs font-medium">
+                        <ExternalLink className="h-3.5 w-3.5" />
+                        Ir para solicitação
+                      </Button>
+                    </Link>
+                  )}
+                  {!n.lida && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => markRead.mutate(n.id)}
+                      className="h-8 text-xs"
+                    >
+                      Marcar como lida
+                    </Button>
+                  )}
+                </div>
               </div>
             ))}
             {data.length === 0 && (

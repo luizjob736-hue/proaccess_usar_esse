@@ -132,6 +132,86 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     refetchInterval: 30_000,
   });
 
+  // Background check for scheduled access request dates arriving
+  useEffect(() => {
+    if (!me?.user?.id) return;
+
+    const checkAndGenerateScheduledNotifications = async () => {
+      try {
+        const todayStr = new Date().toISOString().split("T")[0];
+
+        // Fetch all active pendências (not completed, not archived)
+        const { data: pends } = await db
+          .from("pendencias")
+          .select("id, titulo, data_inicio, status")
+          .eq("arquivado", false);
+
+        if (!pends || pends.length === 0) return;
+
+        // Filter those whose start date is today or in the past
+        const activeScheduled = pends.filter((p: any) => {
+          if (!p.data_inicio) return false;
+          const startStr =
+            typeof p.data_inicio === "string"
+              ? p.data_inicio.split("T")[0]
+              : new Date(p.data_inicio).toISOString().split("T")[0];
+
+          const isDateMet = startStr <= todayStr;
+          const isUnconcluded =
+            p.status !== "concluido" && p.status !== "concluida" && p.status !== "cancelado";
+          return isDateMet && isUnconcluded;
+        });
+
+        if (activeScheduled.length === 0) return;
+
+        // Fetch active user profiles so we notify everyone
+        const { data: profiles } = await db.from("profiles").select("id");
+        if (!profiles || profiles.length === 0) return;
+
+        let notificationsCreated = false;
+
+        for (const pend of activeScheduled) {
+          const targetLink = `/pendencias?id=${pend.id}`;
+
+          // Check existing notifications for this link
+          const { data: existing } = await db
+            .from("notificacoes")
+            .select("destinatario_id")
+            .eq("link", targetLink);
+
+          const notifiedUsers = new Set((existing || []).map((n: any) => n.destinatario_id));
+
+          for (const prof of profiles) {
+            if (!notifiedUsers.has(prof.id)) {
+              await db.from("notificacoes").insert({
+                destinatario_id: prof.id,
+                titulo: "📅 Solicitação de Acesso Agendada!",
+                corpo: `A data de início para solicitar o acesso "${pend.titulo}" chegou.`,
+                tipo: "alerta",
+                link: targetLink,
+                lida: false,
+                criado_em: new Date().toISOString(),
+              });
+              notificationsCreated = true;
+            }
+          }
+        }
+
+        if (notificationsCreated) {
+          qc.invalidateQueries({ queryKey: ["notif-count"] });
+          qc.invalidateQueries({ queryKey: ["notif-list"] });
+        }
+      } catch (err) {
+        console.error("Erro ao verificar/gerar notificações agendadas:", err);
+      }
+    };
+
+    // Run immediately and then every 2 minutes
+    checkAndGenerateScheduledNotifications();
+    const interval = setInterval(checkAndGenerateScheduledNotifications, 120_000);
+    return () => clearInterval(interval);
+  }, [me?.user?.id, qc]);
+
   function toggleTheme() {
     const next = !dark;
     setDark(next);

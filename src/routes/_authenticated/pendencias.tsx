@@ -40,7 +40,18 @@ import {
 } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 
-export const Route = createFileRoute("/_authenticated/pendencias")({ component: Pendencias });
+type PendenciasSearchParams = {
+  id?: string;
+};
+
+export const Route = createFileRoute("/_authenticated/pendencias")({
+  component: Pendencias,
+  validateSearch: (search: Record<string, unknown>): PendenciasSearchParams => {
+    return {
+      id: typeof search.id === "string" ? search.id : undefined,
+    };
+  },
+});
 
 const PRIO_COLOR: Record<string, string> = {
   baixa: "bg-slate-400",
@@ -143,15 +154,43 @@ export function matchesColumnStatus(
 }
 
 function Pendencias() {
+  const search = Route.useSearch();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [openQuadros, setOpenQuadros] = useState(false);
-  const [detailId, setDetailId] = useState<string | null>(null);
+  const [detailId, setDetailId] = useState<string | null>(search.id || null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [sistemaFiltro, setSistemaFiltro] = useState<string>("todos");
   const [selectedOperacaoId, setSelectedOperacaoId] = useState("todas");
   const [selectedSistemas, setSelectedSistemas] = useState<string[]>([]);
+  const [currentTab, setCurrentTab] = useState<"kanban" | "acessos-a-solicitar">("kanban");
+  const [agendadosSubFilter, setAgendadosSubFilter] = useState<
+    "todos" | "atrasados" | "hoje" | "futuros"
+  >("todos");
+  const [formDateInicio, setFormDateInicio] = useState(new Date().toISOString().slice(0, 10));
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+
+  const todayStr = useMemo(() => new Date().toISOString().split("T")[0], []);
+
+  const getStartDateStr = (p: any) => {
+    if (!p.data_inicio) return "";
+    return typeof p.data_inicio === "string"
+      ? p.data_inicio.split("T")[0]
+      : new Date(p.data_inicio).toISOString().split("T")[0];
+  };
+
+  const activateRequest = useMutation({
+    mutationFn: async (id: string) => {
+      const nowStr = new Date().toISOString().split("T")[0];
+      const { error } = await db.from("pendencias").update({ data_inicio: nowStr }).eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Solicitação ativada com sucesso! Card disponível no Quadro Kanban.");
+      qc.invalidateQueries({ queryKey: ["pendencias"] });
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
 
   const { data: quadros = [] } = useQuery({
     queryKey: ["pendencia_quadros"],
@@ -300,6 +339,46 @@ function Pendencias() {
       (p: any) => p.sistema?.id === sistemaFiltro || p.sistema_id === sistemaFiltro,
     );
   }, [listPorOperacao, sistemaFiltro]);
+
+  const listAtivos = useMemo(() => {
+    return listFiltrada.filter((p: any) => {
+      const startStr = getStartDateStr(p);
+      return !startStr || startStr <= todayStr;
+    });
+  }, [listFiltrada, todayStr]);
+
+  const listAgendadosCompleto = useMemo(() => {
+    return listFiltrada.filter((p: any) => {
+      const startStr = getStartDateStr(p);
+      const isConcluido = p.status === "concluido" || p.concluido_em || p.arquivado;
+      return startStr && !isConcluido;
+    });
+  }, [listFiltrada]);
+
+  const listAgendadosFuturos = useMemo(() => {
+    return listAgendadosCompleto.filter((p: any) => getStartDateStr(p) > todayStr);
+  }, [listAgendadosCompleto, todayStr]);
+
+  const listAgendadosHoje = useMemo(() => {
+    return listAgendadosCompleto.filter((p: any) => getStartDateStr(p) === todayStr);
+  }, [listAgendadosCompleto, todayStr]);
+
+  const listAgendadosAtrasados = useMemo(() => {
+    return listAgendadosCompleto.filter((p: any) => getStartDateStr(p) < todayStr);
+  }, [listAgendadosCompleto, todayStr]);
+
+  const filteredAgendados = useMemo(() => {
+    if (agendadosSubFilter === "atrasados") return listAgendadosAtrasados;
+    if (agendadosSubFilter === "hoje") return listAgendadosHoje;
+    if (agendadosSubFilter === "futuros") return listAgendadosFuturos;
+    return listAgendadosCompleto;
+  }, [
+    agendadosSubFilter,
+    listAgendadosCompleto,
+    listAgendadosAtrasados,
+    listAgendadosHoje,
+    listAgendadosFuturos,
+  ]);
 
   const importCsv = useMutation({
     mutationFn: async (file: File) => {
@@ -479,7 +558,11 @@ function Pendencias() {
             open={open}
             onOpenChange={(o) => {
               setOpen(o);
-              if (!o) setSelectedSistemas([]);
+              if (!o) {
+                setSelectedSistemas([]);
+              } else {
+                setFormDateInicio(new Date().toISOString().slice(0, 10));
+              }
             }}
           >
             <Button onClick={() => setOpen(true)} className="gap-2">
@@ -634,8 +717,18 @@ function Pendencias() {
                     <Input
                       name="data_inicio"
                       type="date"
-                      defaultValue={new Date().toISOString().slice(0, 10)}
+                      value={formDateInicio}
+                      onChange={(e) => setFormDateInicio(e.target.value)}
                     />
+                    {formDateInicio > todayStr && (
+                      <div className="bg-blue-500/10 text-blue-700 dark:text-blue-400 border border-blue-500/20 p-2 rounded mt-1.5 text-[10px] leading-tight flex items-start gap-1">
+                        <span>📅</span>
+                        <span>
+                          Solicitação agendada para o futuro. Ficará salva em{" "}
+                          <strong>"Acessos a Solicitar"</strong> até a data correspondente.
+                        </span>
+                      </div>
+                    )}
                   </div>
                   <div>
                     <Label>SLA (data limite)</Label>
@@ -730,6 +823,37 @@ function Pendencias() {
         </div>
       </div>
 
+      {/* View Switcher Tabs */}
+      <div className="flex border-b border-muted">
+        <button
+          onClick={() => setCurrentTab("kanban")}
+          className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-all flex items-center gap-2 ${
+            currentTab === "kanban"
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <span>🗂️</span>
+          <span>Quadro Kanban ({listAtivos.length})</span>
+        </button>
+        <button
+          onClick={() => setCurrentTab("acessos-a-solicitar")}
+          className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-all flex items-center gap-2 ${
+            currentTab === "acessos-a-solicitar"
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <span>📅</span>
+          <span>Acessos a Solicitar ({listAgendadosCompleto.length})</span>
+          {listAgendadosHoje.length > 0 && (
+            <span className="bg-emerald-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full animate-pulse">
+              {listAgendadosHoje.length} Hoje!
+            </span>
+          )}
+        </button>
+      </div>
+
       <OperationFilterBar
         selectedOperacaoId={selectedOperacaoId}
         onChange={setSelectedOperacaoId}
@@ -739,41 +863,251 @@ function Pendencias() {
       {sistemaFiltro !== "todos" && (
         <div className="text-sm text-muted-foreground">
           Filtrado: {sistemas.find((s: any) => s.id === sistemaFiltro)?.nome} —{" "}
-          {listFiltrada.length} pendência(s)
+          {currentTab === "kanban" ? listAtivos.length : filteredAgendados.length} pendência(s)
         </div>
       )}
 
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCorners}
-        onDragStart={(e) => setActiveId(String(e.active.id))}
-        onDragEnd={onDragEnd}
-      >
-        <div className="grid grid-cols-2 gap-4 overflow-x-auto md:grid-cols-3 lg:grid-cols-6">
-          {quadros.map((col: any) => {
-            const quadrosNomes = quadros.map((q: any) => q.nome);
-            const items = listFiltrada.filter((p: any) =>
-              matchesColumnStatus(p.status, col.nome, quadrosNomes),
-            );
-            return (
-              <Column
-                key={col.id}
-                id={col.nome}
-                title={col.nome}
-                color={getQuadroColor(col.cor)}
-                items={items}
-                onOpen={setDetailId}
-                onDelete={(id: string) => {
-                  if (confirm("Deseja realmente excluir esta pendência?")) {
-                    deletePendencia.mutate(id);
+      {currentTab === "acessos-a-solicitar" ? (
+        <div className="space-y-4">
+          {/* Sub-Filters / Status cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+            <button
+              onClick={() => setAgendadosSubFilter("todos")}
+              className={`p-4 rounded-xl border text-left transition-all ${
+                agendadosSubFilter === "todos"
+                  ? "bg-primary/5 border-primary shadow-sm ring-1 ring-primary"
+                  : "bg-card hover:bg-muted/50"
+              }`}
+            >
+              <div className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">
+                Todos os Agendados
+              </div>
+              <div className="text-2xl font-bold mt-1 text-foreground">
+                {listAgendadosCompleto.length}
+              </div>
+              <div className="text-xs text-muted-foreground mt-1">
+                Total de solicitações programadas
+              </div>
+            </button>
+            <button
+              onClick={() => setAgendadosSubFilter("atrasados")}
+              className={`p-4 rounded-xl border text-left transition-all ${
+                agendadosSubFilter === "atrasados"
+                  ? "bg-red-500/5 border-red-500 shadow-sm ring-1 ring-red-500"
+                  : "bg-card hover:bg-muted/50"
+              }`}
+            >
+              <div className="text-xs text-red-600 dark:text-red-400 font-semibold uppercase tracking-wider">
+                ⚠️ Pendentes / Atrasados
+              </div>
+              <div className="text-2xl font-bold mt-1 text-red-600 dark:text-red-400">
+                {listAgendadosAtrasados.length}
+              </div>
+              <div className="text-xs text-muted-foreground mt-1">
+                Datas agendadas que já passaram
+              </div>
+            </button>
+            <button
+              onClick={() => setAgendadosSubFilter("hoje")}
+              className={`p-4 rounded-xl border text-left transition-all ${
+                agendadosSubFilter === "hoje"
+                  ? "bg-emerald-500/5 border-emerald-500 shadow-sm ring-1 ring-emerald-500"
+                  : "bg-card hover:bg-muted/50"
+              }`}
+            >
+              <div className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold uppercase tracking-wider">
+                ⚡ Solicitar Hoje
+              </div>
+              <div className="text-2xl font-bold mt-1 text-emerald-600 dark:text-emerald-400">
+                {listAgendadosHoje.length}
+              </div>
+              <div className="text-xs text-muted-foreground mt-1">Agendados para o dia de hoje</div>
+            </button>
+            <button
+              onClick={() => setAgendadosSubFilter("futuros")}
+              className={`p-4 rounded-xl border text-left transition-all ${
+                agendadosSubFilter === "futuros"
+                  ? "bg-blue-500/5 border-blue-500 shadow-sm ring-1 ring-blue-500"
+                  : "bg-card hover:bg-muted/50"
+              }`}
+            >
+              <div className="text-xs text-blue-600 dark:text-blue-400 font-semibold uppercase tracking-wider">
+                📅 Agendados Futuros
+              </div>
+              <div className="text-2xl font-bold mt-1 text-blue-600 dark:text-blue-400">
+                {listAgendadosFuturos.length}
+              </div>
+              <div className="text-xs text-muted-foreground mt-1">
+                Planejados para datas futuras
+              </div>
+            </button>
+          </div>
+
+          {/* List Layout */}
+          <div className="rounded-xl border bg-card p-4 space-y-4">
+            <div className="flex items-center justify-between border-b pb-3 flex-wrap gap-2">
+              <h2 className="text-lg font-bold flex items-center gap-2">
+                <span>📋</span>
+                <span>
+                  Lista de Solicitações —{" "}
+                  {agendadosSubFilter === "todos"
+                    ? "Todos os Agendados"
+                    : agendadosSubFilter === "atrasados"
+                      ? "Pendentes / Atrasados"
+                      : agendadosSubFilter === "hoje"
+                        ? "Solicitar Hoje"
+                        : "Agendados Futuros"}
+                </span>
+                <span className="text-sm font-normal text-muted-foreground">
+                  ({filteredAgendados.length})
+                </span>
+              </h2>
+              <div className="text-xs text-muted-foreground">
+                Dica: Clique em qualquer item para ver detalhes, comentários ou alterar a data.
+              </div>
+            </div>
+
+            {filteredAgendados.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground space-y-2">
+                <div className="text-3xl">📭</div>
+                <p className="font-medium text-sm">
+                  Nenhuma solicitação de acesso encontrada neste filtro.
+                </p>
+                <p className="text-xs">
+                  Para agendar novas solicitações, escolha uma data futura ao criar uma nova
+                  pendência.
+                </p>
+              </div>
+            ) : (
+              <div className="divide-y divide-border">
+                {filteredAgendados.map((p: any) => {
+                  const startStr = getStartDateStr(p);
+                  const isHoje = startStr === todayStr;
+                  const isAtrasado = startStr && startStr < todayStr;
+                  const isFuturo = startStr && startStr > todayStr;
+
+                  let badgeColor =
+                    "bg-slate-100 text-slate-800 dark:bg-slate-900 dark:text-slate-200";
+                  let badgeText = `Agendado: ${startStr ? new Date(startStr + "T12:00:00").toLocaleDateString("pt-BR") : ""}`;
+
+                  if (isHoje) {
+                    badgeColor =
+                      "bg-emerald-500/10 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400 border border-emerald-500/30 animate-pulse";
+                    badgeText = "⚡ Solicitar Hoje!";
+                  } else if (isAtrasado) {
+                    badgeColor =
+                      "bg-destructive/10 text-destructive dark:bg-destructive/20 dark:text-red-400 border border-destructive/30";
+                    badgeText = `⚠️ Pendente (desde ${startStr ? new Date(startStr + "T12:00:00").toLocaleDateString("pt-BR") : ""})`;
+                  } else if (isFuturo) {
+                    badgeColor =
+                      "bg-blue-500/10 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400 border border-blue-500/30";
+                    badgeText = `📅 Agendado: ${startStr ? new Date(startStr + "T12:00:00").toLocaleDateString("pt-BR") : ""}`;
                   }
-                }}
-              />
-            );
-          })}
+
+                  return (
+                    <div
+                      key={p.id}
+                      onClick={() => setDetailId(p.id)}
+                      className="py-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 hover:bg-muted/30 px-2 rounded-lg transition-colors cursor-pointer"
+                    >
+                      <div className="space-y-1.5 flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span
+                            className={`px-2.5 py-1 rounded-full text-xs font-semibold ${badgeColor}`}
+                          >
+                            {badgeText}
+                          </span>
+                          <span
+                            className={`h-2 w-2 rounded-full ${PRIO_COLOR[p.prioridade] || "bg-slate-400"}`}
+                          />
+                          <h3 className="font-semibold text-foreground text-sm truncate">
+                            {p.titulo}
+                          </h3>
+                        </div>
+                        <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
+                          {p.colaborador?.nome && (
+                            <span className="flex items-center gap-1">👤 {p.colaborador.nome}</span>
+                          )}
+                          {p.sistema?.nome && (
+                            <span className="flex items-center gap-1">🖥️ {p.sistema.nome}</span>
+                          )}
+                          {p.prioridade && (
+                            <span className="capitalize">Prioridade: {p.prioridade}</span>
+                          )}
+                        </div>
+                        {p.descricao && (
+                          <p className="text-xs text-muted-foreground line-clamp-1 italic max-w-2xl">
+                            {p.descricao}
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0 w-full md:w-auto justify-end">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="bg-primary/5 hover:bg-primary/10 text-primary border-primary/20 flex items-center gap-1.5 h-8 text-xs font-medium"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            activateRequest.mutate(p.id);
+                          }}
+                        >
+                          🚀 Solicitar Agora
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-muted-foreground hover:text-destructive hover:bg-destructive/5 h-8 w-8 p-0"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (confirm("Deseja realmente excluir esta solicitação agendada?")) {
+                              deletePendencia.mutate(p.id);
+                            }
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
-        <DragOverlay>{activeItem && <CardView p={activeItem} />}</DragOverlay>
-      </DndContext>
+      ) : (
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCorners}
+          onDragStart={(e) => setActiveId(String(e.active.id))}
+          onDragEnd={onDragEnd}
+        >
+          <div className="grid grid-cols-2 gap-4 overflow-x-auto md:grid-cols-3 lg:grid-cols-6">
+            {quadros.map((col: any) => {
+              const quadrosNomes = quadros.map((q: any) => q.nome);
+              const items = listAtivos.filter((p: any) =>
+                matchesColumnStatus(p.status, col.nome, quadrosNomes),
+              );
+              return (
+                <Column
+                  key={col.id}
+                  id={col.nome}
+                  title={col.nome}
+                  color={getQuadroColor(col.cor)}
+                  items={items}
+                  onOpen={setDetailId}
+                  onDelete={(id: string) => {
+                    if (confirm("Deseja realmente excluir esta pendência?")) {
+                      deletePendencia.mutate(id);
+                    }
+                  }}
+                />
+              );
+            })}
+          </div>
+          <DragOverlay>{activeItem && <CardView p={activeItem} />}</DragOverlay>
+        </DndContext>
+      )}
 
       <Dialog open={!!detail} onOpenChange={(o) => !o && setDetailId(null)}>
         <DialogContent className="max-w-2xl">

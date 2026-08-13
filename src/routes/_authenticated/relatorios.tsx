@@ -183,7 +183,7 @@ async function fetchRel(k: string) {
       if (tipo === "revisao") return "DESBLOQUEIO";
       if (tipo === "alteracao") return "ALTERAÇÃO";
 
-      return statusNorm || "PENDENTE";
+      return statusNorm || "backlog";
     };
 
     return colabs.map((c: any) => {

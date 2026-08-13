@@ -396,7 +396,7 @@ function Pendencias() {
           const sisId = sisVal ? (sisMap.get(sisVal.toLowerCase()) ?? null) : null;
 
           const rawStatus = (r.status ?? "").trim();
-          let statusVal = rawStatus || "PENDENTE";
+          let statusVal = rawStatus || "backlog";
           if (quadrosNomes.length > 0) {
             const matchedQ = quadrosNomes.find((qName) =>
               matchesColumnStatus(rawStatus, qName, quadrosNomes),

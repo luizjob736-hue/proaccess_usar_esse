@@ -34,6 +34,27 @@ import {
   ArrowRight,
 } from "lucide-react";
 
+function toYMDString(val: any): string {
+  if (!val) return "";
+  if (typeof val === "string") {
+    return val.split("T")[0];
+  }
+  if (val instanceof Date && !isNaN(val.getTime())) {
+    return val.toISOString().split("T")[0];
+  }
+  try {
+    const str = String(val);
+    if (str.includes("T")) return str.split("T")[0];
+    const d = new Date(val);
+    if (!isNaN(d.getTime())) {
+      return d.toISOString().split("T")[0];
+    }
+  } catch {
+    // ignore
+  }
+  return "";
+}
+
 export const Route = createFileRoute("/_authenticated/usuarios-a-solicitar")({
   component: UsuariosASolicitar,
 });
@@ -110,7 +131,7 @@ function UsuariosASolicitar() {
 
       // Date status
       if (!p.data_inicio) return dateFilter === "todos";
-      const startStr = p.data_inicio.split("T")[0];
+      const startStr = toYMDString(p.data_inicio);
 
       if (dateFilter === "atrasados" && startStr >= todayStr) return false;
       if (dateFilter === "hoje" && startStr !== todayStr) return false;
@@ -128,7 +149,7 @@ function UsuariosASolicitar() {
 
     for (const p of listASolicitar) {
       if (!p.data_inicio) continue;
-      const startStr = p.data_inicio.split("T")[0];
+      const startStr = toYMDString(p.data_inicio);
       if (startStr < todayStr) atrasados++;
       else if (startStr === todayStr) hoje++;
       else futuros++;
@@ -143,7 +164,7 @@ function UsuariosASolicitar() {
       const nowStr = new Date().toISOString().split("T")[0];
       const { error } = await db
         .from("pendencias")
-        .update({ solicitado: true, data_inicio: nowStr, status: "PENDENTE" })
+        .update({ solicitado: true, data_inicio: nowStr, status: "backlog" })
         .eq("id", id);
       if (error) throw error;
     },
@@ -347,7 +368,7 @@ function UsuariosASolicitar() {
           ) : (
             <div className="border rounded-lg overflow-hidden divide-y divide-border">
               {filteredList.map((p: any) => {
-                const dateStr = p.data_inicio ? p.data_inicio.split("T")[0] : "";
+                const dateStr = toYMDString(p.data_inicio);
                 const isHoje = dateStr === todayStr;
                 const isAtrasado = dateStr && dateStr < todayStr;
 
@@ -370,7 +391,7 @@ function UsuariosASolicitar() {
                       <div className="flex items-center gap-2 flex-wrap">
                         <Badge className={`${dateBadge} border-0 text-xs py-0.5 px-2`}>
                           📅{" "}
-                          {dateStr
+                          {dateStr && !isNaN(new Date(dateStr + "T12:00:00").getTime())
                             ? new Date(dateStr + "T12:00:00").toLocaleDateString("pt-BR")
                             : "Não definida"}
                         </Badge>
@@ -466,9 +487,12 @@ function UsuariosASolicitar() {
                 <div>
                   <div className="text-xs text-muted-foreground">Data da Solicitação</div>
                   <div className="font-semibold">
-                    {detail.data_inicio
-                      ? new Date(detail.data_inicio + "T12:00:00").toLocaleDateString("pt-BR")
-                      : "—"}
+                    {(() => {
+                      const dStr = toYMDString(detail.data_inicio);
+                      return dStr && !isNaN(new Date(dStr + "T12:00:00").getTime())
+                        ? new Date(dStr + "T12:00:00").toLocaleDateString("pt-BR")
+                        : "—";
+                    })()}
                   </div>
                 </div>
                 <div>
@@ -585,9 +609,7 @@ function UsuariosASolicitar() {
                   <Input
                     name="data_inicio"
                     type="date"
-                    defaultValue={
-                      editingItem.data_inicio ? editingItem.data_inicio.split("T")[0] : ""
-                    }
+                    defaultValue={toYMDString(editingItem.data_inicio)}
                   />
                 </div>
                 <div>

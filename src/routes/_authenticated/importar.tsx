@@ -226,7 +226,7 @@ const TEMPLATES: Record<
         descricao: "Realizar a criação de credencial do novo colaborador",
         tipo: "solicitacao_acesso",
         prioridade: "media",
-        status: "PENDENTE",
+        status: "backlog",
         colaborador: "João da Silva",
         sistema: "SAP ERP",
         sla_em: "2026-08-05",
@@ -998,7 +998,7 @@ export async function importRows(
       const prioridade = validPriorities.includes(rawPriority) ? rawPriority : "media";
 
       const rawStatus = (r.status ?? "").trim();
-      let status = rawStatus || "PENDENTE";
+      let status = rawStatus || "backlog";
       if (quadrosNomes.length > 0) {
         const matchedQ = quadrosNomes.find((qName) =>
           matchesColumnStatus(rawStatus, qName, quadrosNomes),

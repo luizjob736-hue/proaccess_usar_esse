@@ -200,7 +200,7 @@ function Pendencias() {
         await db
           .from("pendencias")
           .select(
-            "*, colaborador:colaboradores(id, nome, operacao_id), sistema:sistemas(id, nome, sla_horas)",
+            "*, colaborador:colaboradores(id, nome, operacao_id, status), sistema:sistemas(id, nome, sla_horas)",
           )
           .eq("arquivado", false)
           .order("posicao")
@@ -209,7 +209,14 @@ function Pendencias() {
   const { data: colabs = [] } = useQuery({
     queryKey: ["colabs-simple"],
     queryFn: async () =>
-      (await db.from("colaboradores").select("id,nome").order("nome")).data ?? [],
+      (
+        await db
+          .from("colaboradores")
+          .select("id,nome,status")
+          .neq("status", "inativo")
+          .neq("status", "desligado")
+          .order("nome")
+      ).data ?? [],
   });
   const { data: sistemas = [] } = useQuery({
     queryKey: ["sistemas-simple"],
@@ -251,13 +258,47 @@ function Pendencias() {
         ...item,
         criado_por: u.user?.id || null,
       }));
-      const { error } = await db.from("pendencias").insert(payloads);
+      const { data: inserted, error } = await db.from("pendencias").insert(payloads).select("*");
       if (error) throw error;
+
+      if (inserted) {
+        for (const item of inserted) {
+          if (item.solicitado && item.colaborador_id && item.sistema_id) {
+            const { data: exAcesso } = await db
+              .from("acessos")
+              .select("id, login, senha")
+              .eq("colaborador_id", item.colaborador_id)
+              .eq("sistema_id", item.sistema_id)
+              .maybeSingle();
+
+            if (exAcesso) {
+              await db
+                .from("acessos")
+                .update({
+                  login: exAcesso.login && exAcesso.login !== "-" ? exAcesso.login : "Solicitado",
+                  senha: exAcesso.senha && exAcesso.senha !== "-" ? exAcesso.senha : "Solicitado",
+                  status: "pendente",
+                })
+                .eq("id", exAcesso.id);
+            } else {
+              await db.from("acessos").insert({
+                colaborador_id: item.colaborador_id,
+                sistema_id: item.sistema_id,
+                login: "Solicitado",
+                senha: "Solicitado",
+                status: "pendente",
+              });
+            }
+          }
+        }
+      }
     },
     onSuccess: () => {
       toast.success("Pendências criadas com sucesso");
       setOpen(false);
       qc.invalidateQueries({ queryKey: ["pendencias"] });
+      qc.invalidateQueries({ queryKey: ["acessos"] });
+      qc.invalidateQueries({ queryKey: ["matriz-acessos-full"] });
     },
     onError: (e: any) => toast.error(e.message),
   });
@@ -306,8 +347,14 @@ function Pendencias() {
   });
 
   const pendenciasCounts = useMemo(() => {
-    const map: Record<string, number> = { todas: list.length, sem_operacao: 0 };
-    for (const p of list) {
+    const activeList = list.filter((p: any) => {
+      if (p.solicitado !== true) return false;
+      const st = p.colaborador?.status;
+      if (st === "inativo" || st === "desligado") return false;
+      return true;
+    });
+    const map: Record<string, number> = { todas: activeList.length, sem_operacao: 0 };
+    for (const p of activeList) {
       const opId = p.operacao_id || p.colaborador?.operacao_id;
       if (!opId) {
         map["sem_operacao"] = (map["sem_operacao"] || 0) + 1;
@@ -319,7 +366,12 @@ function Pendencias() {
   }, [list]);
 
   const listPorOperacao = useMemo(() => {
-    const listSolicitados = list.filter((p: any) => p.solicitado === true);
+    const listSolicitados = list.filter((p: any) => {
+      if (p.solicitado !== true) return false;
+      const st = p.colaborador?.status;
+      if (st === "inativo" || st === "desligado") return false;
+      return true;
+    });
     if (selectedOperacaoId === "todas") return listSolicitados;
     if (selectedOperacaoId === "sem_operacao") {
       return listSolicitados.filter((p: any) => !p.operacao_id && !p.colaborador?.operacao_id);

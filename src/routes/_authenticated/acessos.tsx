@@ -61,6 +61,8 @@ function Acessos() {
       const { data: u } = await db.auth.getUser();
       const { error } = await db.from("acessos").insert({
         ...form,
+        login: form.login && form.login.trim() ? form.login : "Solicitado",
+        senha: form.senha && form.senha.trim() ? form.senha : "Solicitado",
         concedido_por: u.user?.id,
         concedido_em: form.status === "ativo" ? new Date().toISOString() : null,
       });

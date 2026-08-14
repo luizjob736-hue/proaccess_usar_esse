@@ -258,6 +258,13 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
       const { id, ...rest } = payload;
       const { error } = await db.from("colaboradores").update(rest).eq("id", id);
       if (error) throw error;
+      if (rest.status === "inativo" || rest.status === "desligado") {
+        await db
+          .from("pendencias")
+          .update({ arquivado: true, concluido_em: new Date().toISOString() })
+          .eq("colaborador_id", id)
+          .eq("arquivado", false);
+      }
     },
     onSuccess: () => {
       toast.success("Colaborador atualizado");
@@ -269,7 +276,12 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
 
   const criarAcesso = useMutation({
     mutationFn: async (payload: any) => {
-      const { error } = await db.from("acessos").insert(payload);
+      const toSend = {
+        ...payload,
+        login: payload.login && payload.login.trim() ? payload.login : "Solicitado",
+        senha: payload.senha && payload.senha.trim() ? payload.senha : "Solicitado",
+      };
+      const { error } = await db.from("acessos").insert(toSend);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -296,11 +308,23 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
 
   const flagInativo = useMutation({
     mutationFn: async ({ id, inativo }: { id: string; inativo: boolean }) => {
+      const nowIso = new Date().toISOString();
       const { error } = await db
         .from("colaboradores")
-        .update({ status: inativo ? "inativo" : "ativo" })
+        .update({
+          status: inativo ? "inativo" : "ativo",
+          inativado_em: inativo ? nowIso : null,
+        })
         .eq("id", id);
       if (error) throw error;
+
+      if (inativo) {
+        await db
+          .from("pendencias")
+          .update({ arquivado: true, concluido_em: nowIso })
+          .eq("colaborador_id", id)
+          .eq("arquivado", false);
+      }
     },
     onSuccess: (_, vars) => {
       toast.success(vars.inativo ? "Marcado como inativo" : "Reativado");

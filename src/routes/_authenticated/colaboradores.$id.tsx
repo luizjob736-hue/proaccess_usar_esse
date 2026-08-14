@@ -58,9 +58,19 @@ function ColabDetalhe() {
   const updateStatus = useMutation({
     mutationFn: async (status: any) => {
       const patch: any = { status };
-      if (status === "desligado") patch.desligamento_em = new Date().toISOString().slice(0, 10);
+      const nowIso = new Date().toISOString();
+      if (status === "desligado") patch.desligamento_em = nowIso.slice(0, 10);
+      if (status === "inativo" || status === "desligado") patch.inativado_em = nowIso;
       const { error } = await db.from("colaboradores").update(patch).eq("id", id);
       if (error) throw error;
+
+      if (status === "inativo" || status === "desligado") {
+        await db
+          .from("pendencias")
+          .update({ arquivado: true, concluido_em: nowIso })
+          .eq("colaborador_id", id)
+          .eq("arquivado", false);
+      }
     },
     onSuccess: () => {
       toast.success("Status atualizado — automação executada");

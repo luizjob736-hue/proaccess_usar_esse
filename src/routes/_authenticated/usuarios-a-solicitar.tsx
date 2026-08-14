@@ -80,7 +80,7 @@ function UsuariosASolicitar() {
         await db
           .from("pendencias")
           .select(
-            "*, colaborador:colaboradores(id, nome, operacao_id), sistema:sistemas(id, nome, sla_horas)",
+            "*, colaborador:colaboradores(id, nome, operacao_id, status), sistema:sistemas(id, nome, sla_horas)",
           )
           .eq("arquivado", false)
           .order("data_inicio", { ascending: true })
@@ -90,7 +90,14 @@ function UsuariosASolicitar() {
   const { data: colabs = [] } = useQuery({
     queryKey: ["colabs-simple"],
     queryFn: async () =>
-      (await db.from("colaboradores").select("id,nome").order("nome")).data ?? [],
+      (
+        await db
+          .from("colaboradores")
+          .select("id,nome,status")
+          .neq("status", "inativo")
+          .neq("status", "desligado")
+          .order("nome")
+      ).data ?? [],
   });
 
   const { data: sistemas = [] } = useQuery({
@@ -104,9 +111,14 @@ function UsuariosASolicitar() {
     queryFn: async () => (await db.from("operacoes").select("id,nome").order("nome")).data ?? [],
   });
 
-  // Filter unsought entries (solicitado === false)
+  // Filter unsought entries (solicitado === false) and exclude inactive/desligado collaborators
   const listASolicitar = useMemo(() => {
-    return list.filter((p: any) => p.solicitado === false);
+    return list.filter((p: any) => {
+      if (p.solicitado !== false) return false;
+      const st = p.colaborador?.status;
+      if (st === "inativo" || st === "desligado") return false;
+      return true;
+    });
   }, [list]);
 
   // Apply search/operation/product filters
@@ -162,15 +174,49 @@ function UsuariosASolicitar() {
   const solicitMutation = useMutation({
     mutationFn: async (id: string) => {
       const nowStr = new Date().toISOString().split("T")[0];
+
+      // Fetch pendencia details to get colaborador_id and sistema_id
+      const { data: item } = await db.from("pendencias").select("*").eq("id", id).maybeSingle();
+
       const { error } = await db
         .from("pendencias")
         .update({ solicitado: true, data_inicio: nowStr, status: "backlog" })
         .eq("id", id);
       if (error) throw error;
+
+      if (item?.colaborador_id && item?.sistema_id) {
+        const { data: exAcesso } = await db
+          .from("acessos")
+          .select("id, login, senha")
+          .eq("colaborador_id", item.colaborador_id)
+          .eq("sistema_id", item.sistema_id)
+          .maybeSingle();
+
+        if (exAcesso) {
+          await db
+            .from("acessos")
+            .update({
+              login: exAcesso.login && exAcesso.login !== "-" ? exAcesso.login : "Solicitado",
+              senha: exAcesso.senha && exAcesso.senha !== "-" ? exAcesso.senha : "Solicitado",
+              status: "pendente",
+            })
+            .eq("id", exAcesso.id);
+        } else {
+          await db.from("acessos").insert({
+            colaborador_id: item.colaborador_id,
+            sistema_id: item.sistema_id,
+            login: "Solicitado",
+            senha: "Solicitado",
+            status: "pendente",
+          });
+        }
+      }
     },
     onSuccess: () => {
       toast.success("Acesso marcado como Solicitado! Transferido para o Quadro de Pendências.");
       qc.invalidateQueries({ queryKey: ["pendencias"] });
+      qc.invalidateQueries({ queryKey: ["acessos"] });
+      qc.invalidateQueries({ queryKey: ["matriz-acessos-full"] });
     },
     onError: (e: any) => toast.error(e.message),
   });

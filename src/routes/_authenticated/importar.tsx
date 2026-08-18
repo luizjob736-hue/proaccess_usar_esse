@@ -271,6 +271,7 @@ const TEMPLATES: Record<
       "data de nascimento",
       "email",
       "senha e-mail",
+      "operação",
       "telefone",
       "cargo",
       "status",
@@ -280,7 +281,10 @@ const TEMPLATES: Record<
       {
         nome: "João da Silva",
         cpf: "123.456.789-00",
+        "data de nascimento": "15/05/1995",
         email: "joao@empresa.com",
+        "senha e-mail": "SenhaForteEmail123",
+        operação: "Operação Central",
         telefone: "11999999999",
         cargo: "Analista de Suporte",
         status: "ativo",
@@ -324,6 +328,7 @@ function downloadCSV(key: TemplateKey, sistemasAll: any[] = []) {
       "Data de Nascimento",
       "Email",
       "Senha e-mail",
+      "Operação",
       "Telefone",
       "Cargo",
       "Status",
@@ -339,6 +344,7 @@ function downloadCSV(key: TemplateKey, sistemasAll: any[] = []) {
             "Data de Nascimento": "15/05/1995",
             Email: "joao@empresa.com",
             "Senha e-mail": "SenhaForteEmail123",
+            Operação: "Operação Central",
             Telefone: "11999999999",
             Cargo: "Analista de Suporte",
             Status: "ativo",
@@ -349,6 +355,7 @@ function downloadCSV(key: TemplateKey, sistemasAll: any[] = []) {
             "Data de Nascimento": "20/10/1992",
             Email: "maria@empresa.com",
             "Senha e-mail": "SenhaForteEmail987",
+            Operação: "Operação Central",
             Telefone: "11988888888",
             Cargo: "Operador",
             Status: "inativo",
@@ -465,11 +472,14 @@ function ImportCard({
     const headers = [
       "nome",
       "cpf",
+      "data de nascimento",
       "email",
+      "senha e-mail",
+      "operação",
       "telefone",
       "cargo",
       "status",
-      "data inativação",
+      ...(kind === "inativos" ? ["data inativação"] : []),
       ...sistemasAll.flatMap((s: any) => [`${s.nome} - Usuário`, `${s.nome} - Senha`]),
     ];
     t = {
@@ -1219,6 +1229,89 @@ export async function importRows(
 
     const validStatuses = ["ativo", "ferias", "afastado", "inativo", "desligado"];
 
+    const normalizeStr = (str: string) =>
+      String(str ?? "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .trim();
+
+    const isEmailSenhaColumn = (rawKey: string): boolean => {
+      const lk = rawKey.toLowerCase().trim();
+      const ck = cleanKey(lk);
+      const exactKeys = [
+        "senha e-mail",
+        "senha email",
+        "senha_email",
+        "senha_do_email",
+        "senhadoemail",
+        "senha_de_email",
+        "senhadeemail",
+        "email_senha",
+        "emailsenha",
+        "email senha",
+        "e-mail senha",
+        "e-mail_senha",
+        "senhawebmail",
+        "senha webmail",
+        "senha_webmail",
+        "senhacorreio",
+        "senha correio",
+        "senha_correio",
+        "password email",
+        "email password",
+        "emailpassword",
+        "passwordemail",
+        "pass email",
+        "email pass",
+        "pwd email",
+        "email pwd",
+        "senha (email)",
+        "senha (e-mail)",
+      ];
+      if (exactKeys.includes(lk) || exactKeys.includes(ck)) return true;
+      const hasEmail =
+        lk.includes("email") ||
+        lk.includes("e-mail") ||
+        lk.includes("webmail") ||
+        lk.includes("correio");
+      const hasSenha = lk.includes("senha") || lk.includes("pass") || lk.includes("pwd");
+      return hasEmail && hasSenha;
+    };
+
+    const isOperacaoColumn = (rawKey: string): boolean => {
+      const lk = rawKey.toLowerCase().trim();
+      const ck = cleanKey(lk);
+      const opKeys = [
+        "operação",
+        "operacao",
+        "operacoes",
+        "op",
+        "operation",
+        "operations",
+        "fila",
+        "filas",
+        "setor",
+        "setores",
+        "departamento",
+        "departamentos",
+        "equipe",
+        "equipes",
+        "time",
+        "times",
+        "unidade",
+        "celula",
+        "célula",
+      ];
+      if (opKeys.includes(lk) || opKeys.includes(ck)) return true;
+      return (
+        ck.startsWith("operac") ||
+        ck.includes("operacao") ||
+        ck.includes("setor") ||
+        ck.includes("departamento")
+      );
+    };
+
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
 
@@ -1266,57 +1359,58 @@ export async function importRows(
         "birthdate",
       ];
 
-      const emailSenhaKeys = [
-        "senha e-mail",
-        "senha email",
-        "senha_email",
-        "senha_do_email",
-        "email_senha",
-        "emailsenha",
-      ];
-
-      const operacaoKeys = [
-        "operação",
-        "operacao",
-        "fila",
-        "op",
-        "operation",
-        "setor",
-        "departamento",
-      ];
-
       for (const [rowKey, rowValue] of Object.entries(r)) {
         const lowerKey = rowKey.toLowerCase().trim();
         const cleanedKey = cleanKey(lowerKey);
 
-        if (lowerKey === "nome" || cleanedKey === "nome") nome = String(rowValue ?? "").trim();
-        else if (lowerKey === "cpf" || cleanedKey === "cpf") rawCpf = String(rowValue ?? "").trim();
-        else if (lowerKey === "email" || cleanedKey === "email")
+        if (lowerKey === "nome" || cleanedKey === "nome") {
+          nome = String(rowValue ?? "").trim();
+        } else if (lowerKey === "cpf" || cleanedKey === "cpf") {
+          rawCpf = String(rowValue ?? "").trim();
+        } else if (isEmailSenhaColumn(lowerKey)) {
+          emailSenha = String(rowValue ?? "").trim();
+        } else if (
+          lowerKey === "email" ||
+          cleanedKey === "email" ||
+          lowerKey === "e-mail" ||
+          cleanedKey === "correio" ||
+          cleanedKey === "webmail"
+        ) {
           email = String(rowValue ?? "").trim();
-        else if (lowerKey === "telefone" || cleanedKey === "telefone")
+        } else if (
+          lowerKey === "telefone" ||
+          cleanedKey === "telefone" ||
+          cleanedKey === "celular" ||
+          cleanedKey === "fone" ||
+          cleanedKey === "tel"
+        ) {
           telefone = String(rowValue ?? "").trim();
-        else if (lowerKey === "cargo" || cleanedKey === "cargo")
+        } else if (
+          lowerKey === "cargo" ||
+          cleanedKey === "cargo" ||
+          cleanedKey === "funcao" ||
+          cleanedKey === "posicao"
+        ) {
           cargo = String(rowValue ?? "").trim();
-        else if (lowerKey === "status" || cleanedKey === "status")
+        } else if (lowerKey === "status" || cleanedKey === "status" || cleanedKey === "situacao") {
           rawStatus = String(rowValue ?? "").trim();
-        else if (dataInativacaoKeys.includes(lowerKey) || cleanedKey.includes("inativac"))
+        } else if (
+          dataInativacaoKeys.includes(lowerKey) ||
+          cleanedKey.includes("inativac") ||
+          cleanedKey.includes("desligam")
+        ) {
           dataInativacao = String(rowValue ?? "").trim();
-        else if (
+        } else if (
           dataNascimentoKeys.includes(lowerKey) ||
           cleanedKey.includes("nasciment") ||
           cleanedKey.includes("datanasc") ||
           cleanedKey.includes("dtnasc") ||
           cleanedKey.includes("aniversar")
-        )
+        ) {
           dataNascimento = String(rowValue ?? "").trim();
-        else if (emailSenhaKeys.includes(lowerKey) || cleanedKey.includes("senha"))
-          emailSenha = String(rowValue ?? "").trim();
-        else if (
-          operacaoKeys.includes(lowerKey) ||
-          cleanedKey.includes("operac") ||
-          cleanedKey === "setor"
-        )
+        } else if (isOperacaoColumn(lowerKey)) {
           rowOperacao = String(rowValue ?? "").trim();
+        }
       }
 
       if (!nome) {
@@ -1348,14 +1442,45 @@ export async function importRows(
       }
 
       let resolvedOperacaoId = null;
-      if (rowOperacao) {
-        let matchedOp = operationsList.find(
-          (o: any) => o.nome.toLowerCase().trim() === rowOperacao.toLowerCase().trim(),
-        );
+      if (rowOperacao && rowOperacao.trim()) {
+        const rawOpVal = rowOperacao.trim();
+        const normVal = normalizeStr(rawOpVal);
+        const cleanVal = cleanKey(normVal);
+
+        // 1. Direct ID match
+        let matchedOp = operationsList.find((o: any) => o.id === rawOpVal);
+
+        // 2. Exact match (accent and case insensitive)
+        if (!matchedOp) {
+          matchedOp = operationsList.find((o: any) => normalizeStr(o.nome) === normVal);
+        }
+
+        // 3. Clean alphanumeric match
+        if (!matchedOp) {
+          matchedOp = operationsList.find((o: any) => cleanKey(o.nome) === cleanVal);
+        }
+
+        // 4. Starts with / prefix match
+        if (!matchedOp && normVal.length >= 2) {
+          matchedOp = operationsList.find((o: any) => {
+            const normOp = normalizeStr(o.nome);
+            return normOp.startsWith(normVal) || normVal.startsWith(normOp);
+          });
+        }
+
+        // 5. Substring / contains match
+        if (!matchedOp && normVal.length >= 3) {
+          matchedOp = operationsList.find((o: any) => {
+            const normOp = normalizeStr(o.nome);
+            return normOp.includes(normVal) || normVal.includes(normOp);
+          });
+        }
+
+        // Auto-create new operation if none exists
         if (!matchedOp) {
           const { data: newOp, error: newOpErr } = await db
             .from("operacoes")
-            .insert({ nome: rowOperacao, ativo: true })
+            .insert({ nome: rawOpVal, ativo: true })
             .select("id, nome")
             .maybeSingle();
           if (!newOpErr && newOp) {
@@ -1363,6 +1488,7 @@ export async function importRows(
             operationsList.push(newOp);
           }
         }
+
         if (matchedOp) {
           resolvedOperacaoId = matchedOp.id;
         }
@@ -1384,7 +1510,7 @@ export async function importRows(
         status: status as any,
         inativado_em,
         data_nascimento: parseDateToISO(dataNascimento) || colabExistente?.data_nascimento || null,
-        ...(finalOperacaoId ? { operacao_id: finalOperacaoId } : {}),
+        operacao_id: finalOperacaoId || null,
       };
 
       let colId: string;
@@ -1450,6 +1576,10 @@ export async function importRows(
 
         for (const [rowKey, rowValue] of Object.entries(r)) {
           const colLower = rowKey.toLowerCase().trim();
+          if (isEmailSenhaColumn(colLower)) {
+            // Do NOT treat email password column as a system password column
+            continue;
+          }
           const hasBase = baseNames.some((base) => colLower.includes(base));
           if (hasBase) {
             const isPassword =

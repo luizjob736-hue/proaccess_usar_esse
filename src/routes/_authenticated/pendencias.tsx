@@ -304,45 +304,6 @@ function Pendencias() {
     onError: (e: any) => toast.error(e.message),
   });
 
-  const cleanDuplicates = useMutation({
-    mutationFn: async () => {
-      const { data: allP, error } = await db
-        .from("pendencias")
-        .select("id, titulo, colaborador_id, sistema_id, tipo");
-      if (error) throw error;
-      if (!allP) return 0;
-
-      const seen = new Map<string, string>();
-      const idsToDelete: string[] = [];
-
-      for (const p of allP) {
-        const key = `${(p.titulo || "").trim().toLowerCase()}_${p.colaborador_id || "none"}_${p.sistema_id || "none"}_${p.tipo || "none"}`;
-        if (seen.has(key)) {
-          idsToDelete.push(p.id);
-        } else {
-          seen.set(key, p.id);
-        }
-      }
-
-      if (idsToDelete.length > 0) {
-        for (let i = 0; i < idsToDelete.length; i += 100) {
-          const chunk = idsToDelete.slice(i, i + 100);
-          await db.from("pendencias").delete().in("id", chunk);
-        }
-      }
-      return idsToDelete.length;
-    },
-    onSuccess: (count) => {
-      if (count > 0) {
-        toast.success(`${count} pendência(s) duplicada(s) removida(s) com sucesso!`);
-      } else {
-        toast.info("Nenhuma pendência duplicada encontrada.");
-      }
-      qc.invalidateQueries({ queryKey: ["pendencias"] });
-    },
-    onError: (e: any) => toast.error(e.message || "Erro ao remover duplicadas"),
-  });
-
   const moveMut = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: string }) => {
       const concluidoAliases = [
@@ -596,15 +557,6 @@ function Pendencias() {
               </span>
             </Button>
           </label>
-          <Button
-            variant="outline"
-            onClick={() => cleanDuplicates.mutate()}
-            disabled={cleanDuplicates.isPending}
-            className="gap-2 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800 hover:bg-amber-50 dark:hover:bg-amber-950/30"
-          >
-            <Trash2 className="h-4 w-4" />
-            {cleanDuplicates.isPending ? "Limpando..." : "Remover Duplicadas"}
-          </Button>
           {isAdmin && (
             <Button variant="outline" asChild className="gap-2">
               <Link to="/pendencias-historico">

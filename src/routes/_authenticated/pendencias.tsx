@@ -163,6 +163,7 @@ function Pendencias() {
   const [sistemaFiltro, setSistemaFiltro] = useState<string>("todos");
   const [selectedOperacaoId, setSelectedOperacaoId] = useState("todas");
   const [selectedSistemas, setSelectedSistemas] = useState<string[]>([]);
+  const [selectedColaboradores, setSelectedColaboradores] = useState<string[]>([]);
   const [formDateInicio, setFormDateInicio] = useState(new Date().toISOString().slice(0, 10));
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
@@ -569,6 +570,7 @@ function Pendencias() {
               setOpen(o);
               if (!o) {
                 setSelectedSistemas([]);
+                setSelectedColaboradores([]);
               } else {
                 setFormDateInicio(new Date().toISOString().slice(0, 10));
               }
@@ -592,7 +594,6 @@ function Pendencias() {
                     descricao: fd.get("descricao"),
                     tipo: fd.get("tipo") || "outro",
                     prioridade: fd.get("prioridade") || "media",
-                    colaborador_id: (fd.get("colaborador_id") as string) || null,
                     operacao_id:
                       (fd.get("operacao_id") as string) ||
                       (selectedOperacaoId !== "todas" && selectedOperacaoId !== "sem_operacao"
@@ -606,35 +607,40 @@ function Pendencias() {
                     solicitado: isAlreadySolicitado,
                   };
 
-                  if (selectedSistemas.length > 0) {
-                    const payloads = selectedSistemas.map((sisId) => {
-                      const sisObj = sistemas.find((s: any) => s.id === sisId);
-                      const diasSla = sisObj?.sla_horas ?? 1;
-                      const startVal =
-                        (fd.get("data_inicio") as string) || new Date().toISOString();
-                      const startDate = new Date(startVal);
-                      const slaDate = new Date(startDate.getTime() + diasSla * 24 * 3600 * 1000);
-                      const finalSla = (fd.get("sla_em") as string) || slaDate.toISOString();
+                  const payloads: any[] = [];
+                  const colabsToUse =
+                    selectedColaboradores.length > 0 ? selectedColaboradores : [null];
+                  const sissToUse = selectedSistemas.length > 0 ? selectedSistemas : [null];
 
-                      return {
+                  for (const colId of colabsToUse) {
+                    for (const sisId of sissToUse) {
+                      let finalSla = null;
+                      if (sisId) {
+                        const sisObj = sistemas.find((s: any) => s.id === sisId);
+                        const diasSla = sisObj?.sla_horas ?? 1;
+                        const startVal =
+                          (fd.get("data_inicio") as string) || new Date().toISOString();
+                        const startDate = new Date(startVal);
+                        const slaDate = new Date(startDate.getTime() + diasSla * 24 * 3600 * 1000);
+                        finalSla = (fd.get("sla_em") as string) || slaDate.toISOString();
+                      } else {
+                        const startVal =
+                          (fd.get("data_inicio") as string) || new Date().toISOString();
+                        const startDate = new Date(startVal);
+                        const slaDate = new Date(startDate.getTime() + 1 * 24 * 3600 * 1000);
+                        finalSla = (fd.get("sla_em") as string) || slaDate.toISOString();
+                      }
+
+                      payloads.push({
                         ...basePayload,
+                        colaborador_id: colId,
                         sistema_id: sisId,
                         sla_em: finalSla,
-                      };
-                    });
-                    create.mutate(payloads);
-                  } else {
-                    const startVal = (fd.get("data_inicio") as string) || new Date().toISOString();
-                    const startDate = new Date(startVal);
-                    const slaDate = new Date(startDate.getTime() + 1 * 24 * 3600 * 1000);
-                    const finalSla = (fd.get("sla_em") as string) || slaDate.toISOString();
-
-                    create.mutate({
-                      ...basePayload,
-                      sistema_id: null,
-                      sla_em: finalSla,
-                    });
+                      });
+                    }
                   }
+
+                  create.mutate(payloads);
                 }}
                 className="space-y-3"
               >
@@ -679,19 +685,34 @@ function Pendencias() {
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <Label>Colaborador</Label>
-                    <Select name="colaborador_id">
-                      <SelectTrigger>
-                        <SelectValue placeholder="—" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {colabs.map((c: any) => (
-                          <SelectItem key={c.id} value={c.id}>
-                            {c.nome}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <Label>Colaboradores (Marcação múltipla)</Label>
+                    <div className="border border-input rounded-md p-2 max-h-32 overflow-y-auto bg-background space-y-1 mt-1">
+                      {colabs.map((c: any) => {
+                        const isChecked = selectedColaboradores.includes(c.id);
+                        return (
+                          <label
+                            key={c.id}
+                            className="flex items-center gap-2 text-sm font-normal cursor-pointer hover:bg-accent/50 p-1 rounded-sm transition-colors"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedColaboradores((prev) => [...prev, c.id]);
+                                } else {
+                                  setSelectedColaboradores((prev) =>
+                                    prev.filter((id) => id !== c.id),
+                                  );
+                                }
+                              }}
+                              className="rounded border-gray-300 text-primary focus:ring-primary h-4 w-4"
+                            />
+                            <span className="truncate">{c.nome}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
                   </div>
                   <div>
                     <Label>Sistemas (Marcação múltipla)</Label>

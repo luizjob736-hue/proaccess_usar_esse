@@ -148,6 +148,7 @@ class QueryBuilder {
 
   async execute() {
     try {
+      const session = getStoredSession();
       const res = await neonQueryServerFn({
         data: {
           table: this.table,
@@ -162,6 +163,7 @@ class QueryBuilder {
           payload: this.payload,
           countExact: this.countExact,
           headOnly: this.headOnly,
+          token: session?.access_token,
         },
       });
       return res || { data: null, error: { message: "Erro de consulta" } };
@@ -311,7 +313,8 @@ export const db = {
 
   async rpc(fnName: string, args?: any) {
     try {
-      const res = await neonRpcServerFn({ data: { fnName, args } });
+      const session = getStoredSession();
+      const res = await neonRpcServerFn({ data: { fnName, args, token: session?.access_token } });
       return res || { data: null, error: { message: "Erro na chamada RPC" } };
     } catch (err: any) {
       const isFetchError =

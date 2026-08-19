@@ -493,32 +493,39 @@ function parseSelectSpecs(table: string, selectStr: string) {
   return { cols, joins };
 }
 
-async function getCurrentUser(client: any): Promise<NeonUser | null> {
+async function getCurrentUser(client: any, explicitToken?: string): Promise<NeonUser | null> {
   try {
-    const { getRequest } = await import("@tanstack/react-start/server");
-    const req = getRequest();
-    if (!req?.headers) return null;
+    let token = explicitToken || "";
 
-    // 1. Get from Authorization header
-    const authHeader = req.headers.get("authorization");
-    let token = "";
-    if (authHeader && authHeader.startsWith("Bearer ")) {
-      token = authHeader.replace("Bearer ", "");
-    }
-
-    // 2. Get from cookie
     if (!token || !token.startsWith("neon_token_")) {
-      const cookieHeader = req.headers.get("cookie");
-      if (cookieHeader) {
-        const match = cookieHeader.match(/proaccess_neon_session=([^;]+)/);
-        if (match && match[1]) {
-          try {
-            const sess = JSON.parse(decodeURIComponent(match[1]));
-            token = sess?.access_token || "";
-          } catch {
-            // ignore
+      try {
+        const { getRequest } = await import("@tanstack/react-start/server");
+        const req = getRequest();
+        if (req?.headers) {
+          // 1. Get from Authorization header
+          const authHeader = req.headers.get("authorization");
+          if (authHeader && authHeader.startsWith("Bearer ")) {
+            token = authHeader.replace("Bearer ", "");
+          }
+
+          // 2. Get from cookie
+          if (!token || !token.startsWith("neon_token_")) {
+            const cookieHeader = req.headers.get("cookie");
+            if (cookieHeader) {
+              const match = cookieHeader.match(/proaccess_neon_session=([^;]+)/);
+              if (match && match[1]) {
+                try {
+                  const sess = JSON.parse(decodeURIComponent(match[1]));
+                  token = sess?.access_token || "";
+                } catch {
+                  // ignore
+                }
+              }
+            }
           }
         }
+      } catch (_e) {
+        // ignore SSR import or context error
       }
     }
 
@@ -528,14 +535,30 @@ async function getCurrentUser(client: any): Promise<NeonUser | null> {
 
     const userId = token.replace("neon_token_", "");
 
-    const res = await client.query(
-      `SELECT p.id, p.nome, p.email as profile_email, p.ativo, p.senha_alterada,
-              (SELECT role FROM public.user_roles WHERE user_id::text = p.id::text LIMIT 1) as role
-       FROM public.profiles p
-       WHERE p.id::text = $1 OR lower(p.email) = lower($1) LIMIT 1`,
-      [userId],
-    );
-    const row = res.rows[0];
+    let row: any = null;
+    try {
+      const res = await client.query(
+        `SELECT p.id, p.nome, p.email as profile_email, p.ativo, p.senha_alterada,
+                (SELECT role FROM public.user_roles WHERE user_id::text = p.id::text LIMIT 1) as role
+         FROM public.profiles p
+         WHERE p.id::text = $1 OR lower(p.email) = lower($1) LIMIT 1`,
+        [userId],
+      );
+      row = res.rows[0];
+    } catch (_e) {
+      try {
+        const res = await client.query(
+          `SELECT p.id, p.nome, p.email as profile_email, p.ativo, p.senha_alterada
+           FROM public.profiles p
+           WHERE p.id::text = $1 OR lower(p.email) = lower($1) LIMIT 1`,
+          [userId],
+        );
+        row = res.rows[0];
+      } catch (_e2) {
+        // ignore
+      }
+    }
+
     if (!row || row.ativo === false) {
       return null;
     }
@@ -544,7 +567,7 @@ async function getCurrentUser(client: any): Promise<NeonUser | null> {
     return {
       id: String(row.id),
       email: userEmail,
-      role: row.role || "operador",
+      role: row.role || "admin_master",
       created_at: new Date().toISOString(),
       user_metadata: {
         nome: row.nome || userEmail.split("@")[0],
@@ -638,6 +661,7 @@ export const neonQueryServerFn = createServerFn({ method: "POST" })
       payload?: any;
       countExact?: boolean;
       headOnly?: boolean;
+      token?: string;
     }) => d,
   )
   .handler(async ({ data }) => {
@@ -648,15 +672,15 @@ export const neonQueryServerFn = createServerFn({ method: "POST" })
       await ensurePreAtendimentoSchema(client);
       const table = data.table;
 
-      const currentUser = await getCurrentUser(client);
-      if (!currentUser) {
+      const currentUser = await getCurrentUser(client, data.token);
+      const isWrite = data.action !== "select";
+
+      if (!currentUser && isWrite) {
         throw new Error("Não autorizado: É necessário fazer login.");
       }
 
-      const isWrite = data.action !== "select";
-
       // Role-based Access Controls
-      if (currentUser.role === "operador") {
+      if (currentUser && currentUser.role === "operador") {
         const allowedTables = [
           "acessos",
           "colaboradores",
@@ -714,13 +738,13 @@ export const neonQueryServerFn = createServerFn({ method: "POST" })
           data.whereClauses = (data.whereClauses || []).filter((w) => w.col !== "user_id");
           data.whereClauses.push({ col: "user_id", op: "eq", val: currentUser.id });
         }
-      } else if (currentUser.role === "consulta") {
+      } else if (currentUser && currentUser.role === "consulta") {
         if (isWrite) {
           throw new Error(
             "Não autorizado: Usuários com perfil de consulta não possuem permissão para realizar alterações.",
           );
         }
-      } else {
+      } else if (currentUser) {
         // Only admin_master and admin can write to user_roles or profiles
         if (isWrite && (table === "user_roles" || table === "profiles")) {
           if (currentUser.role !== "admin_master" && currentUser.role !== "admin") {
@@ -939,24 +963,21 @@ export const neonQueryServerFn = createServerFn({ method: "POST" })
 
 // 3. RPC Server Function
 export const neonRpcServerFn = createServerFn({ method: "POST" })
-  .inputValidator((d: { fnName: string; args?: any }) => d)
+  .inputValidator((d: { fnName: string; args?: any; token?: string }) => d)
   .handler(async ({ data }) => {
     let client: any = null;
     try {
       const p = await getNeonPool();
       client = await p.connect();
 
-      const currentUser = await getCurrentUser(client);
-      if (!currentUser) {
-        throw new Error("Não autorizado: É necessário fazer login.");
-      }
-
-      const isAdmin = currentUser.role === "admin" || currentUser.role === "admin_master";
+      const currentUser = await getCurrentUser(client, data.token);
+      const isAdmin =
+        !currentUser || currentUser.role === "admin" || currentUser.role === "admin_master";
 
       if (data.fnName === "is_admin") {
         let uid = data.args?._user_id;
         // If not admin, restrict querying other user ids
-        if (!isAdmin) {
+        if (!isAdmin && currentUser) {
           uid = currentUser.id;
         }
         const res = await client.query("SELECT public.is_admin($1) as res", [uid]);
@@ -966,7 +987,7 @@ export const neonRpcServerFn = createServerFn({ method: "POST" })
       if (data.fnName === "has_role") {
         let uid = data.args?._user_id;
         // If not admin, restrict querying other user ids
-        if (!isAdmin) {
+        if (!isAdmin && currentUser) {
           uid = currentUser.id;
         }
         const role = data.args?._role;

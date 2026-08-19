@@ -156,16 +156,6 @@ export function matchesColumnStatus(
 function Pendencias() {
   const search = Route.useSearch();
   const qc = useQueryClient();
-
-  useEffect(() => {
-    db.from("pendencias")
-      .delete()
-      .neq("id", "00000000-0000-0000-0000-000000000000")
-      .then(() => {
-        qc.invalidateQueries({ queryKey: ["pendencias"] });
-      })
-      .catch(() => {});
-  }, [qc]);
   const [open, setOpen] = useState(false);
   const [openQuadros, setOpenQuadros] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(search.id || null);

@@ -38,6 +38,9 @@ import {
   Pencil,
   Trash2,
   CheckSquare,
+  CheckCircle2,
+  UserCheck,
+  ArrowRightLeft,
   ChevronLeft,
   ChevronRight,
   X,
@@ -116,11 +119,21 @@ const ValCell = memo(function ValCell({
   );
 });
 
-export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean }) {
+export function MatrizView({
+  onlyInativos = false,
+  onlyPreAtendimento = false,
+}: {
+  onlyInativos?: boolean;
+  onlyPreAtendimento?: boolean;
+}) {
   const qc = useQueryClient();
   const [q, setQ] = useState("");
   const [colFilterNome, setColFilterNome] = useState("");
   const [colFilterCpf, setColFilterCpf] = useState("");
+  const [colFilterAdmissao, setColFilterAdmissao] = useState("");
+  const [colFilterProduto, setColFilterProduto] = useState("");
+  const [colFilterEntrada, setColFilterEntrada] = useState("");
+  const [colFilterSaida, setColFilterSaida] = useState("");
   const [colFilterNascimento, setColFilterNascimento] = useState("");
   const [colFilterEmail, setColFilterEmail] = useState("");
   const [colFilterSenhaEmail, setColFilterSenhaEmail] = useState("");
@@ -177,7 +190,7 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
       const { data, error } = await db
         .from("acessos")
         .select(
-          "id, login, senha, sistema:sistemas(id,nome), colaborador:colaboradores(id, nome, cpf, email, email_senha, telefone, cargo, status, operacao_id, matricula, admissao_em, inativado_em, data_nascimento)",
+          "id, login, senha, sistema:sistemas(id,nome), colaborador:colaboradores(id, nome, cpf, email, email_senha, telefone, cargo, status, operacao_id, matricula, admissao_em, inativado_em, data_nascimento, produto, horario_entrada, horario_saida, em_pre_atendimento)",
         );
       if (error) throw error;
       return data ?? [];
@@ -192,7 +205,7 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
         await db
           .from("colaboradores")
           .select(
-            "id, nome, cpf, email, email_senha, telefone, cargo, status, operacao_id, matricula, admissao_em, inativado_em, data_nascimento" as any,
+            "id, nome, cpf, email, email_senha, telefone, cargo, status, operacao_id, matricula, admissao_em, inativado_em, data_nascimento, produto, horario_entrada, horario_saida, em_pre_atendimento" as any,
           )
           .order("nome")
       ).data ?? [],
@@ -314,6 +327,7 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
         .update({
           status: inativo ? "inativo" : "ativo",
           inativado_em: inativo ? nowIso : null,
+          desligamento_em: inativo ? nowIso : null,
         })
         .eq("id", id);
       if (error) throw error;
@@ -328,6 +342,100 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
     },
     onSuccess: (_, vars) => {
       toast.success(vars.inativo ? "Marcado como inativo" : "Reativado");
+      qc.invalidateQueries();
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const transferirParaMatriz = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await db
+        .from("colaboradores")
+        .update({
+          em_pre_atendimento: false,
+          status: "ativo",
+        })
+        .eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Colaborador transferido para a Matriz de Acessos!");
+      qc.invalidateQueries();
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const transferirParaInativos = useMutation({
+    mutationFn: async (id: string) => {
+      const nowIso = new Date().toISOString();
+      const { error } = await db
+        .from("colaboradores")
+        .update({
+          status: "inativo",
+          inativado_em: nowIso,
+          desligamento_em: nowIso,
+          em_pre_atendimento: false,
+        })
+        .eq("id", id);
+      if (error) throw error;
+
+      await db
+        .from("pendencias")
+        .update({ arquivado: true, concluido_em: nowIso })
+        .eq("colaborador_id", id)
+        .eq("arquivado", false);
+    },
+    onSuccess: () => {
+      toast.success("Colaborador transferido para a guia de Usuários Inativos!");
+      qc.invalidateQueries();
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const transferirSelecionadosParaMatriz = useMutation({
+    mutationFn: async (ids: string[]) => {
+      for (const id of ids) {
+        await db
+          .from("colaboradores")
+          .update({
+            em_pre_atendimento: false,
+            status: "ativo",
+          })
+          .eq("id", id);
+      }
+    },
+    onSuccess: (_, vars) => {
+      toast.success(`${vars.length} colaborador(es) transferido(s) para a Matriz de Acessos!`);
+      setSelectedIds(new Set());
+      qc.invalidateQueries();
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const transferirSelecionadosParaInativos = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const nowIso = new Date().toISOString();
+      for (const id of ids) {
+        await db
+          .from("colaboradores")
+          .update({
+            status: "inativo",
+            inativado_em: nowIso,
+            desligamento_em: nowIso,
+            em_pre_atendimento: false,
+          })
+          .eq("id", id);
+
+        await db
+          .from("pendencias")
+          .update({ arquivado: true, concluido_em: nowIso })
+          .eq("colaborador_id", id)
+          .eq("arquivado", false);
+      }
+    },
+    onSuccess: (_, vars) => {
+      toast.success(`${vars.length} colaborador(es) transferido(s) para Usuários Inativos!`);
+      setSelectedIds(new Set());
       qc.invalidateQueries();
     },
     onError: (e: any) => toast.error(e.message),
@@ -352,14 +460,20 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
       .filter((s: any) => s.nome.toLowerCase() !== "e-mail" && s.nome.toLowerCase() !== "email")
       .sort((a, b) => a.nome.localeCompare(b.nome));
     const linhas = Array.from(colabMap.values())
-      .filter((c: any) =>
-        onlyInativos
-          ? c.status === "inativo" || c.status === "desligado"
-          : c.status !== "inativo" && c.status !== "desligado",
-      )
+      .filter((c: any) => {
+        if (onlyInativos) {
+          return c.status === "inativo" || c.status === "desligado";
+        }
+        if (onlyPreAtendimento) {
+          return (
+            c.em_pre_atendimento === true && c.status !== "inativo" && c.status !== "desligado"
+          );
+        }
+        return c.em_pre_atendimento !== true && c.status !== "inativo" && c.status !== "desligado";
+      })
       .sort((a, b) => a.nome.localeCompare(b.nome));
     return { sistemas, linhas };
-  }, [acessos, colabsRaw, sistemasAll, onlyInativos]);
+  }, [acessos, colabsRaw, sistemasAll, onlyInativos, onlyPreAtendimento]);
 
   const operacaoCounts = useMemo(() => {
     const counts: Record<string, number> = { todas: linhas.length, sem_operacao: 0 };
@@ -454,6 +568,39 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
         }
       }
 
+      if (onlyPreAtendimento) {
+        if (colFilterAdmissao.trim()) {
+          const dateStr = formatDateBR(r.admissao_em).toLowerCase();
+          if (!dateStr.includes(colFilterAdmissao.trim().toLowerCase())) {
+            return false;
+          }
+        }
+        if (
+          colFilterProduto.trim() &&
+          !String(r.produto ?? "")
+            .toLowerCase()
+            .includes(colFilterProduto.trim().toLowerCase())
+        ) {
+          return false;
+        }
+        if (
+          colFilterEntrada.trim() &&
+          !String(r.horario_entrada ?? "")
+            .toLowerCase()
+            .includes(colFilterEntrada.trim().toLowerCase())
+        ) {
+          return false;
+        }
+        if (
+          colFilterSaida.trim() &&
+          !String(r.horario_saida ?? "")
+            .toLowerCase()
+            .includes(colFilterSaida.trim().toLowerCase())
+        ) {
+          return false;
+        }
+      }
+
       // 3. Dynamic systems filters
       for (const [sisId, sFilter] of Object.entries(colFilterSistemas)) {
         const acesso = r.acessos?.[sisId];
@@ -478,6 +625,10 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
     q,
     colFilterNome,
     colFilterCpf,
+    colFilterAdmissao,
+    colFilterProduto,
+    colFilterEntrada,
+    colFilterSaida,
     colFilterNascimento,
     colFilterEmail,
     colFilterSenhaEmail,
@@ -486,6 +637,7 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
     colFilterInativado,
     colFilterSistemas,
     onlyInativos,
+    onlyPreAtendimento,
   ]);
 
   const totalPages = pageSize > 0 ? Math.ceil(filtered.length / pageSize) : 1;
@@ -551,13 +703,22 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
       const base: any = {
         Nome: r.nome,
         CPF: r.cpf ?? "",
-        "Data de Nascimento": formatDateBR(r.data_nascimento),
-        Email: r.email ?? "",
-        "Senha e-mail": r.email_senha ?? "",
-        Telefone: r.telefone ?? "",
-        Cargo: r.cargo ?? "",
-        Status: r.status ?? "ativo",
       };
+
+      if (onlyPreAtendimento) {
+        base["Admissão"] = formatDateBR(r.admissao_em);
+        base["Produto"] = r.produto ?? "";
+        base["Entrada"] = r.horario_entrada ?? "";
+        base["Saída"] = r.horario_saida ?? "";
+      }
+
+      base["Data de Nascimento"] = formatDateBR(r.data_nascimento);
+      base["Email"] = r.email ?? "";
+      base["Senha e-mail"] = r.email_senha ?? "";
+      base["Telefone"] = r.telefone ?? "";
+      base["Cargo"] = r.cargo ?? "";
+      base["Status"] = r.status ?? "ativo";
+
       if (onlyInativos) {
         base["Data Inativação"] = formatDateBR(r.inativado_em);
       }
@@ -569,14 +730,19 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
     });
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, onlyInativos ? "Inativos" : "Matriz");
+    const sheetName = onlyInativos ? "Inativos" : onlyPreAtendimento ? "Pré-Atendimento" : "Matriz";
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
     const fileName = onlySelected
       ? onlyInativos
         ? "usuarios-inativos-selecionados.xlsx"
-        : "matriz-acessos-selecionados.xlsx"
+        : onlyPreAtendimento
+          ? "pre-atendimento-selecionados.xlsx"
+          : "matriz-acessos-selecionados.xlsx"
       : onlyInativos
         ? "usuarios-inativos.xlsx"
-        : "matriz-acessos.xlsx";
+        : onlyPreAtendimento
+          ? "pre-atendimento.xlsx"
+          : "matriz-acessos.xlsx";
 
     XLSX.writeFile(wb, fileName);
     toast.success(`${rows.length} operador(es) exportado(s) com sucesso!`);
@@ -611,12 +777,18 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
       <div className="flex items-center justify-start flex-wrap gap-4">
         <div>
           <h1 className="text-3xl font-bold">
-            {onlyInativos ? "Usuários Inativos" : "Matriz de Acessos"}
+            {onlyInativos
+              ? "Usuários Inativos"
+              : onlyPreAtendimento
+                ? "Pré-Atendimento"
+                : "Matriz de Acessos"}
           </h1>
           <p className="text-muted-foreground">
             {onlyInativos
               ? "Colaboradores marcados como inativos e seus acessos"
-              : "Colaboradores, credenciais e sistemas em uma única visão"}
+              : onlyPreAtendimento
+                ? "Colaboradores em pré-atendimento com controle de admissão, produto, horários e transferências"
+                : "Colaboradores, credenciais e sistemas em uma única visão"}
           </p>
         </div>
         <div className="flex gap-2 flex-wrap">
@@ -703,7 +875,11 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
                 </DialogTrigger>
                 <DialogContent className="max-w-2xl">
                   <DialogHeader>
-                    <DialogTitle>Novo colaborador</DialogTitle>
+                    <DialogTitle>
+                      {onlyPreAtendimento
+                        ? "Novo Colaborador — Pré-Atendimento"
+                        : "Novo Colaborador"}
+                    </DialogTitle>
                   </DialogHeader>
                   <form
                     onSubmit={(e) => {
@@ -720,6 +896,10 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
                         operacao_id: (fd.get("operacao_id") as string) || null,
                         admissao_em: (fd.get("admissao_em") as string) || null,
                         data_nascimento: (fd.get("data_nascimento") as string) || null,
+                        produto: (fd.get("produto") as string) || null,
+                        horario_entrada: (fd.get("horario_entrada") as string) || null,
+                        horario_saida: (fd.get("horario_saida") as string) || null,
+                        em_pre_atendimento: onlyPreAtendimento,
                         observacoes: (fd.get("observacoes") as string) || null,
                       });
                     }}
@@ -737,6 +917,22 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
                       <Label>Matrícula</Label>
                       <Input name="matricula" />
                     </div>
+                    {onlyPreAtendimento && (
+                      <>
+                        <div>
+                          <Label>Produto</Label>
+                          <Input name="produto" placeholder="Ex: Voz, Chat, Backoffice..." />
+                        </div>
+                        <div>
+                          <Label>Entrada (Horário)</Label>
+                          <Input name="horario_entrada" placeholder="Ex: 08:00" />
+                        </div>
+                        <div>
+                          <Label>Saída (Horário)</Label>
+                          <Input name="horario_saida" placeholder="Ex: 17:00" />
+                        </div>
+                      </>
+                    )}
                     <div>
                       <Label>E-mail</Label>
                       <Input name="email" type="email" />
@@ -834,10 +1030,35 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
             <div className="flex items-center gap-2 text-primary font-medium">
               <CheckSquare className="h-4 w-4 text-primary" />
               <span>
-                <strong>{selectedIds.size}</strong> operador(es) selecionado(s) de {filtered.length}
+                <strong>{selectedIds.size}</strong> colaborador(es) selecionado(s) de{" "}
+                {filtered.length}
               </span>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              {onlyPreAtendimento && (
+                <>
+                  <Button
+                    size="sm"
+                    className="h-7 text-xs gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"
+                    onClick={() => transferirSelecionadosParaMatriz.mutate(Array.from(selectedIds))}
+                    disabled={transferirSelecionadosParaMatriz.isPending}
+                  >
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    Transferir p/ Matriz ({selectedIds.size})
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="h-7 text-xs gap-1.5 bg-amber-600 hover:bg-amber-700 text-white"
+                    onClick={() =>
+                      transferirSelecionadosParaInativos.mutate(Array.from(selectedIds))
+                    }
+                    disabled={transferirSelecionadosParaInativos.isPending}
+                  >
+                    <UserX className="h-3.5 w-3.5" />
+                    Transferir p/ Inativos ({selectedIds.size})
+                  </Button>
+                </>
+              )}
               <Button
                 size="sm"
                 variant="ghost"
@@ -892,6 +1113,14 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
                   </div>
                 </th>
                 <th className="p-2.5 text-left border-b border-r min-w-[110px]">CPF</th>
+                {onlyPreAtendimento && (
+                  <>
+                    <th className="p-2.5 text-left border-b border-r min-w-[110px]">Admissão</th>
+                    <th className="p-2.5 text-left border-b border-r min-w-[130px]">Produto</th>
+                    <th className="p-2.5 text-left border-b border-r min-w-[90px]">Entrada</th>
+                    <th className="p-2.5 text-left border-b border-r min-w-[90px]">Saída</th>
+                  </>
+                )}
                 <th className="p-2.5 text-left border-b border-r min-w-[100px]">Nascimento</th>
                 <th className="p-2.5 text-left border-b border-r min-w-[160px]">E-mail</th>
                 <th className="p-2.5 text-left border-b border-r min-w-[120px]">Senha e-mail</th>
@@ -900,7 +1129,7 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
                 {onlyInativos && (
                   <th className="p-2.5 text-left border-b border-r min-w-[110px]">Inativado em</th>
                 )}
-                <th className="p-2.5 text-center border-b border-r min-w-[100px]">Ações</th>
+                <th className="p-2.5 text-center border-b border-r min-w-[120px]">Ações</th>
                 {sistemas.map((s) => (
                   <th
                     key={s.id}
@@ -914,6 +1143,14 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
               <tr className="bg-muted/80 border-b text-[10px]">
                 <th className="border-r sticky left-0 bg-muted z-40 shadow-sm" />
                 <th className="border-r" />
+                {onlyPreAtendimento && (
+                  <>
+                    <th className="border-r" />
+                    <th className="border-r" />
+                    <th className="border-r" />
+                    <th className="border-r" />
+                  </>
+                )}
                 <th className="border-r" />
                 <th className="border-r" />
                 <th className="border-r" />
@@ -951,6 +1188,54 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
                     className="h-6 text-[10px] px-1.5 py-0 bg-background border border-muted-foreground/20 rounded font-normal w-full"
                   />
                 </th>
+                {onlyPreAtendimento && (
+                  <>
+                    <th className="p-1 border-r min-w-[110px]">
+                      <Input
+                        value={colFilterAdmissao}
+                        onChange={(e) => {
+                          setColFilterAdmissao(e.target.value);
+                          setPage(1);
+                        }}
+                        placeholder="Filtrar adm..."
+                        className="h-6 text-[10px] px-1.5 py-0 bg-background border border-muted-foreground/20 rounded font-normal w-full"
+                      />
+                    </th>
+                    <th className="p-1 border-r min-w-[130px]">
+                      <Input
+                        value={colFilterProduto}
+                        onChange={(e) => {
+                          setColFilterProduto(e.target.value);
+                          setPage(1);
+                        }}
+                        placeholder="Filtrar prod..."
+                        className="h-6 text-[10px] px-1.5 py-0 bg-background border border-muted-foreground/20 rounded font-normal w-full"
+                      />
+                    </th>
+                    <th className="p-1 border-r min-w-[90px]">
+                      <Input
+                        value={colFilterEntrada}
+                        onChange={(e) => {
+                          setColFilterEntrada(e.target.value);
+                          setPage(1);
+                        }}
+                        placeholder="Entrada..."
+                        className="h-6 text-[10px] px-1.5 py-0 bg-background border border-muted-foreground/20 rounded font-normal w-full"
+                      />
+                    </th>
+                    <th className="p-1 border-r min-w-[90px]">
+                      <Input
+                        value={colFilterSaida}
+                        onChange={(e) => {
+                          setColFilterSaida(e.target.value);
+                          setPage(1);
+                        }}
+                        placeholder="Saída..."
+                        className="h-6 text-[10px] px-1.5 py-0 bg-background border border-muted-foreground/20 rounded font-normal w-full"
+                      />
+                    </th>
+                  </>
+                )}
                 <th className="p-1 border-r min-w-[100px]">
                   <Input
                     value={colFilterNascimento}
@@ -1019,10 +1304,14 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
                     />
                   </th>
                 )}
-                <th className="p-1 border-r min-w-[100px] text-center">
+                <th className="p-1 border-r min-w-[120px] text-center">
                   {!!(
                     colFilterNome ||
                     colFilterCpf ||
+                    colFilterAdmissao ||
+                    colFilterProduto ||
+                    colFilterEntrada ||
+                    colFilterSaida ||
                     colFilterNascimento ||
                     colFilterEmail ||
                     colFilterSenhaEmail ||
@@ -1039,6 +1328,10 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
                       onClick={() => {
                         setColFilterNome("");
                         setColFilterCpf("");
+                        setColFilterAdmissao("");
+                        setColFilterProduto("");
+                        setColFilterEntrada("");
+                        setColFilterSaida("");
                         setColFilterNascimento("");
                         setColFilterEmail("");
                         setColFilterSenhaEmail("");
@@ -1132,6 +1425,19 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
                     <td className="p-2 border-r font-mono text-[11px] text-muted-foreground">
                       {r.cpf ?? "—"}
                     </td>
+                    {onlyPreAtendimento && (
+                      <>
+                        <td className="p-2 border-r text-[11px]">{formatDateBR(r.admissao_em)}</td>
+                        <td
+                          className="p-2 border-r text-[11px] truncate max-w-[130px]"
+                          title={r.produto ?? ""}
+                        >
+                          {r.produto || "—"}
+                        </td>
+                        <td className="p-2 border-r text-[11px]">{r.horario_entrada || "—"}</td>
+                        <td className="p-2 border-r text-[11px]">{r.horario_saida || "—"}</td>
+                      </>
+                    )}
                     <td className="p-2 border-r text-[11px]">{formatDateBR(r.data_nascimento)}</td>
                     <td
                       className="p-2 border-r text-[11px] truncate max-w-[160px]"
@@ -1156,6 +1462,30 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
                     )}
                     <td className="p-2 border-r">
                       <div className="flex items-center justify-center gap-1">
+                        {onlyPreAtendimento && (
+                          <>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-6 w-6 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                              title="Check: Transferir para Matriz de Acessos"
+                              onClick={() => transferirParaMatriz.mutate(r.id)}
+                              disabled={transferirParaMatriz.isPending}
+                            >
+                              <CheckCircle2 className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-6 w-6 text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-950/30"
+                              title="Transferir para Inativos (Data atual)"
+                              onClick={() => transferirParaInativos.mutate(r.id)}
+                              disabled={transferirParaInativos.isPending}
+                            >
+                              <UserX className="h-3.5 w-3.5" />
+                            </Button>
+                          </>
+                        )}
                         <Button
                           size="icon"
                           variant="ghost"
@@ -1174,21 +1504,23 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
                         >
                           <Plus className="h-3 w-3" />
                         </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-6 w-6"
-                          title={r.status === "inativo" ? "Reativar" : "Marcar inativo"}
-                          onClick={() =>
-                            flagInativo.mutate({ id: r.id, inativo: r.status !== "inativo" })
-                          }
-                        >
-                          <UserX
-                            className={
-                              "h-3 w-3 " + (r.status === "inativo" ? "text-destructive" : "")
+                        {!onlyPreAtendimento && (
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-6 w-6"
+                            title={r.status === "inativo" ? "Reativar" : "Marcar inativo"}
+                            onClick={() =>
+                              flagInativo.mutate({ id: r.id, inativo: r.status !== "inativo" })
                             }
-                          />
-                        </Button>
+                          >
+                            <UserX
+                              className={
+                                "h-3 w-3 " + (r.status === "inativo" ? "text-destructive" : "")
+                              }
+                            />
+                          </Button>
+                        )}
                         {isMaster && (
                           <Button
                             size="icon"
@@ -1423,6 +1755,9 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
                   cargo: (fd.get("cargo") as string) || null,
                   operacao_id: (fd.get("operacao_id") as string) || null,
                   admissao_em: (fd.get("admissao_em") as string) || null,
+                  produto: (fd.get("produto") as string) || null,
+                  horario_entrada: (fd.get("horario_entrada") as string) || null,
+                  horario_saida: (fd.get("horario_saida") as string) || null,
                   data_nascimento: (fd.get("data_nascimento") as string) || null,
                   status: (fd.get("status") as string) || "ativo",
                 });
@@ -1479,6 +1814,18 @@ export function MatrizView({ onlyInativos = false }: { onlyInativos?: boolean })
                   type="date"
                   defaultValue={toInputDateValue(editColab.admissao_em)}
                 />
+              </div>
+              <div>
+                <Label>Produto</Label>
+                <Input name="produto" defaultValue={editColab.produto ?? ""} />
+              </div>
+              <div>
+                <Label>Entrada (Horário)</Label>
+                <Input name="horario_entrada" defaultValue={editColab.horario_entrada ?? ""} />
+              </div>
+              <div>
+                <Label>Saída (Horário)</Label>
+                <Input name="horario_saida" defaultValue={editColab.horario_saida ?? ""} />
               </div>
               <div>
                 <Label>Data de Nascimento</Label>

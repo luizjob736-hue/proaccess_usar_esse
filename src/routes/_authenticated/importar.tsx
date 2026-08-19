@@ -20,6 +20,7 @@ import {
   ClipboardList,
   LifeBuoy,
   Grid3x3,
+  UserPlus,
 } from "lucide-react";
 import { toast } from "sonner";
 import { matchesColumnStatus } from "./pendencias";
@@ -109,6 +110,7 @@ export function parseDateToISO(val: any): string | null {
 export const Route = createFileRoute("/_authenticated/importar")({ component: Importar });
 
 type TemplateKey =
+  | "pre_atendimento"
   | "operacoes"
   | "sistemas"
   | "perfis_acesso"
@@ -130,6 +132,41 @@ const TEMPLATES: Record<
     icon: any;
   }
 > = {
+  pre_atendimento: {
+    title: "Pré-Atendimento",
+    desc: "Importe novos colaboradores para a esteira de pré-atendimento com controle de admissão, produto, horários de entrada/saída e acessos.",
+    icon: UserPlus,
+    headers: [
+      "nome",
+      "cpf",
+      "admissão",
+      "produto",
+      "entrada",
+      "saída",
+      "data de nascimento",
+      "email",
+      "senha e-mail",
+      "operação",
+      "telefone",
+      "cargo",
+    ],
+    sample: [
+      {
+        nome: "Carlos Eduardo Santos",
+        cpf: "456.789.123-00",
+        admissão: "01/09/2026",
+        produto: "Atendimento Voz",
+        entrada: "08:00",
+        saída: "17:00",
+        "data de nascimento": "12/03/1998",
+        email: "carlos.santos@empresa.com",
+        "senha e-mail": "SenhaForte123",
+        operação: "Operação Central",
+        telefone: "11977777777",
+        cargo: "Operador",
+      },
+    ],
+  },
   inativos: {
     title: "Usuários Inativos",
     desc: "Importe ou atualize usuários inativos (desligados/afastados) usando o mesmo layout da Matriz unificada.",
@@ -298,7 +335,7 @@ const TAB_GROUPS: { value: TabGroup; label: string; keys: TemplateKey[] }[] = [
   {
     value: "cadastro",
     label: "Pessoas e Estrutura",
-    keys: ["matriz", "inativos", "operacoes"],
+    keys: ["pre_atendimento", "matriz", "inativos", "operacoes"],
   },
   {
     value: "sistemas",
@@ -321,10 +358,12 @@ function downloadCSV(key: TemplateKey, sistemasAll: any[] = []) {
   let headers: string[];
   let sample: Record<string, string>[];
 
-  if (key === "matriz" || key === "inativos") {
-    headers = [
-      "Nome",
-      "CPF",
+  if (key === "matriz" || key === "inativos" || key === "pre_atendimento") {
+    headers = ["Nome", "CPF"];
+    if (key === "pre_atendimento") {
+      headers.push("Admissão", "Produto", "Entrada", "Saída");
+    }
+    headers.push(
       "Data de Nascimento",
       "Email",
       "Senha e-mail",
@@ -332,7 +371,7 @@ function downloadCSV(key: TemplateKey, sistemasAll: any[] = []) {
       "Telefone",
       "Cargo",
       "Status",
-    ];
+    );
     if (key === "inativos") {
       headers.push("Data Inativação");
     }
@@ -349,21 +388,37 @@ function downloadCSV(key: TemplateKey, sistemasAll: any[] = []) {
             Cargo: "Analista de Suporte",
             Status: "ativo",
           }
-        : {
-            Nome: "Maria Oliveira",
-            CPF: "987.654.321-00",
-            "Data de Nascimento": "20/10/1992",
-            Email: "maria@empresa.com",
-            "Senha e-mail": "SenhaForteEmail987",
-            Operação: "Operação Central",
-            Telefone: "11988888888",
-            Cargo: "Operador",
-            Status: "inativo",
-            "Data Inativação": "30/07/2026",
-          };
+        : key === "pre_atendimento"
+          ? {
+              Nome: "Carlos Eduardo Santos",
+              CPF: "456.789.123-00",
+              Admissão: "01/09/2026",
+              Produto: "Atendimento Voz",
+              Entrada: "08:00",
+              Saída: "17:00",
+              "Data de Nascimento": "12/03/1998",
+              Email: "carlos.santos@empresa.com",
+              "Senha e-mail": "SenhaForte123",
+              Operação: "Operação Central",
+              Telefone: "11977777777",
+              Cargo: "Operador",
+              Status: "ativo",
+            }
+          : {
+              Nome: "Maria Oliveira",
+              CPF: "987.654.321-00",
+              "Data de Nascimento": "20/10/1992",
+              Email: "maria@empresa.com",
+              "Senha e-mail": "SenhaForteEmail987",
+              Operação: "Operação Central",
+              Telefone: "11988888888",
+              Cargo: "Operador",
+              Status: "inativo",
+              "Data Inativação": "30/07/2026",
+            };
     for (const s of sistemasAll) {
-      baseSample[`${s.nome} - Usuário`] = key === "matriz" ? "joao.silva" : "maria.oliveira";
-      baseSample[`${s.nome} - Senha`] = key === "matriz" ? "SenhaTemporaria123" : "";
+      baseSample[`${s.nome} - Usuário`] = key === "inativos" ? "maria.oliveira" : "joao.silva";
+      baseSample[`${s.nome} - Senha`] = key === "inativos" ? "" : "SenhaTemporaria123";
     }
     headers = [
       ...headers,
@@ -1199,8 +1254,8 @@ export async function importRows(
     }
   }
 
-  // 8. IMPORT MATRIZ DE ACESSOS UNIFICADA
-  else if (kind === "matriz" || kind === "inativos") {
+  // 8. IMPORT MATRIZ DE ACESSOS UNIFICADA E PRÉ-ATENDIMENTO
+  else if (kind === "matriz" || kind === "inativos" || kind === "pre_atendimento") {
     const { data: sis } = await db.from("sistemas").select("id, nome");
     const sistemasList = (sis ?? []).filter(
       (s: any) => s.nome.toLowerCase() !== "e-mail" && s.nome.toLowerCase() !== "email",
@@ -1212,7 +1267,7 @@ export async function importRows(
     const { data: existentes } = await db
       .from("colaboradores")
       .select(
-        "id, nome, cpf, email, email_senha, telefone, cargo, status, inativado_em, data_nascimento, operacao_id" as any,
+        "id, nome, cpf, email, email_senha, telefone, cargo, status, inativado_em, data_nascimento, operacao_id, admissao_em, produto, horario_entrada, horario_saida, em_pre_atendimento" as any,
       );
 
     const colabMap = new Map<string, any>();
@@ -1325,6 +1380,10 @@ export async function importRows(
       let dataInativacao = "";
       let dataNascimento = "";
       let rowOperacao = "";
+      let admissao = "";
+      let produto = "";
+      let horarioEntrada = "";
+      let horarioSaida = "";
 
       const dataInativacaoKeys = [
         "data inativação",
@@ -1357,6 +1416,39 @@ export async function importRows(
         "aniversário",
         "dob",
         "birthdate",
+      ];
+
+      const admissaoKeys = [
+        "admissão",
+        "admissao",
+        "data admissão",
+        "data admissao",
+        "data_admissao",
+        "dt admissao",
+        "dt_admissao",
+        "admissao_em",
+        "admissão em",
+      ];
+
+      const produtoKeys = ["produto", "produto/servico", "produto/serviço", "servico", "serviço"];
+      const entradaKeys = [
+        "entrada",
+        "horario entrada",
+        "horário entrada",
+        "horario_entrada",
+        "hora entrada",
+        "hora_entrada",
+      ];
+      const saidaKeys = [
+        "saída",
+        "saida",
+        "horario saída",
+        "horario saida",
+        "horário saída",
+        "horario_saida",
+        "hora saída",
+        "hora saida",
+        "hora_saida",
       ];
 
       for (const [rowKey, rowValue] of Object.entries(r)) {
@@ -1410,6 +1502,22 @@ export async function importRows(
           dataNascimento = String(rowValue ?? "").trim();
         } else if (isOperacaoColumn(lowerKey)) {
           rowOperacao = String(rowValue ?? "").trim();
+        } else if (
+          admissaoKeys.includes(lowerKey) ||
+          cleanedKey.includes("admiss") ||
+          cleanedKey === "dataadmissao"
+        ) {
+          admissao = String(rowValue ?? "").trim();
+        } else if (
+          produtoKeys.includes(lowerKey) ||
+          cleanedKey.includes("produt") ||
+          cleanedKey.includes("servic")
+        ) {
+          produto = String(rowValue ?? "").trim();
+        } else if (entradaKeys.includes(lowerKey) || cleanedKey.includes("entrad")) {
+          horarioEntrada = String(rowValue ?? "").trim();
+        } else if (saidaKeys.includes(lowerKey) || cleanedKey.includes("said")) {
+          horarioSaida = String(rowValue ?? "").trim();
         }
       }
 
@@ -1511,7 +1619,17 @@ export async function importRows(
         inativado_em,
         data_nascimento: parseDateToISO(dataNascimento) || colabExistente?.data_nascimento || null,
         operacao_id: finalOperacaoId || null,
+        admissao_em: parseDateToISO(admissao) || colabExistente?.admissao_em || null,
+        produto: produto || colabExistente?.produto || null,
+        horario_entrada: horarioEntrada || colabExistente?.horario_entrada || null,
+        horario_saida: horarioSaida || colabExistente?.horario_saida || null,
       };
+
+      if (kind === "pre_atendimento") {
+        colabPayload.em_pre_atendimento = true;
+      } else if (kind === "matriz") {
+        colabPayload.em_pre_atendimento = false;
+      }
 
       let colId: string;
 

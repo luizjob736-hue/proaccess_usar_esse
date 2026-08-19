@@ -601,6 +601,22 @@ async function getColaboradorIdForUser(client: any, user: NeonUser): Promise<str
   return res.rows[0]?.id || null;
 }
 
+let preAtendimentoSchemaInitialized = false;
+async function ensurePreAtendimentoSchema(client: any) {
+  if (preAtendimentoSchemaInitialized) return;
+  try {
+    await client.query(`
+      ALTER TABLE public.colaboradores ADD COLUMN IF NOT EXISTS produto TEXT;
+      ALTER TABLE public.colaboradores ADD COLUMN IF NOT EXISTS horario_entrada TEXT;
+      ALTER TABLE public.colaboradores ADD COLUMN IF NOT EXISTS horario_saida TEXT;
+      ALTER TABLE public.colaboradores ADD COLUMN IF NOT EXISTS em_pre_atendimento BOOLEAN DEFAULT false;
+    `);
+    preAtendimentoSchemaInitialized = true;
+  } catch (err) {
+    console.warn("Colaboradores pre-atendimento schema check notice:", err);
+  }
+}
+
 // 2. Query Server Function
 export const neonQueryServerFn = createServerFn({ method: "POST" })
   .inputValidator(
@@ -624,6 +640,7 @@ export const neonQueryServerFn = createServerFn({ method: "POST" })
     try {
       const p = await getNeonPool();
       client = await p.connect();
+      await ensurePreAtendimentoSchema(client);
       const table = data.table;
 
       const currentUser = await getCurrentUser(client);

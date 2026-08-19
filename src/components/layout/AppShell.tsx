@@ -27,6 +27,7 @@ import {
   LifeBuoy,
   Archive,
   UserCheck,
+  UserPlus,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -55,6 +56,7 @@ import { Badge } from "@/components/ui/badge";
 const NAV_FULL = [
   { to: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
   { to: "/matriz-acessos", icon: Grid3x3, label: "Matriz de Acessos" },
+  { to: "/pre-atendimento", icon: UserPlus, label: "Pré-Atendimento" },
   { to: "/sistemas", icon: Server, label: "Sistemas" },
   { to: "/inativos", icon: UserX, label: "Usuários Inativos" },
   { to: "/backups", icon: Archive, label: "Backup da Matriz" },

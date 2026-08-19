@@ -3,14 +3,9 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import {
-  generateMatrizBackup,
-  getBackupsList,
-  getBackupById,
-  deleteBackup,
-  generatePendenciasBackup,
-  getBackupsPendenciasList,
-  getBackupPendenciasById,
-  deleteBackupPendencias,
+  generateSistemaBackup,
+  getSistemaBackup,
+  deleteSistemaBackup,
 } from "@/lib/backups.functions";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -32,11 +27,18 @@ import {
   Trash2,
   Calendar,
   Users,
+  ShieldCheck,
   CheckCircle2,
-  XCircle,
   Clock,
   Plus,
   FileSpreadsheet,
+  Download,
+  Database,
+  Layers,
+  Sparkles,
+  Key,
+  FolderGit2,
+  Ticket,
 } from "lucide-react";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
@@ -46,28 +48,24 @@ export const Route = createFileRoute("/_authenticated/backups")({
   component: BackupsPage,
 });
 
+type GuiaTab =
+  "matriz" | "colaboradores" | "sistemas" | "acessos" | "pendencias" | "operacoes" | "chamados";
+
 function BackupsPage() {
   const qc = useQueryClient();
-  const [backupTab, setBackupTab] = useState<"matriz" | "pendencias">("matriz");
+  const [activeGuia, setActiveGuia] = useState<GuiaTab>("matriz");
 
-  const getListMatrizFn = useServerFn(getBackupsList);
-  const getBackupMatrizFn = useServerFn(getBackupById);
-  const generateMatrizFn = useServerFn(generateMatrizBackup);
-  const deleteMatrizFn = useServerFn(deleteBackup);
+  const getBackupFn = useServerFn(getSistemaBackup);
+  const generateFn = useServerFn(generateSistemaBackup);
+  const deleteFn = useServerFn(deleteSistemaBackup);
 
-  const getListPendenciasFn = useServerFn(getBackupsPendenciasList);
-  const getBackupPendenciasFn = useServerFn(getBackupPendenciasById);
-  const generatePendenciasFn = useServerFn(generatePendenciasBackup);
-  const deletePendenciasFn = useServerFn(deleteBackupPendencias);
-
-  const [selectedBackupId, setSelectedBackupId] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [statusFilter, setStatusFilter] = useState<"todos" | "ativo" | "inativo">("todos");
   const [reveal, setReveal] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<number>(50);
 
-  // Check user admin status
+  // Check admin
   const { data: me } = useQuery({
     queryKey: ["me-backups"],
     staleTime: 1000 * 60 * 5,
@@ -84,226 +82,388 @@ function BackupsPage() {
     (me?.roles ?? []).includes("admin") ||
     me?.user?.role === "admin_master";
 
-  // List backups
-  const { data: backupsList = [], isLoading: loadingList } = useQuery({
-    queryKey: ["backups-list", backupTab],
+  // Active Daily Backup from Database
+  const {
+    data: backup,
+    isLoading,
+    refetch,
+  } = useQuery({
+    queryKey: ["sistema-backup-diario"],
     queryFn: async () => {
-      const list = backupTab === "matriz" ? await getListMatrizFn() : await getListPendenciasFn();
-      if (list && list.length > 0) {
-        setSelectedBackupId(list[0].id);
-      } else {
-        setSelectedBackupId(null);
+      let b = await getBackupFn();
+      // Auto-generate if no backup exists yet
+      if (!b) {
+        try {
+          b = await generateFn({ data: { tipo: "diario" } });
+        } catch (_e) {
+          // ignore
+        }
       }
-      return list ?? [];
+      return b;
     },
   });
 
-  // Selected backup detail
-  const { data: selectedBackup, isLoading: loadingBackup } = useQuery({
-    queryKey: ["backup-detail", backupTab, selectedBackupId],
-    enabled: !!selectedBackupId,
-    queryFn: async () => {
-      if (!selectedBackupId) return null;
-      if (backupTab === "matriz") {
-        return await getBackupMatrizFn({ data: { id: selectedBackupId } });
-      } else {
-        return await getBackupPendenciasFn({ data: { id: selectedBackupId } });
-      }
-    },
-  });
-
-  // Generate backup mutation
+  // Mutation to manually regenerate / replace backup in DB
   const generateMutation = useMutation({
-    mutationFn: async (tipo: "dois_dias" | "manual" = "manual") => {
-      if (backupTab === "matriz") {
-        return await generateMatrizFn({ data: { tipo } });
-      } else {
-        return await generatePendenciasFn({ data: { tipo } });
-      }
+    mutationFn: async () => {
+      return await generateFn({
+        data: {
+          tipo: "diario",
+          substituirAnterior: true,
+        },
+      });
     },
-    onSuccess: (newBk) => {
-      toast.success(
-        backupTab === "matriz"
-          ? "Backup da Matriz gerado com sucesso!"
-          : "Backup de Pendências gerado com sucesso!",
-      );
-      qc.invalidateQueries({ queryKey: ["backups-list", backupTab] });
-      if (newBk?.id) setSelectedBackupId(newBk.id);
+    onSuccess: () => {
+      toast.success("Backup do Sistema atualizado com sucesso no banco de dados!");
+      qc.invalidateQueries({ queryKey: ["sistema-backup-diario"] });
     },
     onError: (err: any) => toast.error(err.message || "Erro ao gerar backup"),
   });
 
-  // Delete backup mutation
+  // Mutation to delete backup
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      if (backupTab === "matriz") {
-        return await deleteMatrizFn({ data: { id } });
-      } else {
-        return await deletePendenciasFn({ data: { id } });
-      }
+      return await deleteFn({ data: { id } });
     },
     onSuccess: () => {
-      toast.success("Backup excluído com sucesso");
-      setSelectedBackupId(null);
-      qc.invalidateQueries({ queryKey: ["backups-list", backupTab] });
+      toast.success("Backup removido do banco de dados");
+      qc.invalidateQueries({ queryKey: ["sistema-backup-diario"] });
     },
     onError: (err: any) => toast.error(err.message || "Erro ao excluir backup"),
   });
 
-  const sistemas = backupTab === "matriz" ? (selectedBackup?.sistemas_json ?? []) : [];
-  const snapshotData: any[] = selectedBackup?.dados_json ?? [];
+  // Data sets from the snapshot
+  const matrizSistemas: any[] = backup?.matriz_json?.sistemas ?? [];
+  const matrizRows: any[] = backup?.matriz_json?.rows ?? [];
+  const colabsRows: any[] = backup?.colaboradores_json ?? [];
+  const sistemasRows: any[] = backup?.sistemas_json ?? [];
+  const acessosRows: any[] = backup?.acessos_json ?? [];
+  const pendenciasRows: any[] = backup?.pendencias_json ?? [];
+  const operacoesRows: any[] = backup?.operacoes_json ?? [];
+  const chamadosRows: any[] = backup?.chamados_json ?? [];
 
-  // Filter snapshot data
-  const filteredData = snapshotData.filter((row: any) => {
-    if (backupTab === "matriz") {
-      if (statusFilter === "ativo" && row.status !== "Ativo") return false;
-      if (statusFilter === "inativo" && row.status === "Ativo") return false;
+  // Filter current active tab data
+  const getFilteredGuiaData = () => {
+    const search = q.trim().toLowerCase();
+    switch (activeGuia) {
+      case "matriz":
+        return matrizRows.filter((r) => {
+          if (statusFilter === "ativo" && r.status !== "Ativo") return false;
+          if (statusFilter === "inativo" && r.status === "Ativo") return false;
+          if (!search) return true;
+          const matchBasic =
+            r.nome?.toLowerCase().includes(search) ||
+            r.cpf?.includes(search) ||
+            r.email?.toLowerCase().includes(search) ||
+            r.cargo?.toLowerCase().includes(search) ||
+            r.operacao_nome?.toLowerCase().includes(search);
+          if (matchBasic) return true;
+          for (const sis of matrizSistemas) {
+            const acc = r.sistemas_acessos?.[sis.id];
+            if (acc?.usuario?.toLowerCase().includes(search)) return true;
+          }
+          return false;
+        });
 
-      if (q.trim()) {
-        const searchStr = q.toLowerCase();
-        const matchBasic =
-          row.nome?.toLowerCase().includes(searchStr) ||
-          row.cpf?.includes(searchStr) ||
-          row.email?.toLowerCase().includes(searchStr) ||
-          row.cargo?.toLowerCase().includes(searchStr) ||
-          row.operacao_nome?.toLowerCase().includes(searchStr);
+      case "colaboradores":
+        return colabsRows.filter((r) => {
+          if (statusFilter === "ativo" && r.status !== "ativo") return false;
+          if (statusFilter === "inativo" && r.status === "ativo") return false;
+          if (!search) return true;
+          return (
+            r.nome?.toLowerCase().includes(search) ||
+            r.cpf?.includes(search) ||
+            r.email?.toLowerCase().includes(search) ||
+            r.cargo?.toLowerCase().includes(search) ||
+            r.operacao?.toLowerCase().includes(search)
+          );
+        });
 
-        if (matchBasic) return true;
+      case "sistemas":
+        return sistemasRows.filter((r) => {
+          if (!search) return true;
+          return (
+            r.nome?.toLowerCase().includes(search) ||
+            r.categoria?.toLowerCase().includes(search) ||
+            r.criticidade?.toLowerCase().includes(search)
+          );
+        });
 
-        for (const sis of sistemas) {
-          const acc = row.sistemas_acessos?.[sis.id];
-          if (acc?.usuario?.toLowerCase().includes(searchStr)) return true;
-        }
-        return false;
-      }
-      return true;
-    } else {
-      if (q.trim()) {
-        const searchStr = q.toLowerCase();
-        return (
-          row.titulo?.toLowerCase().includes(searchStr) ||
-          row.colaborador_nome?.toLowerCase().includes(searchStr) ||
-          row.sistema_nome?.toLowerCase().includes(searchStr) ||
-          row.tipo?.toLowerCase().includes(searchStr)
-        );
-      }
-      return true;
+      case "acessos":
+        return acessosRows.filter((r) => {
+          if (!search) return true;
+          return (
+            r.colaborador_nome?.toLowerCase().includes(search) ||
+            r.colaborador_cpf?.includes(search) ||
+            r.sistema_nome?.toLowerCase().includes(search) ||
+            r.login?.toLowerCase().includes(search)
+          );
+        });
+
+      case "pendencias":
+        return pendenciasRows.filter((r) => {
+          if (!search) return true;
+          return (
+            r.titulo?.toLowerCase().includes(search) ||
+            r.colaborador_nome?.toLowerCase().includes(search) ||
+            r.sistema_nome?.toLowerCase().includes(search) ||
+            r.status?.toLowerCase().includes(search)
+          );
+        });
+
+      case "operacoes":
+        return operacoesRows.filter((r) => {
+          if (!search) return true;
+          return r.nome?.toLowerCase().includes(search);
+        });
+
+      case "chamados":
+        return chamadosRows.filter((r) => {
+          if (!search) return true;
+          return (
+            r.titulo?.toLowerCase().includes(search) ||
+            r.sistema_nome?.toLowerCase().includes(search) ||
+            r.operador_nome?.toLowerCase().includes(search)
+          );
+        });
+
+      default:
+        return [];
     }
-  });
+  };
 
-  // Pagination
+  const filteredData = getFilteredGuiaData();
   const totalPages = pageSize === 0 ? 1 : Math.ceil(filteredData.length / pageSize);
   const currentPageData =
     pageSize === 0 ? filteredData : filteredData.slice((page - 1) * pageSize, page * pageSize);
 
-  // Export to Excel
-  const exportToExcel = () => {
-    if (!selectedBackup) return;
+  // 1. Export COMPLETE MULTI-TAB WORKBOOK (ALL GUIDES)
+  const exportFullWorkbook = () => {
+    if (!backup) return;
+    const wb = XLSX.utils.book_new();
 
-    if (backupTab === "matriz") {
-      const exportRows = filteredData.map((row: any) => {
-        const baseObj: Record<string, any> = {
-          "Data do Layout": row.data_layout || selectedBackup.data_layout,
-          Colaborador: row.nome,
-          CPF: row.cpf,
-          "Data Nascimento": row.data_nascimento,
-          "E-mail": row.email,
-          "Senha E-mail": row.email_senha,
-          Telefone: row.telefone,
-          Cargo: row.cargo,
-          Operação: row.operacao_nome,
-          "Status do Operador": row.status,
-          "Data de Inativação": row.inativado_em || "-",
-        };
+    // Sheet 1: Matriz
+    const matrizExport = matrizRows.map((r: any) => {
+      const obj: Record<string, any> = {
+        Colaborador: r.nome,
+        CPF: r.cpf,
+        "Data Nascimento": r.data_nascimento,
+        "E-mail": r.email,
+        "Senha E-mail": r.email_senha,
+        Telefone: r.telefone,
+        Cargo: r.cargo,
+        Operação: r.operacao_nome,
+        Status: r.status,
+        "Data Inativação": r.inativado_em || "-",
+      };
+      for (const sis of matrizSistemas) {
+        const acc = r.sistemas_acessos?.[sis.id];
+        obj[`${sis.nome} (Usuário)`] = acc?.usuario || "";
+        obj[`${sis.nome} (Senha)`] = acc?.senha || "";
+      }
+      return obj;
+    });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(matrizExport), "Matriz de Acessos");
 
-        for (const sis of sistemas) {
-          const acc = row.sistemas_acessos?.[sis.id];
-          baseObj[`${sis.nome} (Usuário)`] = acc?.usuario || "";
-          baseObj[`${sis.nome} (Senha)`] = acc?.senha || "";
-        }
+    // Sheet 2: Colaboradores
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(colabsRows), "Colaboradores");
 
-        return baseObj;
-      });
+    // Sheet 3: Credenciais
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.json_to_sheet(acessosRows),
+      "Credenciais & Acessos",
+    );
 
-      const wb = XLSX.utils.book_new();
-      const ws = XLSX.utils.json_to_sheet(exportRows);
-      XLSX.utils.book_append_sheet(wb, ws, "Backup Matriz");
-      XLSX.writeFile(wb, `Backup_Matriz_${selectedBackup.data_layout.replace(/[/ :]/g, "_")}.xlsx`);
-    } else {
-      const exportRows = filteredData.map((row: any) => ({
-        "Data do Layout": row.data_layout || selectedBackup.data_layout,
-        Título: row.titulo,
-        Descrição: row.descricao,
-        Tipo: row.tipo,
-        Prioridade: row.prioridade,
-        Status: row.status,
-        Colaborador: row.colaborador_nome,
-        "CPF Colaborador": row.colaborador_cpf,
-        Sistema: row.sistema_nome,
-        "Data Início": row.data_inicio,
-        "SLA Limite": row.sla_em,
-        "Concluído Em": row.concluido_em,
-        "Criado Em": row.criado_em,
-      }));
+    // Sheet 4: Sistemas
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sistemasRows), "Sistemas");
 
-      const wb = XLSX.utils.book_new();
-      const ws = XLSX.utils.json_to_sheet(exportRows);
-      XLSX.utils.book_append_sheet(wb, ws, "Backup Pendências");
-      XLSX.writeFile(
-        wb,
-        `Backup_Pendencias_${selectedBackup.data_layout.replace(/[/ :]/g, "_")}.xlsx`,
-      );
-    }
+    // Sheet 5: Pendencias
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.json_to_sheet(pendenciasRows),
+      "Processos & Pendências",
+    );
+
+    // Sheet 6: Operações
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(operacoesRows), "Operações");
+
+    // Sheet 7: Chamados
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(chamadosRows), "Chamados de Suporte");
+
+    const safeDate = (backup.data_layout || "diario").replace(/[/ :]/g, "_");
+    XLSX.writeFile(wb, `Backup_Completo_Sistema_${safeDate}.xlsx`);
+    toast.success("Planilha completa com todas as 7 guias baixada com sucesso!");
   };
 
-  const activeBk = backupsList.find((b: any) => b.id === selectedBackupId);
+  // 2. Export ONLY ACTIVE GUIA (.XLSX)
+  const exportActiveGuiaXlsx = () => {
+    if (!backup) return;
+    const wb = XLSX.utils.book_new();
+    const dataToExport = filteredData;
+    let sheetName = "Guia";
+
+    if (activeGuia === "matriz") {
+      sheetName = "Matriz";
+      const customRows = dataToExport.map((r: any) => {
+        const obj: Record<string, any> = {
+          Colaborador: r.nome,
+          CPF: r.cpf,
+          "Data Nascimento": r.data_nascimento,
+          "E-mail": r.email,
+          "Senha E-mail": r.email_senha,
+          Telefone: r.telefone,
+          Cargo: r.cargo,
+          Operação: r.operacao_nome,
+          Status: r.status,
+        };
+        for (const sis of matrizSistemas) {
+          const acc = r.sistemas_acessos?.[sis.id];
+          obj[`${sis.nome} (Usuário)`] = acc?.usuario || "";
+          obj[`${sis.nome} (Senha)`] = acc?.senha || "";
+        }
+        return obj;
+      });
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(customRows), sheetName);
+    } else {
+      sheetName = activeGuia.charAt(0).toUpperCase() + activeGuia.slice(1);
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(dataToExport), sheetName);
+    }
+
+    const safeDate = (backup.data_layout || "diario").replace(/[/ :]/g, "_");
+    XLSX.writeFile(wb, `Backup_${sheetName}_${safeDate}.xlsx`);
+    toast.success(`Guia "${sheetName}" exportada com sucesso!`);
+  };
+
+  // 3. Export ONLY ACTIVE GUIA (.CSV)
+  const exportActiveGuiaCsv = () => {
+    if (!backup) return;
+    const dataToExport = filteredData;
+    let ws: XLSX.WorkSheet;
+
+    if (activeGuia === "matriz") {
+      const customRows = dataToExport.map((r: any) => {
+        const obj: Record<string, any> = {
+          Colaborador: r.nome,
+          CPF: r.cpf,
+          "Data Nascimento": r.data_nascimento,
+          "E-mail": r.email,
+          "Senha E-mail": r.email_senha,
+          Telefone: r.telefone,
+          Cargo: r.cargo,
+          Operação: r.operacao_nome,
+          Status: r.status,
+        };
+        for (const sis of matrizSistemas) {
+          const acc = r.sistemas_acessos?.[sis.id];
+          obj[`${sis.nome} (Usuário)`] = acc?.usuario || "";
+          obj[`${sis.nome} (Senha)`] = acc?.senha || "";
+        }
+        return obj;
+      });
+      ws = XLSX.utils.json_to_sheet(customRows);
+    } else {
+      ws = XLSX.utils.json_to_sheet(dataToExport);
+    }
+
+    const csvContent = XLSX.utils.sheet_to_csv(ws, { FS: ";" });
+    const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const safeDate = (backup.data_layout || "diario").replace(/[/ :]/g, "_");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `Backup_${activeGuia}_${safeDate}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success(`Guia "${activeGuia}" exportada em CSV com sucesso!`);
+  };
+
+  const guiasConfig: { id: GuiaTab; label: string; count: number; icon: any }[] = [
+    { id: "matriz", label: "Matriz Geral", count: matrizRows.length, icon: Layers },
+    { id: "colaboradores", label: "Colaboradores", count: colabsRows.length, icon: Users },
+    { id: "sistemas", label: "Sistemas & Apps", count: sistemasRows.length, icon: FolderGit2 },
+    { id: "acessos", label: "Credenciais & Senhas", count: acessosRows.length, icon: Key },
+    {
+      id: "pendencias",
+      label: "Pendências & Processos",
+      count: pendenciasRows.length,
+      icon: Clock,
+    },
+    { id: "operacoes", label: "Operações", count: operacoesRows.length, icon: ShieldCheck },
+    { id: "chamados", label: "Chamados / Suporte", count: chamadosRows.length, icon: Ticket },
+  ];
 
   return (
-    <div className="p-4 md:p-8 space-y-6 max-w-[1700px] mx-auto">
+    <div className="p-4 md:p-8 space-y-6 max-w-[1750px] mx-auto">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <Archive className="h-7 w-7 text-primary" />
+            <Database className="h-7 w-7 text-primary" />
             <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
-              Central de Backups Automáticos
+              Backup Diário do Sistema (Em Banco)
             </h1>
+            <Badge
+              variant="outline"
+              className="bg-emerald-500/10 text-emerald-700 border-emerald-300 font-medium"
+            >
+              <Sparkles className="h-3 w-3 mr-1" /> Substituição Ativa
+            </Badge>
           </div>
           <p className="text-muted-foreground mt-1 text-sm md:text-base">
-            Gerenciamento e histórico de backups da Matriz e de Pendências.
-            <span className="font-semibold text-primary ml-1">
-              (Agendado automaticamente a cada 2 dias)
-            </span>
+            Backup consolidado de todas as guias e tabelas em banco de dados. O backup mais recente
+            substitui o anterior diariamente para manter o banco leve.
           </p>
         </div>
 
+        {/* Action Buttons */}
         <div className="flex items-center gap-2 flex-wrap">
           <Button
-            onClick={() => generateMutation.mutate("dois_dias")}
+            onClick={() => generateMutation.mutate()}
             disabled={generateMutation.isPending}
-            className="gap-2 shadow-sm"
+            className="gap-2 shadow-sm bg-primary hover:bg-primary/90 text-white"
           >
-            <Plus className="h-4 w-4" />
+            <RefreshCw className={`h-4 w-4 ${generateMutation.isPending ? "animate-spin" : ""}`} />
             {generateMutation.isPending
-              ? "Gerando Backup..."
-              : `Gerar Backup de ${backupTab === "matriz" ? "Matriz" : "Pendências"} Agora`}
+              ? "Substituindo Backup..."
+              : "Gerar / Substituir Backup Agora"}
           </Button>
 
-          {selectedBackup && (
-            <Button variant="outline" onClick={exportToExcel} className="gap-2">
-              <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
-              Exportar Excel
-            </Button>
+          {backup && (
+            <>
+              <Button
+                variant="outline"
+                onClick={exportFullWorkbook}
+                className="gap-2 border-emerald-600/30 text-emerald-800 hover:bg-emerald-50 bg-emerald-50/50"
+              >
+                <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
+                Baixar Planilha Completa (7 Guias .XLSX)
+              </Button>
+
+              <Button variant="outline" onClick={exportActiveGuiaXlsx} className="gap-2">
+                <Download className="h-4 w-4 text-blue-600" />
+                Baixar Esta Guia (.XLSX)
+              </Button>
+
+              <Button
+                variant="ghost"
+                onClick={exportActiveGuiaCsv}
+                className="gap-1.5 text-xs text-muted-foreground"
+              >
+                Baixar Guia (.CSV)
+              </Button>
+            </>
           )}
 
-          {isAdmin && selectedBackupId && (
+          {isAdmin && backup && (
             <Button
               variant="destructive"
               size="icon"
-              title="Excluir este Backup"
+              title="Limpar Backup do Banco"
               onClick={() => {
-                if (confirm("Tem certeza que deseja excluir este instantâneo de backup?")) {
-                  deleteMutation.mutate(selectedBackupId);
+                if (confirm("Deseja realmente limpar o snapshot de backup do banco?")) {
+                  deleteMutation.mutate(backup.id);
                 }
               }}
               disabled={deleteMutation.isPending}
@@ -314,628 +474,466 @@ function BackupsPage() {
         </div>
       </div>
 
-      {/* Tabs for Matriz vs Pendencias */}
-      <div className="flex items-center gap-2 border-b border-border pb-3">
-        <Button
-          variant={backupTab === "matriz" ? "default" : "outline"}
-          onClick={() => {
-            setBackupTab("matriz");
-            setSelectedBackupId(null);
-            setPage(1);
-          }}
-          className="gap-2"
-        >
-          <Archive className="h-4 w-4" /> Backup da Matriz
-        </Button>
-        <Button
-          variant={backupTab === "pendencias" ? "default" : "outline"}
-          onClick={() => {
-            setBackupTab("pendencias");
-            setSelectedBackupId(null);
-            setPage(1);
-          }}
-          className="gap-2"
-        >
-          <Clock className="h-4 w-4" /> Backup de Pendências
-        </Button>
-      </div>
-
-      {/* Metrics Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="shadow-xs border-border/60">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div>
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                Total de Backups
-              </p>
-              <p className="text-2xl font-bold mt-1">{backupsList.length}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Disponíveis na plataforma</p>
+      {/* Snapshot Info Card */}
+      <Card className="bg-gradient-to-r from-muted/40 via-muted/20 to-background border-border shadow-xs">
+        <CardContent className="p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+              <Archive className="h-5 w-5" />
             </div>
-            <div className="p-3 bg-primary/10 rounded-xl text-primary">
-              <Archive className="h-6 w-6" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="shadow-xs border-border/60">
-          <CardContent className="p-4 flex items-center justify-between">
             <div>
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                Layout do Backup
-              </p>
-              <p className="text-lg font-bold mt-1 text-primary truncate max-w-[180px]">
-                {activeBk?.data_layout || "Nenhum selecionado"}
-              </p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Tipo:{" "}
-                <Badge variant="secondary" className="text-[10px] uppercase">
-                  {activeBk?.tipo || "-"}
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-foreground">
+                  {backup?.descricao || "Backup Diário em Banco"}
+                </span>
+                <Badge variant="secondary" className="text-[11px]">
+                  {backup?.data_layout
+                    ? `Atualizado em ${backup.data_layout}`
+                    : "Aguardando geração"}
                 </Badge>
-              </p>
-            </div>
-            <div className="p-3 bg-blue-500/10 rounded-xl text-blue-600">
-              <Clock className="h-6 w-6" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="shadow-xs border-border/60">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div>
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                {backupTab === "matriz" ? "Operadores no Backup" : "Pendências no Backup"}
-              </p>
-              <p className="text-2xl font-bold mt-1">
-                {backupTab === "matriz"
-                  ? (activeBk?.total_colaboradores ?? 0)
-                  : (activeBk?.total_pendencias ?? 0)}
-              </p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {backupTab === "matriz" ? (
-                  <>
-                    <span className="text-emerald-600 font-semibold">
-                      {activeBk?.total_ativos ?? 0} Ativos
-                    </span>{" "}
-                    •{" "}
-                    <span className="text-amber-600 font-semibold">
-                      {activeBk?.total_inativos ?? 0} Inativos
-                    </span>
-                  </>
-                ) : (
-                  <span className="text-primary font-semibold">Registros salvos</span>
-                )}
-              </p>
-            </div>
-            <div className="p-3 bg-emerald-500/10 rounded-xl text-emerald-600">
-              <Users className="h-6 w-6" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="shadow-xs border-border/60">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div>
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                Próximo Backup
-              </p>
-              <p className="text-sm font-semibold mt-1">A cada 2 dias (Automático)</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Rotina Recorrente</p>
-            </div>
-            <div className="p-3 bg-amber-500/10 rounded-xl text-amber-600">
-              <Calendar className="h-6 w-6" />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Backup Selector & Controls */}
-      <Card className="border-border/80 shadow-xs">
-        <CardContent className="p-4 space-y-4">
-          <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
-            <div className="flex items-center gap-3 flex-1">
-              <div className="min-w-[140px] text-sm font-medium">Selecionar Backup:</div>
-              <Select
-                value={selectedBackupId ?? ""}
-                onValueChange={(val) => {
-                  setSelectedBackupId(val);
-                  setPage(1);
-                }}
-              >
-                <SelectTrigger className="max-w-md w-full bg-background">
-                  <SelectValue placeholder="Escolha um backup para visualizar..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {backupsList.map((b: any) => (
-                    <SelectItem key={b.id} value={b.id}>
-                      🗓️ {b.data_layout} — {b.descricao} (
-                      {backupTab === "matriz"
-                        ? `${b.total_colaboradores} reg.`
-                        : `${b.total_pendencias} pend.`}
-                      )
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Quick Status Filters (only for Matriz) */}
-            {backupTab === "matriz" && (
-              <div className="flex items-center gap-1.5 bg-muted/60 p-1 rounded-lg">
-                <Button
-                  size="sm"
-                  variant={statusFilter === "todos" ? "default" : "ghost"}
-                  className="text-xs h-8"
-                  onClick={() => {
-                    setStatusFilter("todos");
-                    setPage(1);
-                  }}
-                >
-                  Todos ({snapshotData.length})
-                </Button>
-                <Button
-                  size="sm"
-                  variant={statusFilter === "ativo" ? "default" : "ghost"}
-                  className="text-xs h-8 gap-1"
-                  onClick={() => {
-                    setStatusFilter("ativo");
-                    setPage(1);
-                  }}
-                >
-                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
-                  Ativos ({snapshotData.filter((r) => r.status === "Ativo").length})
-                </Button>
-                <Button
-                  size="sm"
-                  variant={statusFilter === "inativo" ? "default" : "ghost"}
-                  className="text-xs h-8 gap-1"
-                  onClick={() => {
-                    setStatusFilter("inativo");
-                    setPage(1);
-                  }}
-                >
-                  <XCircle className="h-3.5 w-3.5 text-amber-500" />
-                  Inativos ({snapshotData.filter((r) => r.status !== "Ativo").length})
-                </Button>
               </div>
-            )}
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Política de Retenção: <strong>1 Snapshot Ativo</strong> (substituição contínua sem
+                inchar tabelas).
+              </p>
+            </div>
           </div>
 
-          {/* Search bar & password reveal */}
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 border-t border-border/40">
-            <div className="relative w-full sm:w-80">
-              <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder={
-                  backupTab === "matriz"
-                    ? "Buscar por nome, CPF, e-mail, cargo..."
-                    : "Buscar por título, colaborador, sistema..."
-                }
-                value={q}
-                onChange={(e) => {
-                  setQ(e.target.value);
-                  setPage(1);
-                }}
-                className="pl-9 h-9 text-sm"
-              />
+          <div className="flex items-center gap-4 text-xs text-muted-foreground">
+            <div className="text-right">
+              <span className="font-semibold text-foreground block text-sm">
+                {(backup?.total_colaboradores ?? 0) +
+                  (backup?.total_sistemas ?? 0) +
+                  (backup?.total_acessos ?? 0) +
+                  (backup?.total_pendencias ?? 0)}
+              </span>
+              <span>Total de Registros</span>
             </div>
-
-            <div className="flex items-center justify-between w-full sm:w-auto gap-3">
-              {backupTab === "matriz" && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setReveal((r) => !r)}
-                  className="gap-2 text-xs h-9"
-                >
-                  {reveal ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                  {reveal ? "Ocultar Senhas" : "Exibir Senhas"}
-                </Button>
-              )}
-
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <span>Exibir:</span>
-                <Select
-                  value={String(pageSize)}
-                  onValueChange={(v) => {
-                    setPageSize(Number(v));
-                    setPage(1);
-                  }}
-                >
-                  <SelectTrigger className="w-[80px] h-8 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="25">25</SelectItem>
-                    <SelectItem value="50">50</SelectItem>
-                    <SelectItem value="100">100</SelectItem>
-                    <SelectItem value="0">Todos</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+            <div className="h-8 w-px bg-border" />
+            <div className="text-right">
+              <span className="font-semibold text-emerald-600 block text-sm">
+                {backup?.total_ativos ?? 0}
+              </span>
+              <span>Colabs Ativos</span>
+            </div>
+            <div className="h-8 w-px bg-border" />
+            <div className="text-right">
+              <span className="font-semibold text-blue-600 block text-sm">
+                {backup?.total_pendencias ?? 0}
+              </span>
+              <span>Pendências</span>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Main Unified Table */}
-      {!selectedBackupId && backupsList.length === 0 ? (
-        <Card className="p-12 text-center border-dashed">
-          <div className="max-w-md mx-auto space-y-4">
-            <Archive className="h-12 w-12 text-muted-foreground/60 mx-auto" />
-            <h2 className="text-xl font-bold">Nenhum backup encontrado</h2>
-            <p className="text-sm text-muted-foreground">
-              Você pode gerar um primeiro backup instantâneo clicando no botão abaixo.
-            </p>
-            <Button
-              onClick={() => generateMutation.mutate("dois_dias")}
-              disabled={generateMutation.isPending}
-              className="gap-2"
+      {/* Guias Selector */}
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-2 border-b border-border">
+        {guiasConfig.map((g) => {
+          const Icon = g.icon;
+          const isActive = activeGuia === g.id;
+          return (
+            <button
+              key={g.id}
+              onClick={() => {
+                setActiveGuia(g.id);
+                setPage(1);
+              }}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
+                isActive
+                  ? "bg-primary text-primary-foreground shadow-xs"
+                  : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground"
+              }`}
             >
-              <Plus className="h-4 w-4" />
-              {generateMutation.isPending ? "Gerando Backup..." : "Gerar Primeiro Backup Agora"}
-            </Button>
+              <Icon className="h-4 w-4" />
+              <span>{g.label}</span>
+              <span
+                className={`text-[11px] px-1.5 py-0.5 rounded-full ${
+                  isActive ? "bg-white/20 text-white" : "bg-background text-muted-foreground"
+                }`}
+              >
+                {g.count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Filter and Search Bar */}
+      <Card className="shadow-xs border-border/60">
+        <CardContent className="p-4 flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-3 w-full md:w-auto flex-1">
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder={`Pesquisar em ${activeGuia}...`}
+                value={q}
+                onChange={(e) => {
+                  setQ(e.target.value);
+                  setPage(1);
+                }}
+                className="pl-9"
+              />
+            </div>
+
+            {(activeGuia === "matriz" || activeGuia === "colaboradores") && (
+              <Select
+                value={statusFilter}
+                onValueChange={(v: any) => {
+                  setStatusFilter(v);
+                  setPage(1);
+                }}
+              >
+                <SelectTrigger className="w-[140px]">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos</SelectItem>
+                  <SelectItem value="ativo">Apenas Ativos</SelectItem>
+                  <SelectItem value="inativo">Inativos</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
           </div>
-        </Card>
-      ) : loadingBackup ? (
-        <Card className="p-12 text-center">
-          <RefreshCw className="h-8 w-8 animate-spin mx-auto text-primary" />
-          <p className="text-sm text-muted-foreground mt-3">Carregando dados do backup...</p>
-        </Card>
-      ) : backupTab === "matriz" ? (
-        <Card className="shadow-sm border-border/80 overflow-hidden">
-          <div className="overflow-x-auto max-h-[70vh]">
-            <table className="w-full text-xs text-left border-collapse">
-              <thead className="bg-muted/80 sticky top-0 z-10 backdrop-blur-xs border-b border-border font-semibold text-muted-foreground uppercase tracking-wider text-[11px]">
+
+          <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-end">
+            {activeGuia === "matriz" && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setReveal(!reveal)}
+                className="gap-2"
+              >
+                {reveal ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                {reveal ? "Ocultar Senhas" : "Ver Senhas"}
+              </Button>
+            )}
+
+            <Select
+              value={String(pageSize)}
+              onValueChange={(val) => {
+                setPageSize(Number(val));
+                setPage(1);
+              }}
+            >
+              <SelectTrigger className="w-[120px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="25">25 por pág.</SelectItem>
+                <SelectItem value="50">50 por pág.</SelectItem>
+                <SelectItem value="100">100 por pág.</SelectItem>
+                <SelectItem value="0">Ver Todos</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Main Table Viewer */}
+      <Card className="shadow-xs border-border/80 overflow-hidden">
+        <div className="overflow-x-auto">
+          {activeGuia === "matriz" && (
+            <table className="w-full text-xs text-left border-collapse min-w-[1200px]">
+              <thead className="bg-muted/70 uppercase text-[10px] font-semibold text-muted-foreground border-b border-border">
                 <tr>
-                  <th className="p-3 whitespace-nowrap min-w-[130px] border-r border-border/50">
-                    Data do Layout
-                  </th>
-                  <th className="p-3 whitespace-nowrap min-w-[200px] border-r border-border/50">
-                    Colaborador
-                  </th>
-                  <th className="p-3 whitespace-nowrap min-w-[110px] border-r border-border/50">
-                    CPF
-                  </th>
-                  <th className="p-3 whitespace-nowrap min-w-[100px] border-r border-border/50">
-                    Data Nasc.
-                  </th>
-                  <th className="p-3 whitespace-nowrap min-w-[180px] border-r border-border/50">
-                    E-mail
-                  </th>
-                  <th className="p-3 whitespace-nowrap min-w-[120px] border-r border-border/50">
-                    Senha E-mail
-                  </th>
-                  <th className="p-3 whitespace-nowrap min-w-[120px] border-r border-border/50">
-                    Telefone
-                  </th>
-                  <th className="p-3 whitespace-nowrap min-w-[140px] border-r border-border/50">
-                    Cargo
-                  </th>
-                  <th className="p-3 whitespace-nowrap min-w-[140px] border-r border-border/50">
-                    Operação
-                  </th>
-                  <th className="p-3 whitespace-nowrap min-w-[120px] border-r border-border/50 bg-amber-500/10 text-amber-900 dark:text-amber-200">
-                    Status Operador
-                  </th>
-                  <th className="p-3 whitespace-nowrap min-w-[130px] border-r border-border/50 bg-red-500/10 text-red-900 dark:text-red-200">
-                    Data Inativação
-                  </th>
-                  {sistemas.map((s: any) => (
-                    <th
-                      key={s.id}
-                      className="p-3 whitespace-nowrap min-w-[140px] border-r border-border/50 text-center"
-                    >
-                      {s.nome}
+                  <th className="p-3 sticky left-0 bg-muted/90 z-10">Colaborador</th>
+                  <th className="p-3">CPF</th>
+                  <th className="p-3">Cargo</th>
+                  <th className="p-3">Operação</th>
+                  <th className="p-3">Status</th>
+                  <th className="p-3">E-mail Corporativo</th>
+                  {matrizSistemas.map((sis: any) => (
+                    <th key={sis.id} className="p-3 text-center border-l border-border/50">
+                      {sis.nome}
                     </th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border/60">
+              <tbody className="divide-y divide-border">
                 {currentPageData.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={11 + sistemas.length}
+                      colSpan={6 + matrizSistemas.length}
                       className="p-8 text-center text-muted-foreground"
                     >
-                      Nenhum registro encontrado com os filtros selecionados.
-                    </td>
-                  </tr>
-                ) : (
-                  currentPageData.map((row: any, idx: number) => {
-                    const isAtivo = row.status === "Ativo";
-                    return (
-                      <tr
-                        key={row.colaborador_id || idx}
-                        className={`hover:bg-muted/40 transition-colors ${
-                          !isAtivo ? "bg-amber-500/5 dark:bg-amber-500/10" : ""
-                        }`}
-                      >
-                        <td className="p-3 whitespace-nowrap font-mono text-[11px] border-r border-border/40 text-muted-foreground">
-                          {row.data_layout || selectedBackup?.data_layout}
-                        </td>
-                        <td className="p-3 whitespace-nowrap font-medium border-r border-border/40">
-                          {row.nome}
-                        </td>
-                        <td className="p-3 whitespace-nowrap font-mono text-[11px] border-r border-border/40 text-muted-foreground">
-                          {row.cpf || "-"}
-                        </td>
-                        <td className="p-3 whitespace-nowrap border-r border-border/40 text-muted-foreground">
-                          {row.data_nascimento || "-"}
-                        </td>
-                        <td className="p-3 whitespace-nowrap border-r border-border/40 font-mono text-[11px]">
-                          {row.email || "-"}
-                        </td>
-                        <td className="p-3 whitespace-nowrap border-r border-border/40 font-mono text-[11px]">
-                          {row.email_senha ? (
-                            reveal ? (
-                              <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
-                                {row.email_senha}
-                              </span>
-                            ) : (
-                              "••••••••"
-                            )
-                          ) : (
-                            "-"
-                          )}
-                        </td>
-                        <td className="p-3 whitespace-nowrap border-r border-border/40 text-muted-foreground">
-                          {row.telefone || "-"}
-                        </td>
-                        <td className="p-3 whitespace-nowrap border-r border-border/40 text-muted-foreground">
-                          {row.cargo || "-"}
-                        </td>
-                        <td className="p-3 whitespace-nowrap border-r border-border/40 text-muted-foreground">
-                          {row.operacao_nome || "-"}
-                        </td>
-                        <td className="p-3 whitespace-nowrap border-r border-border/40">
-                          {isAtivo ? (
-                            <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30 gap-1 font-normal">
-                              <CheckCircle2 className="h-3 w-3" /> Ativo
-                            </Badge>
-                          ) : (
-                            <Badge variant="destructive" className="gap-1 font-normal">
-                              <XCircle className="h-3 w-3" /> Inativo
-                            </Badge>
-                          )}
-                        </td>
-                        <td className="p-3 whitespace-nowrap border-r border-border/40 font-mono text-[11px] text-amber-700 dark:text-amber-400">
-                          {!isAtivo && row.inativado_em !== "-" ? (
-                            <span className="font-semibold">{row.inativado_em}</span>
-                          ) : (
-                            <span className="text-muted-foreground">-</span>
-                          )}
-                        </td>
-                        {sistemas.map((s: any) => {
-                          const acc = row.sistemas_acessos?.[s.id];
-                          const hasAcc = acc && (acc.usuario || acc.senha);
-                          return (
-                            <td
-                              key={s.id}
-                              className="p-2 whitespace-nowrap border-r border-border/40 text-center font-mono text-[11px]"
-                            >
-                              {hasAcc ? (
-                                <div className="p-1.5 bg-muted/50 rounded border border-border/50 text-left space-y-0.5">
-                                  {acc.usuario && (
-                                    <div className="truncate max-w-[120px]">
-                                      <span className="text-[10px] text-muted-foreground mr-1">
-                                        u:
-                                      </span>
-                                      <span className="font-medium">{acc.usuario}</span>
-                                    </div>
-                                  )}
-                                  {acc.senha && (
-                                    <div className="truncate max-w-[120px] text-[10px]">
-                                      <span className="text-muted-foreground mr-1">p:</span>
-                                      {reveal ? (
-                                        <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
-                                          {acc.senha}
-                                        </span>
-                                      ) : (
-                                        "••••••"
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
-                              ) : (
-                                <span className="text-muted-foreground/50">-</span>
-                              )}
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Footer Pagination */}
-          {filteredData.length > 0 && (
-            <div className="p-4 border-t border-border flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-muted-foreground bg-muted/20">
-              <div>
-                Exibindo{" "}
-                <span className="font-medium text-foreground">
-                  {pageSize === 0
-                    ? filteredData.length
-                    : Math.min((page - 1) * pageSize + 1, filteredData.length)}
-                </span>{" "}
-                a{" "}
-                <span className="font-medium text-foreground">
-                  {pageSize === 0
-                    ? filteredData.length
-                    : Math.min(page * pageSize, filteredData.length)}
-                </span>{" "}
-                de <span className="font-medium text-foreground">{filteredData.length}</span>{" "}
-                registros
-              </div>
-
-              {pageSize > 0 && totalPages > 1 && (
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={page === 1}
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    className="h-8 text-xs"
-                  >
-                    Anterior
-                  </Button>
-                  <span>
-                    Página {page} de {totalPages}
-                  </span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={page >= totalPages}
-                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                    className="h-8 text-xs"
-                  >
-                    Próxima
-                  </Button>
-                </div>
-              )}
-            </div>
-          )}
-        </Card>
-      ) : (
-        <Card className="shadow-sm border-border/80 overflow-hidden">
-          <div className="overflow-x-auto max-h-[70vh]">
-            <table className="w-full text-xs text-left border-collapse">
-              <thead className="bg-muted/80 sticky top-0 z-10 backdrop-blur-xs border-b border-border font-semibold text-muted-foreground uppercase tracking-wider text-[11px]">
-                <tr>
-                  <th className="p-3 whitespace-nowrap min-w-[130px] border-r border-border/50">
-                    Data do Layout
-                  </th>
-                  <th className="p-3 whitespace-nowrap min-w-[200px] border-r border-border/50">
-                    Título
-                  </th>
-                  <th className="p-3 whitespace-nowrap min-w-[140px] border-r border-border/50">
-                    Tipo
-                  </th>
-                  <th className="p-3 whitespace-nowrap min-w-[100px] border-r border-border/50">
-                    Prioridade
-                  </th>
-                  <th className="p-3 whitespace-nowrap min-w-[120px] border-r border-border/50">
-                    Status
-                  </th>
-                  <th className="p-3 whitespace-nowrap min-w-[180px] border-r border-border/50">
-                    Colaborador
-                  </th>
-                  <th className="p-3 whitespace-nowrap min-w-[140px] border-r border-border/50">
-                    Sistema
-                  </th>
-                  <th className="p-3 whitespace-nowrap min-w-[120px] border-r border-border/50">
-                    Início
-                  </th>
-                  <th className="p-3 whitespace-nowrap min-w-[140px] border-r border-border/50">
-                    SLA Limite
-                  </th>
-                  <th className="p-3 whitespace-nowrap min-w-[140px] border-r border-border/50">
-                    Criado Em
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/60">
-                {currentPageData.length === 0 ? (
-                  <tr>
-                    <td colSpan={10} className="p-8 text-center text-muted-foreground">
-                      Nenhum registro encontrado com os filtros selecionados.
+                      Nenhum registro encontrado neste snapshot.
                     </td>
                   </tr>
                 ) : (
                   currentPageData.map((row: any, idx: number) => (
-                    <tr key={row.id || idx} className="hover:bg-muted/40 transition-colors">
-                      <td className="p-3 whitespace-nowrap font-mono text-[11px] border-r border-border/40 text-muted-foreground">
-                        {row.data_layout || selectedBackup?.data_layout}
+                    <tr key={row.colaborador_id || idx} className="hover:bg-muted/30">
+                      <td className="p-3 font-medium text-foreground sticky left-0 bg-background/95">
+                        {row.nome}
                       </td>
-                      <td className="p-3 whitespace-nowrap font-medium border-r border-border/40">
-                        {row.titulo}
-                      </td>
-                      <td className="p-3 whitespace-nowrap border-r border-border/40 text-muted-foreground">
-                        {row.tipo}
-                      </td>
-                      <td className="p-3 whitespace-nowrap border-r border-border/40 font-medium">
-                        <Badge variant="outline" className="text-[10px] uppercase">
-                          {row.prioridade}
+                      <td className="p-3 text-muted-foreground font-mono">{row.cpf || "-"}</td>
+                      <td className="p-3 text-muted-foreground">{row.cargo || "-"}</td>
+                      <td className="p-3">
+                        <Badge variant="outline" className="text-[10px]">
+                          {row.operacao_nome || "Sem operação"}
                         </Badge>
                       </td>
-                      <td className="p-3 whitespace-nowrap border-r border-border/40">
-                        <Badge className="bg-primary/10 text-primary border-primary/20">
+                      <td className="p-3">
+                        <Badge
+                          variant={row.status === "Ativo" ? "default" : "secondary"}
+                          className={`text-[10px] ${row.status === "Ativo" ? "bg-emerald-600 text-white" : ""}`}
+                        >
                           {row.status}
                         </Badge>
                       </td>
-                      <td className="p-3 whitespace-nowrap border-r border-border/40">
-                        {row.colaborador_nome}
+                      <td className="p-3 text-muted-foreground">
+                        <div>{row.email || "-"}</div>
+                        {reveal && row.email_senha && (
+                          <div className="text-[10px] text-amber-600 font-mono">
+                            🔑 {row.email_senha}
+                          </div>
+                        )}
                       </td>
-                      <td className="p-3 whitespace-nowrap border-r border-border/40 text-muted-foreground">
-                        {row.sistema_nome}
-                      </td>
-                      <td className="p-3 whitespace-nowrap border-r border-border/40 text-muted-foreground">
-                        {row.data_inicio}
-                      </td>
-                      <td className="p-3 whitespace-nowrap border-r border-border/40 text-muted-foreground">
-                        {row.sla_em || "-"}
-                      </td>
-                      <td className="p-3 whitespace-nowrap border-r border-border/40 text-muted-foreground">
-                        {row.criado_em}
-                      </td>
+                      {matrizSistemas.map((sis: any) => {
+                        const acc = row.sistemas_acessos?.[sis.id];
+                        return (
+                          <td key={sis.id} className="p-3 text-center border-l border-border/30">
+                            {acc?.usuario ? (
+                              <div className="space-y-0.5">
+                                <div className="font-mono text-[11px] font-medium">
+                                  {acc.usuario}
+                                </div>
+                                {reveal && acc.senha && (
+                                  <div className="text-[10px] text-amber-600 font-mono">
+                                    {acc.senha}
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-muted-foreground/40">-</span>
+                            )}
+                          </td>
+                        );
+                      })}
                     </tr>
                   ))
                 )}
               </tbody>
             </table>
-          </div>
-
-          {/* Footer Pagination */}
-          {filteredData.length > 0 && (
-            <div className="p-4 border-t border-border flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-muted-foreground bg-muted/20">
-              <div>
-                Exibindo{" "}
-                <span className="font-medium text-foreground">
-                  {pageSize === 0
-                    ? filteredData.length
-                    : Math.min((page - 1) * pageSize + 1, filteredData.length)}
-                </span>{" "}
-                a{" "}
-                <span className="font-medium text-foreground">
-                  {pageSize === 0
-                    ? filteredData.length
-                    : Math.min(page * pageSize, filteredData.length)}
-                </span>{" "}
-                de <span className="font-medium text-foreground">{filteredData.length}</span>{" "}
-                registros
-              </div>
-
-              {pageSize > 0 && totalPages > 1 && (
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={page === 1}
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    className="h-8 text-xs"
-                  >
-                    Anterior
-                  </Button>
-                  <span>
-                    Página {page} de {totalPages}
-                  </span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={page >= totalPages}
-                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                    className="h-8 text-xs"
-                  >
-                    Próxima
-                  </Button>
-                </div>
-              )}
-            </div>
           )}
-        </Card>
-      )}
+
+          {activeGuia === "colaboradores" && (
+            <table className="w-full text-xs text-left border-collapse">
+              <thead className="bg-muted/70 uppercase text-[10px] font-semibold text-muted-foreground border-b border-border">
+                <tr>
+                  <th className="p-3">Nome</th>
+                  <th className="p-3">CPF</th>
+                  <th className="p-3">E-mail</th>
+                  <th className="p-3">Telefone</th>
+                  <th className="p-3">Cargo</th>
+                  <th className="p-3">Operação</th>
+                  <th className="p-3">Status</th>
+                  <th className="p-3">Nascimento</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {currentPageData.map((c: any, i: number) => (
+                  <tr key={c.id || i} className="hover:bg-muted/30">
+                    <td className="p-3 font-medium text-foreground">{c.nome}</td>
+                    <td className="p-3 font-mono text-muted-foreground">{c.cpf || "-"}</td>
+                    <td className="p-3 text-muted-foreground">{c.email || "-"}</td>
+                    <td className="p-3 text-muted-foreground">{c.telefone || "-"}</td>
+                    <td className="p-3 text-muted-foreground">{c.cargo || "-"}</td>
+                    <td className="p-3">{c.operacao}</td>
+                    <td className="p-3">
+                      <Badge variant={c.status === "ativo" ? "default" : "secondary"}>
+                        {c.status}
+                      </Badge>
+                    </td>
+                    <td className="p-3 text-muted-foreground">{c.data_nascimento || "-"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          {activeGuia === "sistemas" && (
+            <table className="w-full text-xs text-left border-collapse">
+              <thead className="bg-muted/70 uppercase text-[10px] font-semibold text-muted-foreground border-b border-border">
+                <tr>
+                  <th className="p-3">Nome do Sistema</th>
+                  <th className="p-3">Categoria</th>
+                  <th className="p-3">Criticidade</th>
+                  <th className="p-3">URL</th>
+                  <th className="p-3">Ativo</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {currentPageData.map((s: any, i: number) => (
+                  <tr key={s.id || i} className="hover:bg-muted/30">
+                    <td className="p-3 font-semibold text-foreground">{s.nome}</td>
+                    <td className="p-3 text-muted-foreground">{s.categoria}</td>
+                    <td className="p-3">
+                      <Badge variant="outline" className="uppercase text-[10px]">
+                        {s.criticidade}
+                      </Badge>
+                    </td>
+                    <td className="p-3 text-muted-foreground truncate max-w-[200px]">
+                      {s.url || "-"}
+                    </td>
+                    <td className="p-3">{s.ativo}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          {activeGuia === "acessos" && (
+            <table className="w-full text-xs text-left border-collapse">
+              <thead className="bg-muted/70 uppercase text-[10px] font-semibold text-muted-foreground border-b border-border">
+                <tr>
+                  <th className="p-3">Colaborador</th>
+                  <th className="p-3">CPF</th>
+                  <th className="p-3">Sistema</th>
+                  <th className="p-3">Perfil</th>
+                  <th className="p-3">Login / Usuário</th>
+                  <th className="p-3">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {currentPageData.map((a: any, i: number) => (
+                  <tr key={a.id || i} className="hover:bg-muted/30">
+                    <td className="p-3 font-medium text-foreground">{a.colaborador_nome}</td>
+                    <td className="p-3 font-mono text-muted-foreground">
+                      {a.colaborador_cpf || "-"}
+                    </td>
+                    <td className="p-3 font-semibold text-foreground">{a.sistema_nome}</td>
+                    <td className="p-3 text-muted-foreground">{a.perfil_nome}</td>
+                    <td className="p-3 font-mono font-medium">{a.login || "-"}</td>
+                    <td className="p-3">
+                      <Badge variant="outline" className="text-[10px]">
+                        {a.status}
+                      </Badge>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          {activeGuia === "pendencias" && (
+            <table className="w-full text-xs text-left border-collapse">
+              <thead className="bg-muted/70 uppercase text-[10px] font-semibold text-muted-foreground border-b border-border">
+                <tr>
+                  <th className="p-3">Título</th>
+                  <th className="p-3">Colaborador</th>
+                  <th className="p-3">Sistema</th>
+                  <th className="p-3">Tipo</th>
+                  <th className="p-3">Prioridade</th>
+                  <th className="p-3">Status / Quadro</th>
+                  <th className="p-3">Data Início</th>
+                  <th className="p-3">SLA</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {currentPageData.map((p: any, i: number) => (
+                  <tr key={p.id || i} className="hover:bg-muted/30">
+                    <td className="p-3 font-semibold text-foreground">{p.titulo}</td>
+                    <td className="p-3 text-muted-foreground">{p.colaborador_nome}</td>
+                    <td className="p-3 text-muted-foreground">{p.sistema_nome}</td>
+                    <td className="p-3">{p.tipo}</td>
+                    <td className="p-3">
+                      <Badge variant="outline" className="text-[10px]">
+                        {p.prioridade}
+                      </Badge>
+                    </td>
+                    <td className="p-3">
+                      <Badge className="text-[10px]">{p.status}</Badge>
+                    </td>
+                    <td className="p-3 text-muted-foreground">{p.data_inicio || "-"}</td>
+                    <td className="p-3 text-muted-foreground">{p.sla_em || "-"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          {activeGuia === "operacoes" && (
+            <table className="w-full text-xs text-left border-collapse">
+              <thead className="bg-muted/70 uppercase text-[10px] font-semibold text-muted-foreground border-b border-border">
+                <tr>
+                  <th className="p-3">Nome da Operação</th>
+                  <th className="p-3">Descrição</th>
+                  <th className="p-3">Ativa</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {currentPageData.map((o: any, i: number) => (
+                  <tr key={o.id || i} className="hover:bg-muted/30">
+                    <td className="p-3 font-semibold text-foreground">{o.nome}</td>
+                    <td className="p-3 text-muted-foreground">{o.descricao || "-"}</td>
+                    <td className="p-3">{o.ativo}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          {activeGuia === "chamados" && (
+            <table className="w-full text-xs text-left border-collapse">
+              <thead className="bg-muted/70 uppercase text-[10px] font-semibold text-muted-foreground border-b border-border">
+                <tr>
+                  <th className="p-3">Título</th>
+                  <th className="p-3">Sistema</th>
+                  <th className="p-3">Operador</th>
+                  <th className="p-3">Tipo</th>
+                  <th className="p-3">Status</th>
+                  <th className="p-3">Criado em</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {currentPageData.map((ch: any, i: number) => (
+                  <tr key={ch.id || i} className="hover:bg-muted/30">
+                    <td className="p-3 font-semibold text-foreground">{ch.titulo}</td>
+                    <td className="p-3 text-muted-foreground">{ch.sistema_nome}</td>
+                    <td className="p-3 text-muted-foreground">{ch.operador_nome}</td>
+                    <td className="p-3">{ch.tipo}</td>
+                    <td className="p-3">
+                      <Badge variant="outline">{ch.status}</Badge>
+                    </td>
+                    <td className="p-3 text-muted-foreground">{ch.criado_em}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {/* Pagination Footer */}
+        {totalPages > 1 && (
+          <div className="p-3 bg-muted/20 border-t border-border flex items-center justify-between text-xs">
+            <span className="text-muted-foreground">
+              Mostrando {currentPageData.length} de {filteredData.length} registros
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1}
+              >
+                Anterior
+              </Button>
+              <span className="font-medium text-foreground">
+                {page} / {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages}
+              >
+                Próxima
+              </Button>
+            </div>
+          </div>
+        )}
+      </Card>
     </div>
   );
 }

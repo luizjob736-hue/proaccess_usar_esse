@@ -610,6 +610,11 @@ async function ensurePreAtendimentoSchema(client: any) {
       ALTER TABLE public.colaboradores ADD COLUMN IF NOT EXISTS horario_entrada TEXT;
       ALTER TABLE public.colaboradores ADD COLUMN IF NOT EXISTS horario_saida TEXT;
       ALTER TABLE public.colaboradores ADD COLUMN IF NOT EXISTS em_pre_atendimento BOOLEAN DEFAULT false;
+      ALTER TABLE public.colaboradores ADD COLUMN IF NOT EXISTS admissao_em TIMESTAMP WITH TIME ZONE;
+      ALTER TABLE public.colaboradores ADD COLUMN IF NOT EXISTS desligamento_em TIMESTAMP WITH TIME ZONE;
+      ALTER TABLE public.colaboradores ADD COLUMN IF NOT EXISTS inativado_em TIMESTAMP WITH TIME ZONE;
+      ALTER TABLE public.colaboradores ADD COLUMN IF NOT EXISTS data_nascimento TIMESTAMP WITH TIME ZONE;
+      ALTER TABLE public.colaboradores ADD COLUMN IF NOT EXISTS email_senha TEXT;
     `);
     preAtendimentoSchemaInitialized = true;
   } catch (err) {

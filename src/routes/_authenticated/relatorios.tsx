@@ -13,6 +13,11 @@ export const Route = createFileRoute("/_authenticated/relatorios")({ component: 
 
 const RELATORIOS = [
   {
+    key: "pre_atendimento",
+    title: "Pré-Atendimento (Esteira de Admissão)",
+    desc: "Colaboradores em pré-atendimento com Admissão, Produto, Entrada, Saída, Operação e Credenciais",
+  },
+  {
     key: "pendencias",
     title: "Pendências (Fila Detalhada)",
     desc: "Todas as pendências com colaborador, operação, sistema, tipo, status, prioridade, responsável e datas",
@@ -412,11 +417,11 @@ async function fetchRel(k: string) {
     });
   }
 
-  if (k === "matriz" || k === "inativos") {
+  if (k === "matriz" || k === "inativos" || k === "pre_atendimento") {
     const { data: colabs = [] } = await db
       .from("colaboradores")
       .select(
-        "id,nome,cpf,email,email_senha,telefone,cargo,status,inativado_em,data_nascimento,operacao:operacoes(nome)" as any,
+        "id,nome,cpf,email,email_senha,telefone,cargo,status,inativado_em,data_nascimento,admissao_em,produto,horario_entrada,horario_saida,em_pre_atendimento,operacao:operacoes(nome)" as any,
       )
       .order("nome");
     const { data: acessos = [] } = await db
@@ -443,21 +448,32 @@ async function fetchRel(k: string) {
     const rows: any[] = [];
     for (const c of colabs as any[]) {
       const isInactive = ["inativo", "desligado"].includes(c.status);
+      const isPre = c.em_pre_atendimento === true && !isInactive;
+
       if (k === "inativos" && !isInactive) continue;
-      if (k === "matriz" && isInactive) continue;
+      if (k === "pre_atendimento" && !isPre) continue;
+      if (k === "matriz" && (isInactive || isPre)) continue;
 
       const cAcs = accessMap.get(c.id) || {};
       const base: any = {
         Nome: c.nome ? c.nome.toUpperCase() : "",
         CPF: formatCPF(c.cpf),
-        "Data de Nascimento": formatDateBR(c.data_nascimento),
-        Email: c.email ? c.email.toLowerCase() : "",
-        "Senha e-mail": c.email_senha ?? "",
-        Operação: c.operacao?.nome ?? "",
-        Telefone: c.telefone ?? "",
-        Cargo: c.cargo ?? "",
-        Status: c.status ? String(c.status).toUpperCase() : "ATIVO",
       };
+
+      if (k === "pre_atendimento") {
+        base["Admissão"] = formatDateBR(c.admissao_em);
+        base["Produto"] = c.produto ?? "";
+        base["Entrada"] = c.horario_entrada ?? "";
+        base["Saída"] = c.horario_saida ?? "";
+      }
+
+      base["Data de Nascimento"] = formatDateBR(c.data_nascimento);
+      base["Email"] = c.email ? c.email.toLowerCase() : "";
+      base["Senha e-mail"] = c.email_senha ?? "";
+      base["Operação"] = c.operacao?.nome ?? "";
+      base["Telefone"] = c.telefone ?? "";
+      base["Cargo"] = c.cargo ?? "";
+      base["Status"] = c.status ? String(c.status).toUpperCase() : "ATIVO";
 
       if (k === "inativos") {
         base["Data Inativação"] = formatDateBR(c.inativado_em);

@@ -668,6 +668,7 @@ function ImportCard({
       Papa.parse<Record<string, string>>(text, {
         header: true,
         skipEmptyLines: true,
+        transformHeader: (header) => header.trim(),
         delimitersToGuess: [";", ",", "\t"],
         complete: async (res) => {
           try {
@@ -955,11 +956,12 @@ export async function importRows(
 
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
-      const nome = r.nome?.trim();
+      const nome = getRowVal(r, ["nome", "operacao", "operação", "setor", "unidade"]);
+      const ativoVal = getRowVal(r, ["ativo", "status", "habilitado"]);
       const payload = {
         nome,
-        descricao: r.descricao?.trim() || null,
-        ativo: r.ativo ? String(r.ativo).toLowerCase() !== "false" : true,
+        descricao: getRowVal(r, ["descricao", "descrição", "detalhes"]) || null,
+        ativo: ativoVal ? String(ativoVal).toLowerCase() !== "false" : true,
       };
 
       if (!nome) {
@@ -1005,17 +1007,18 @@ export async function importRows(
 
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
-      const nome = r.nome?.trim();
-      const rawCrit = (r.criticidade ?? "").trim().toLowerCase();
+      const nome = getRowVal(r, ["nome", "sistema", "produto", "aplicacao", "ferramenta"]);
+      const rawCrit = getRowVal(r, ["criticidade", "prioridade", "impacto"]).toLowerCase();
       const criticidade = validCrit.includes(rawCrit) ? rawCrit : "media";
+      const ativoVal = getRowVal(r, ["ativo", "status", "habilitado"]);
 
       const payload: any = {
         nome,
-        categoria: r.categoria?.trim() || null,
+        categoria: getRowVal(r, ["categoria", "tipo", "grupo"]) || null,
         criticidade: criticidade as any,
-        descricao: r.descricao?.trim() || null,
-        url: r.url?.trim() || null,
-        ativo: r.ativo ? String(r.ativo).toLowerCase() !== "false" : true,
+        descricao: getRowVal(r, ["descricao", "descrição", "detalhes"]) || null,
+        url: getRowVal(r, ["url", "link", "endereco", "site"]) || null,
+        ativo: ativoVal ? String(ativoVal).toLowerCase() !== "false" : true,
       };
 
       if (!nome) {
@@ -1064,8 +1067,8 @@ export async function importRows(
 
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
-      const nome = r.nome?.trim();
-      const sistemaNome = r.sistema?.trim() || "";
+      const nome = getRowVal(r, ["nome", "perfil", "perfil_acesso", "funcao", "cargo"]);
+      const sistemaNome = getRowVal(r, ["sistema", "nome_sistema", "produto"]);
       const sistemaId = sistemaNome ? sisMap.get(sistemaNome.toLowerCase()) : null;
 
       if (!nome) {
@@ -1084,7 +1087,7 @@ export async function importRows(
       const payload = {
         nome,
         sistema_id: sistemaId,
-        descricao: r.descricao?.trim() || null,
+        descricao: getRowVal(r, ["descricao", "descrição", "detalhes"]) || null,
       };
 
       if (ex) {
@@ -1112,13 +1115,15 @@ export async function importRows(
 
   // 5. IMPORT ACESSOS / CREDENCIAIS
   else if (kind === "acessos") {
-    const { data: cols } = await db.from("colaboradores").select("id, cpf");
+    const { data: cols } = await db.from("colaboradores").select("id, cpf, nome");
     const { data: sis } = await db.from("sistemas").select("id, nome");
     const { data: perfis } = await db.from("perfis_acesso").select("id, nome, sistema_id");
 
-    const colMap = new Map(
-      (cols ?? []).filter((c: any) => c.cpf).map((c: any) => [c.cpf.replace(/\D/g, ""), c.id]),
-    );
+    const colMap = new Map();
+    (cols ?? []).forEach((c: any) => {
+      if (c.cpf) colMap.set(c.cpf.replace(/\D/g, ""), c.id);
+      if (c.nome) colMap.set(c.nome.trim().toLowerCase(), c.id);
+    });
     const sisMap = new Map((sis ?? []).map((s: any) => [s.nome.toLowerCase().trim(), s.id]));
     const perfMap = new Map(
       (perfis ?? []).map((p: any) => [`${p.nome.toLowerCase().trim()}:${p.sistema_id}`, p.id]),
@@ -1129,40 +1134,47 @@ export async function importRows(
 
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
-      const cpfKey = (r.cpf_colaborador ?? "").replace(/\D/g, "");
-      const colId = colMap.get(cpfKey);
-      const sisId = r.sistema ? sisMap.get(r.sistema.trim().toLowerCase()) : null;
+      const colabVal = getRowVal(r, [
+        "cpf_colaborador",
+        "cpf",
+        "colaborador",
+        "nome_colaborador",
+        "documento",
+      ]);
+      const cpfDigits = colabVal.replace(/\D/g, "");
+      const colId =
+        (cpfDigits ? colMap.get(cpfDigits) : null) ?? colMap.get(colabVal.toLowerCase()) ?? null;
+
+      const sisVal = getRowVal(r, ["sistema", "nome_sistema", "produto"]);
+      const sisId = sisVal ? (sisMap.get(sisVal.trim().toLowerCase()) ?? null) : null;
 
       if (!colId) {
         fail++;
-        errors.push(`Linha ${i + 2}: Colaborador com CPF "${r.cpf_colaborador}" não cadastrado.`);
+        errors.push(`Linha ${i + 2}: Colaborador "${colabVal}" não encontrado.`);
         continue;
       }
       if (!sisId) {
         fail++;
-        errors.push(`Linha ${i + 2}: Sistema "${r.sistema}" não homologado ou não encontrado.`);
+        errors.push(`Linha ${i + 2}: Sistema "${sisVal}" não homologado ou não encontrado.`);
         continue;
       }
 
-      const perfilNome = r.perfil_acesso?.trim() || "";
+      const perfilNome = getRowVal(r, [
+        "perfil_acesso",
+        "perfil_de_acesso",
+        "perfil",
+        "funcao",
+        "perfil de acesso",
+      ]);
       const perfilId = perfilNome
         ? (perfMap.get(`${perfilNome.toLowerCase()}:${sisId}`) ?? null)
         : null;
 
-      const rawStatus = (r.status ?? "").trim().toLowerCase();
-      const status = validStatuses.includes(rawStatus) ? rawStatus : "pendente";
+      const rawStatus = getRowVal(r, ["status", "situacao", "estado"]).toLowerCase();
+      const status = validStatuses.includes(rawStatus) ? rawStatus : "ativo";
 
-      let loginVal = "";
-      let senhaVal = "";
-      for (const [rowKey, rowValue] of Object.entries(r)) {
-        const lowerKey = rowKey.toLowerCase().trim();
-        if (["login", "usuario", "usuário", "user"].includes(lowerKey)) {
-          loginVal = String(rowValue ?? "");
-        }
-        if (["senha", "password"].includes(lowerKey)) {
-          senhaVal = String(rowValue ?? "");
-        }
-      }
+      const loginVal = getRowVal(r, ["login", "usuario", "usuário", "user", "nome_usuario"]);
+      const senhaVal = getRowVal(r, ["senha", "password", "chave", "pass"]);
 
       const payload: any = {
         colaborador_id: colId,
@@ -1214,7 +1226,7 @@ export async function importRows(
   else if (kind === "pendencias") {
     const { data: cols } = await db.from("colaboradores").select("id, cpf, nome, email");
     const { data: sis } = await db.from("sistemas").select("id, nome");
-    const { data: users } = await db.from("profiles").select("id, email");
+    const { data: users } = await db.from("profiles").select("id, email, nome");
     const { data: quadrosData } = await db.from("pendencia_quadros").select("nome").order("ordem");
     const quadrosNomes = (quadrosData ?? []).map((q: any) => q.nome);
 
@@ -1226,7 +1238,11 @@ export async function importRows(
     });
 
     const sisMap = new Map((sis ?? []).map((s: any) => [s.nome.trim().toLowerCase(), s.id]));
-    const userMap = new Map((users ?? []).map((u: any) => [u.email.trim().toLowerCase(), u.id]));
+    const userMap = new Map();
+    (users ?? []).forEach((u: any) => {
+      if (u.email) userMap.set(u.email.trim().toLowerCase(), u.id);
+      if (u.nome) userMap.set(u.nome.trim().toLowerCase(), u.id);
+    });
 
     const { data: loggedIn } = await db.auth.getUser();
 
@@ -1235,37 +1251,29 @@ export async function importRows(
 
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
-      const titulo = (r.titulo || r.título || "").trim();
-
-      if (!titulo) {
-        fail++;
-        errors.push(`Linha ${i + 2}: O campo 'titulo' é obrigatório.`);
-        continue;
-      }
-
-      const rawType = (r.tipo ?? "").trim().toLowerCase();
-      const tipo = validTypes.includes(rawType) ? rawType : "solicitacao_acesso";
-
-      const rawPriority = (r.prioridade ?? "").trim().toLowerCase();
-      const prioridade = validPriorities.includes(rawPriority) ? rawPriority : "media";
-
-      const rawStatus = (r.status ?? "").trim();
-      let status = rawStatus || "backlog";
-      if (quadrosNomes.length > 0) {
-        const matchedQ = quadrosNomes.find((qName) =>
-          matchesColumnStatus(rawStatus, qName, quadrosNomes),
-        );
-        if (matchedQ) status = matchedQ;
-      }
-
-      const colabVal = (r.colaborador || r.cpf_colaborador || r.cpf || "").trim();
+      const colabVal = getRowVal(r, [
+        "colaborador",
+        "colaborador_id",
+        "cpf_colaborador",
+        "cpf",
+        "nome_colaborador",
+        "nome",
+        "usuario",
+        "operador",
+      ]);
       const colabDigits = colabVal.replace(/\D/g, "");
       const colId =
         (colabDigits ? colMap.get(colabDigits) : null) ??
         colMap.get(colabVal.toLowerCase()) ??
         null;
 
-      const sisName = (r.sistema || r.nome_sistema || r.produto || "").trim();
+      const sisName = getRowVal(r, [
+        "sistema",
+        "sistema_id",
+        "nome_sistema",
+        "produto",
+        "aplicacao",
+      ]);
       let sisId = sisName ? (sisMap.get(sisName.toLowerCase()) ?? null) : null;
 
       // Auto-create system if it doesn't exist
@@ -1281,29 +1289,110 @@ export async function importRows(
         }
       }
 
-      const respEmail = (r.email_responsavel || r.responsavel || "").trim();
+      let titulo = getRowVal(r, [
+        "titulo",
+        "título",
+        "title",
+        "processo",
+        "assunto",
+        "tarefa",
+        "nome",
+      ]);
+      // Intelligent fallback if title is not explicitly informed:
+      if (!titulo) {
+        if (sisName && colabVal) {
+          titulo = `${sisName} - ${colabVal}`;
+        } else if (sisName) {
+          titulo = `Solicitação ${sisName}`;
+        } else if (colabVal) {
+          titulo = `Pendência - ${colabVal}`;
+        }
+      }
+
+      if (!titulo) {
+        fail++;
+        errors.push(`Linha ${i + 2}: O campo 'titulo' é obrigatório.`);
+        continue;
+      }
+
+      const rawType = getRowVal(r, ["tipo", "type", "tipo_solicitacao", "categoria"]).toLowerCase();
+      const tipo = validTypes.includes(rawType) ? rawType : "solicitacao_acesso";
+
+      const rawPriority = getRowVal(r, ["prioridade", "priority", "urgencia"]).toLowerCase();
+      const prioridade = validPriorities.includes(rawPriority) ? rawPriority : "media";
+
+      const rawStatus = getRowVal(r, [
+        "status",
+        "estado",
+        "situacao",
+        "situação",
+        "quadro",
+        "fase",
+      ]);
+      let status = rawStatus || "PENDENTE";
+      if (quadrosNomes.length > 0) {
+        const matchedQ = quadrosNomes.find((qName) =>
+          matchesColumnStatus(rawStatus, qName, quadrosNomes),
+        );
+        if (matchedQ) status = matchedQ;
+      }
+
+      const respEmail = getRowVal(r, [
+        "email_responsavel",
+        "responsavel",
+        "responsável",
+        "atribuido_a",
+        "atribuído a",
+      ]);
       const respId = respEmail ? (userMap.get(respEmail.toLowerCase()) ?? null) : null;
 
-      const rawEtiquetas = r.etiquetas
-        ? String(r.etiquetas)
+      const rawEtiquetasStr = getRowVal(r, ["etiquetas", "tags", "labels", "etiqueta", "tag"]);
+      const rawEtiquetas = rawEtiquetasStr
+        ? String(rawEtiquetasStr)
             .split(/[,;]/)
             .map((s: string) => s.trim())
             .filter(Boolean)
         : [];
+
+      const dataInicioVal = getRowVal(r, [
+        "data_inicio",
+        "data_início",
+        "data de início",
+        "data de inicio",
+        "inicio",
+        "abertura",
+        "criado_em",
+        "data",
+      ]);
+      const slaVal = getRowVal(r, [
+        "sla",
+        "sla_em",
+        "data_limite",
+        "data limite",
+        "prazo",
+        "vencimento",
+      ]);
+      const descVal = getRowVal(r, [
+        "descricao",
+        "descrição",
+        "description",
+        "detalhes",
+        "observacao",
+        "observação",
+        "obs",
+      ]);
 
       const payload: any = {
         titulo,
         tipo: tipo as any,
         prioridade: prioridade as any,
         status: status as any,
-        descricao: r.descricao?.trim() || null,
+        descricao: descVal || null,
         colaborador_id: colId,
         sistema_id: sisId,
         responsavel_id: respId,
-        data_inicio:
-          parseDateToISO(r.data_inicio || r.data_início || r.inicio) ||
-          new Date().toISOString().split("T")[0],
-        sla_em: parseDateToISO(r.sla_em || r.sla || r.vencimento || r.data_limite),
+        data_inicio: parseDateToISO(dataInicioVal) || new Date().toISOString().split("T")[0],
+        sla_em: parseDateToISO(slaVal),
         etiquetas: rawEtiquetas,
         solicitado: true,
         criado_por: loggedIn.user?.id ?? null,
@@ -1372,7 +1461,7 @@ export async function importRows(
 
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
-      const titulo = r.titulo?.trim();
+      const titulo = getRowVal(r, ["titulo", "título", "title", "assunto", "chamado"]);
 
       if (!titulo) {
         fail++;
@@ -1380,32 +1469,65 @@ export async function importRows(
         continue;
       }
 
-      const rawType = (r.tipo ?? "").trim().toLowerCase();
+      const rawType = getRowVal(r, ["tipo", "type", "categoria"]).toLowerCase();
       const tipo = validTypes.includes(rawType) ? rawType : "erro";
 
-      const rawStatus = (r.status ?? "").trim().toLowerCase();
+      const rawStatus = getRowVal(r, ["status", "situacao", "situação", "estado"]).toLowerCase();
       const status = validStatuses.includes(rawStatus) ? rawStatus : "aberto";
 
-      const sisName = r.sistema?.trim() || "";
+      const sisName = getRowVal(r, ["sistema", "nome_sistema", "produto"]);
       const sisId = sisName ? (sisMap.get(sisName.toLowerCase()) ?? null) : null;
 
-      const opEmail = r.email_operador?.trim() || "";
+      const opEmail = getRowVal(r, [
+        "email_operador",
+        "email operador",
+        "email_usuario",
+        "email usuario",
+        "operador",
+        "usuario",
+        "email",
+      ]);
       const opId = opEmail
         ? (userMap.get(opEmail.toLowerCase()) ?? loggedIn.user?.id)
         : loggedIn.user?.id;
 
-      const tratadorEmail = r.email_tratador?.trim() || "";
+      const tratadorEmail = getRowVal(r, [
+        "email_tratador",
+        "email tratador",
+        "tratador",
+        "responsavel",
+        "responsável",
+        "tecnico",
+        "técnico",
+      ]);
       const tratadorId = tratadorEmail ? (userMap.get(tratadorEmail.toLowerCase()) ?? null) : null;
+
+      const descVal = getRowVal(r, [
+        "descricao",
+        "descrição",
+        "description",
+        "detalhes",
+        "mensagem",
+      ]);
+      const respVal = getRowVal(r, [
+        "resposta",
+        "solucao",
+        "solução",
+        "resolucao",
+        "resolução",
+        "comentario",
+        "comentário",
+      ]);
 
       const payload: any = {
         titulo,
         tipo,
         status,
-        descricao: r.descricao?.trim() || null,
+        descricao: descVal || null,
         sistema_id: sisId,
         operador_id: opId,
         tratador_id: tratadorId,
-        resposta: r.resposta?.trim() || null,
+        resposta: respVal || null,
       };
 
       // Check if ticket already exists for the user with same title

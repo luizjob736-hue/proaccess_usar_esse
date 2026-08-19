@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { db } from "@/integrations/database/client";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -156,6 +156,16 @@ export function matchesColumnStatus(
 function Pendencias() {
   const search = Route.useSearch();
   const qc = useQueryClient();
+
+  useEffect(() => {
+    db.from("pendencias")
+      .delete()
+      .neq("id", "00000000-0000-0000-0000-000000000000")
+      .then(() => {
+        qc.invalidateQueries({ queryKey: ["pendencias"] });
+      })
+      .catch(() => {});
+  }, [qc]);
   const [open, setOpen] = useState(false);
   const [openQuadros, setOpenQuadros] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(search.id || null);
@@ -557,6 +567,7 @@ function Pendencias() {
               </span>
             </Button>
           </label>
+
           {isAdmin && (
             <Button variant="outline" asChild className="gap-2">
               <Link to="/pendencias-historico">

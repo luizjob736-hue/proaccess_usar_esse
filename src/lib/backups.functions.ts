@@ -135,6 +135,64 @@ export const generateMatrizBackup = createServerFn({ method: "POST" })
     return inserted;
   });
 
+export const generatePendenciasBackup = createServerFn({ method: "POST" })
+  .middleware([requireDatabaseAuth])
+  .inputValidator(
+    (d?: { tipo?: "dois_dias" | "manual"; descricao?: string; data_layout_custom?: string }) =>
+      d ?? {},
+  )
+  .handler(async ({ data }) => {
+    const { dbAdmin } = await import("@/integrations/database/client.server");
+
+    const { data: pendencias = [] } = await dbAdmin
+      .from("pendencias")
+      .select("*, colaborador:colaboradores(id, nome, cpf), sistema:sistemas(id, nome)");
+
+    const backupDate = new Date();
+    const dataLayout = data.data_layout_custom || formatDatePtBr(backupDate, true);
+    const tipo = data.tipo || "manual";
+    const desc =
+      data.descricao ||
+      (tipo === "dois_dias"
+        ? "Backup Automático (A cada 2 dias)"
+        : `Backup Pendências (${dataLayout})`);
+
+    const snapshotRows = (pendencias ?? []).map((p: any) => ({
+      id: p.id,
+      titulo: p.titulo || "",
+      descricao: p.descricao || "",
+      tipo: p.tipo || "",
+      prioridade: p.prioridade || "",
+      status: p.status || "",
+      colaborador_nome: p.colaborador?.nome || "Sem colaborador",
+      colaborador_cpf: p.colaborador?.cpf || "",
+      sistema_nome: p.sistema?.nome || "Sem sistema",
+      data_inicio: formatDatePtBr(p.data_inicio),
+      sla_em: formatDatePtBr(p.sla_em, true),
+      concluido_em: formatDatePtBr(p.concluido_em, true),
+      criado_em: formatDatePtBr(p.criado_em, true),
+    }));
+
+    const { data: inserted, error } = await dbAdmin
+      .from("backups_pendencias")
+      .insert({
+        data_layout: dataLayout,
+        descricao: desc,
+        tipo,
+        total_pendencias: pendencias.length,
+        sistemas_json: [],
+        dados_json: snapshotRows,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      throw new Error("Erro ao criar backup de pendências: " + error.message);
+    }
+
+    return inserted;
+  });
+
 export const getBackupsList = createServerFn({ method: "GET" })
   .middleware([requireDatabaseAuth])
   .handler(async () => {
@@ -148,6 +206,17 @@ export const getBackupsList = createServerFn({ method: "GET" })
       )
       .order("criado_em", { ascending: false });
 
+    return existing ?? [];
+  });
+
+export const getBackupsPendenciasList = createServerFn({ method: "GET" })
+  .middleware([requireDatabaseAuth])
+  .handler(async () => {
+    const { dbAdmin } = await import("@/integrations/database/client.server");
+    const { data: existing = [] } = await dbAdmin
+      .from("backups_pendencias")
+      .select("id, criado_em, data_layout, descricao, tipo, total_pendencias")
+      .order("criado_em", { ascending: false });
     return existing ?? [];
   });
 
@@ -168,6 +237,23 @@ export const getBackupById = createServerFn({ method: "POST" })
     return bk;
   });
 
+export const getBackupPendenciasById = createServerFn({ method: "POST" })
+  .middleware([requireDatabaseAuth])
+  .inputValidator((d: { id: string }) => d)
+  .handler(async ({ data }) => {
+    const { dbAdmin } = await import("@/integrations/database/client.server");
+    const { data: bk, error } = await dbAdmin
+      .from("backups_pendencias")
+      .select("*")
+      .eq("id", data.id)
+      .single();
+
+    if (error || !bk) {
+      throw new Error("Backup de pendências não encontrado");
+    }
+    return bk;
+  });
+
 export const deleteBackup = createServerFn({ method: "POST" })
   .middleware([requireDatabaseAuth])
   .inputValidator((d: { id: string }) => d)
@@ -176,6 +262,18 @@ export const deleteBackup = createServerFn({ method: "POST" })
 
     const { dbAdmin } = await import("@/integrations/database/client.server");
     const { error } = await dbAdmin.from("backups_matriz").delete().eq("id", data.id);
+    if (error) throw new Error("Erro ao excluir backup: " + error.message);
+    return { success: true };
+  });
+
+export const deleteBackupPendencias = createServerFn({ method: "POST" })
+  .middleware([requireDatabaseAuth])
+  .inputValidator((d: { id: string }) => d)
+  .handler(async ({ data, context }) => {
+    await ensureAdmin(context);
+
+    const { dbAdmin } = await import("@/integrations/database/client.server");
+    const { error } = await dbAdmin.from("backups_pendencias").delete().eq("id", data.id);
     if (error) throw new Error("Erro ao excluir backup: " + error.message);
     return { success: true };
   });

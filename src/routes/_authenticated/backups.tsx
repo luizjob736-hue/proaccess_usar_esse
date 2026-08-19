@@ -7,8 +7,12 @@ import {
   getBackupsList,
   getBackupById,
   deleteBackup,
+  generatePendenciasBackup,
+  getBackupsPendenciasList,
+  getBackupPendenciasById,
+  deleteBackupPendencias,
 } from "@/lib/backups.functions";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -21,7 +25,6 @@ import {
 } from "@/components/ui/select";
 import {
   Archive,
-  Download,
   Search,
   Eye,
   EyeOff,
@@ -34,7 +37,6 @@ import {
   Clock,
   Plus,
   FileSpreadsheet,
-  AlertCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
@@ -46,10 +48,17 @@ export const Route = createFileRoute("/_authenticated/backups")({
 
 function BackupsPage() {
   const qc = useQueryClient();
-  const getListFn = useServerFn(getBackupsList);
-  const getBackupFn = useServerFn(getBackupById);
-  const generateFn = useServerFn(generateMatrizBackup);
-  const deleteFn = useServerFn(deleteBackup);
+  const [backupTab, setBackupTab] = useState<"matriz" | "pendencias">("matriz");
+
+  const getListMatrizFn = useServerFn(getBackupsList);
+  const getBackupMatrizFn = useServerFn(getBackupById);
+  const generateMatrizFn = useServerFn(generateMatrizBackup);
+  const deleteMatrizFn = useServerFn(deleteBackup);
+
+  const getListPendenciasFn = useServerFn(getBackupsPendenciasList);
+  const getBackupPendenciasFn = useServerFn(getBackupPendenciasById);
+  const generatePendenciasFn = useServerFn(generatePendenciasBackup);
+  const deletePendenciasFn = useServerFn(deleteBackupPendencias);
 
   const [selectedBackupId, setSelectedBackupId] = useState<string | null>(null);
   const [q, setQ] = useState("");
@@ -77,11 +86,13 @@ function BackupsPage() {
 
   // List backups
   const { data: backupsList = [], isLoading: loadingList } = useQuery({
-    queryKey: ["backups-list"],
+    queryKey: ["backups-list", backupTab],
     queryFn: async () => {
-      const list = await getListFn();
-      if (list && list.length > 0 && !selectedBackupId) {
+      const list = backupTab === "matriz" ? await getListMatrizFn() : await getListPendenciasFn();
+      if (list && list.length > 0) {
         setSelectedBackupId(list[0].id);
+      } else {
+        setSelectedBackupId(null);
       }
       return list ?? [];
     },
@@ -89,22 +100,34 @@ function BackupsPage() {
 
   // Selected backup detail
   const { data: selectedBackup, isLoading: loadingBackup } = useQuery({
-    queryKey: ["backup-detail", selectedBackupId],
+    queryKey: ["backup-detail", backupTab, selectedBackupId],
     enabled: !!selectedBackupId,
     queryFn: async () => {
       if (!selectedBackupId) return null;
-      return await getBackupFn({ data: { id: selectedBackupId } });
+      if (backupTab === "matriz") {
+        return await getBackupMatrizFn({ data: { id: selectedBackupId } });
+      } else {
+        return await getBackupPendenciasFn({ data: { id: selectedBackupId } });
+      }
     },
   });
 
   // Generate backup mutation
   const generateMutation = useMutation({
-    mutationFn: async (tipo: "manual" | "semanal" = "manual") => {
-      return await generateFn({ data: { tipo } });
+    mutationFn: async (tipo: "dois_dias" | "manual" = "manual") => {
+      if (backupTab === "matriz") {
+        return await generateMatrizFn({ data: { tipo } });
+      } else {
+        return await generatePendenciasFn({ data: { tipo } });
+      }
     },
     onSuccess: (newBk) => {
-      toast.success("Backup da Matriz gerado com sucesso!");
-      qc.invalidateQueries({ queryKey: ["backups-list"] });
+      toast.success(
+        backupTab === "matriz"
+          ? "Backup da Matriz gerado com sucesso!"
+          : "Backup de Pendências gerado com sucesso!",
+      );
+      qc.invalidateQueries({ queryKey: ["backups-list", backupTab] });
       if (newBk?.id) setSelectedBackupId(newBk.id);
     },
     onError: (err: any) => toast.error(err.message || "Erro ao gerar backup"),
@@ -113,46 +136,59 @@ function BackupsPage() {
   // Delete backup mutation
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      return await deleteFn({ data: { id } });
+      if (backupTab === "matriz") {
+        return await deleteMatrizFn({ data: { id } });
+      } else {
+        return await deletePendenciasFn({ data: { id } });
+      }
     },
     onSuccess: () => {
       toast.success("Backup excluído com sucesso");
       setSelectedBackupId(null);
-      qc.invalidateQueries({ queryKey: ["backups-list"] });
+      qc.invalidateQueries({ queryKey: ["backups-list", backupTab] });
     },
     onError: (err: any) => toast.error(err.message || "Erro ao excluir backup"),
   });
 
-  const sistemas = selectedBackup?.sistemas_json ?? [];
+  const sistemas = backupTab === "matriz" ? (selectedBackup?.sistemas_json ?? []) : [];
   const snapshotData: any[] = selectedBackup?.dados_json ?? [];
 
   // Filter snapshot data
   const filteredData = snapshotData.filter((row: any) => {
-    // Status filter
-    if (statusFilter === "ativo" && row.status !== "Ativo") return false;
-    if (statusFilter === "inativo" && row.status === "Ativo") return false;
+    if (backupTab === "matriz") {
+      if (statusFilter === "ativo" && row.status !== "Ativo") return false;
+      if (statusFilter === "inativo" && row.status === "Ativo") return false;
 
-    // Search query
-    if (q.trim()) {
-      const searchStr = q.toLowerCase();
-      const matchBasic =
-        row.nome?.toLowerCase().includes(searchStr) ||
-        row.cpf?.includes(searchStr) ||
-        row.email?.toLowerCase().includes(searchStr) ||
-        row.cargo?.toLowerCase().includes(searchStr) ||
-        row.operacao_nome?.toLowerCase().includes(searchStr);
+      if (q.trim()) {
+        const searchStr = q.toLowerCase();
+        const matchBasic =
+          row.nome?.toLowerCase().includes(searchStr) ||
+          row.cpf?.includes(searchStr) ||
+          row.email?.toLowerCase().includes(searchStr) ||
+          row.cargo?.toLowerCase().includes(searchStr) ||
+          row.operacao_nome?.toLowerCase().includes(searchStr);
 
-      if (matchBasic) return true;
+        if (matchBasic) return true;
 
-      // Check system access logins
-      for (const sis of sistemas) {
-        const acc = row.sistemas_acessos?.[sis.id];
-        if (acc?.usuario?.toLowerCase().includes(searchStr)) return true;
+        for (const sis of sistemas) {
+          const acc = row.sistemas_acessos?.[sis.id];
+          if (acc?.usuario?.toLowerCase().includes(searchStr)) return true;
+        }
+        return false;
       }
-      return false;
+      return true;
+    } else {
+      if (q.trim()) {
+        const searchStr = q.toLowerCase();
+        return (
+          row.titulo?.toLowerCase().includes(searchStr) ||
+          row.colaborador_nome?.toLowerCase().includes(searchStr) ||
+          row.sistema_nome?.toLowerCase().includes(searchStr) ||
+          row.tipo?.toLowerCase().includes(searchStr)
+        );
+      }
+      return true;
     }
-
-    return true;
   });
 
   // Pagination
@@ -164,34 +200,60 @@ function BackupsPage() {
   const exportToExcel = () => {
     if (!selectedBackup) return;
 
-    const exportRows = filteredData.map((row: any) => {
-      const baseObj: Record<string, any> = {
+    if (backupTab === "matriz") {
+      const exportRows = filteredData.map((row: any) => {
+        const baseObj: Record<string, any> = {
+          "Data do Layout": row.data_layout || selectedBackup.data_layout,
+          Colaborador: row.nome,
+          CPF: row.cpf,
+          "Data Nascimento": row.data_nascimento,
+          "E-mail": row.email,
+          "Senha E-mail": row.email_senha,
+          Telefone: row.telefone,
+          Cargo: row.cargo,
+          Operação: row.operacao_nome,
+          "Status do Operador": row.status,
+          "Data de Inativação": row.inativado_em || "-",
+        };
+
+        for (const sis of sistemas) {
+          const acc = row.sistemas_acessos?.[sis.id];
+          baseObj[`${sis.nome} (Usuário)`] = acc?.usuario || "";
+          baseObj[`${sis.nome} (Senha)`] = acc?.senha || "";
+        }
+
+        return baseObj;
+      });
+
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(exportRows);
+      XLSX.utils.book_append_sheet(wb, ws, "Backup Matriz");
+      XLSX.writeFile(wb, `Backup_Matriz_${selectedBackup.data_layout.replace(/[/ :]/g, "_")}.xlsx`);
+    } else {
+      const exportRows = filteredData.map((row: any) => ({
         "Data do Layout": row.data_layout || selectedBackup.data_layout,
-        Colaborador: row.nome,
-        CPF: row.cpf,
-        "Data Nascimento": row.data_nascimento,
-        "E-mail": row.email,
-        "Senha E-mail": row.email_senha,
-        Telefone: row.telefone,
-        Cargo: row.cargo,
-        Operação: row.operacao_nome,
-        "Status do Operador": row.status,
-        "Data de Inativação": row.inativado_em || "-",
-      };
+        Título: row.titulo,
+        Descrição: row.descricao,
+        Tipo: row.tipo,
+        Prioridade: row.prioridade,
+        Status: row.status,
+        Colaborador: row.colaborador_nome,
+        "CPF Colaborador": row.colaborador_cpf,
+        Sistema: row.sistema_nome,
+        "Data Início": row.data_inicio,
+        "SLA Limite": row.sla_em,
+        "Concluído Em": row.concluido_em,
+        "Criado Em": row.criado_em,
+      }));
 
-      for (const sis of sistemas) {
-        const acc = row.sistemas_acessos?.[sis.id];
-        baseObj[`${sis.nome} (Usuário)`] = acc?.usuario || "";
-        baseObj[`${sis.nome} (Senha)`] = acc?.senha || "";
-      }
-
-      return baseObj;
-    });
-
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.json_to_sheet(exportRows);
-    XLSX.utils.book_append_sheet(wb, ws, "Backup Matriz");
-    XLSX.writeFile(wb, `Backup_Matriz_${selectedBackup.data_layout.replace(/[/ :]/g, "_")}.xlsx`);
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(exportRows);
+      XLSX.utils.book_append_sheet(wb, ws, "Backup Pendências");
+      XLSX.writeFile(
+        wb,
+        `Backup_Pendencias_${selectedBackup.data_layout.replace(/[/ :]/g, "_")}.xlsx`,
+      );
+    }
   };
 
   const activeBk = backupsList.find((b: any) => b.id === selectedBackupId);
@@ -204,25 +266,27 @@ function BackupsPage() {
           <div className="flex items-center gap-2">
             <Archive className="h-7 w-7 text-primary" />
             <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
-              Backup da Matriz de Acessos
+              Central de Backups Automáticos
             </h1>
           </div>
           <p className="text-muted-foreground mt-1 text-sm md:text-base">
-            Histórico unificado de operadores ativos e inativos com data de layout e inativação.
+            Gerenciamento e histórico de backups da Matriz e de Pendências.
             <span className="font-semibold text-primary ml-1">
-              (Agendado automaticamente toda Sexta-feira às 18:00)
+              (Agendado automaticamente a cada 2 dias)
             </span>
           </p>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
           <Button
-            onClick={() => generateMutation.mutate("manual")}
+            onClick={() => generateMutation.mutate("dois_dias")}
             disabled={generateMutation.isPending}
             className="gap-2 shadow-sm"
           >
             <Plus className="h-4 w-4" />
-            {generateMutation.isPending ? "Gerando Backup..." : "Gerar Backup Agora"}
+            {generateMutation.isPending
+              ? "Gerando Backup..."
+              : `Gerar Backup de ${backupTab === "matriz" ? "Matriz" : "Pendências"} Agora`}
           </Button>
 
           {selectedBackup && (
@@ -250,8 +314,34 @@ function BackupsPage() {
         </div>
       </div>
 
+      {/* Tabs for Matriz vs Pendencias */}
+      <div className="flex items-center gap-2 border-b border-border pb-3">
+        <Button
+          variant={backupTab === "matriz" ? "default" : "outline"}
+          onClick={() => {
+            setBackupTab("matriz");
+            setSelectedBackupId(null);
+            setPage(1);
+          }}
+          className="gap-2"
+        >
+          <Archive className="h-4 w-4" /> Backup da Matriz
+        </Button>
+        <Button
+          variant={backupTab === "pendencias" ? "default" : "outline"}
+          onClick={() => {
+            setBackupTab("pendencias");
+            setSelectedBackupId(null);
+            setPage(1);
+          }}
+          className="gap-2"
+        >
+          <Clock className="h-4 w-4" /> Backup de Pendências
+        </Button>
+      </div>
+
       {/* Metrics Grid */}
-      <div className="grid grid-[#10b981] grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="shadow-xs border-border/60">
           <CardContent className="p-4 flex items-center justify-between">
             <div>
@@ -293,17 +383,27 @@ function BackupsPage() {
           <CardContent className="p-4 flex items-center justify-between">
             <div>
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                Operadores no Backup
+                {backupTab === "matriz" ? "Operadores no Backup" : "Pendências no Backup"}
               </p>
-              <p className="text-2xl font-bold mt-1">{activeBk?.total_colaboradores ?? 0}</p>
+              <p className="text-2xl font-bold mt-1">
+                {backupTab === "matriz"
+                  ? (activeBk?.total_colaboradores ?? 0)
+                  : (activeBk?.total_pendencias ?? 0)}
+              </p>
               <p className="text-xs text-muted-foreground mt-0.5">
-                <span className="text-emerald-600 font-semibold">
-                  {activeBk?.total_ativos ?? 0} Ativos
-                </span>{" "}
-                •{" "}
-                <span className="text-amber-600 font-semibold">
-                  {activeBk?.total_inativos ?? 0} Inativos
-                </span>
+                {backupTab === "matriz" ? (
+                  <>
+                    <span className="text-emerald-600 font-semibold">
+                      {activeBk?.total_ativos ?? 0} Ativos
+                    </span>{" "}
+                    •{" "}
+                    <span className="text-amber-600 font-semibold">
+                      {activeBk?.total_inativos ?? 0} Inativos
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-primary font-semibold">Registros salvos</span>
+                )}
               </p>
             </div>
             <div className="p-3 bg-emerald-500/10 rounded-xl text-emerald-600">
@@ -318,8 +418,8 @@ function BackupsPage() {
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 Próximo Backup
               </p>
-              <p className="text-sm font-semibold mt-1">Sexta-feira às 18:00</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Rotina Semanal Automática</p>
+              <p className="text-sm font-semibold mt-1">A cada 2 dias (Automático)</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Rotina Recorrente</p>
             </div>
             <div className="p-3 bg-amber-500/10 rounded-xl text-amber-600">
               <Calendar className="h-6 w-6" />
@@ -347,51 +447,57 @@ function BackupsPage() {
                 <SelectContent>
                   {backupsList.map((b: any) => (
                     <SelectItem key={b.id} value={b.id}>
-                      🗓️ {b.data_layout} — {b.descricao} ({b.total_colaboradores} reg.)
+                      🗓️ {b.data_layout} — {b.descricao} (
+                      {backupTab === "matriz"
+                        ? `${b.total_colaboradores} reg.`
+                        : `${b.total_pendencias} pend.`}
+                      )
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
 
-            {/* Quick Status Filters */}
-            <div className="flex items-center gap-1.5 bg-muted/60 p-1 rounded-lg">
-              <Button
-                size="sm"
-                variant={statusFilter === "todos" ? "default" : "ghost"}
-                className="text-xs h-8"
-                onClick={() => {
-                  setStatusFilter("todos");
-                  setPage(1);
-                }}
-              >
-                Todos ({snapshotData.length})
-              </Button>
-              <Button
-                size="sm"
-                variant={statusFilter === "ativo" ? "default" : "ghost"}
-                className="text-xs h-8 gap-1"
-                onClick={() => {
-                  setStatusFilter("ativo");
-                  setPage(1);
-                }}
-              >
-                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
-                Ativos ({snapshotData.filter((r) => r.status === "Ativo").length})
-              </Button>
-              <Button
-                size="sm"
-                variant={statusFilter === "inativo" ? "default" : "ghost"}
-                className="text-xs h-8 gap-1"
-                onClick={() => {
-                  setStatusFilter("inativo");
-                  setPage(1);
-                }}
-              >
-                <XCircle className="h-3.5 w-3.5 text-amber-500" />
-                Inativos ({snapshotData.filter((r) => r.status !== "Ativo").length})
-              </Button>
-            </div>
+            {/* Quick Status Filters (only for Matriz) */}
+            {backupTab === "matriz" && (
+              <div className="flex items-center gap-1.5 bg-muted/60 p-1 rounded-lg">
+                <Button
+                  size="sm"
+                  variant={statusFilter === "todos" ? "default" : "ghost"}
+                  className="text-xs h-8"
+                  onClick={() => {
+                    setStatusFilter("todos");
+                    setPage(1);
+                  }}
+                >
+                  Todos ({snapshotData.length})
+                </Button>
+                <Button
+                  size="sm"
+                  variant={statusFilter === "ativo" ? "default" : "ghost"}
+                  className="text-xs h-8 gap-1"
+                  onClick={() => {
+                    setStatusFilter("ativo");
+                    setPage(1);
+                  }}
+                >
+                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                  Ativos ({snapshotData.filter((r) => r.status === "Ativo").length})
+                </Button>
+                <Button
+                  size="sm"
+                  variant={statusFilter === "inativo" ? "default" : "ghost"}
+                  className="text-xs h-8 gap-1"
+                  onClick={() => {
+                    setStatusFilter("inativo");
+                    setPage(1);
+                  }}
+                >
+                  <XCircle className="h-3.5 w-3.5 text-amber-500" />
+                  Inativos ({snapshotData.filter((r) => r.status !== "Ativo").length})
+                </Button>
+              </div>
+            )}
           </div>
 
           {/* Search bar & password reveal */}
@@ -399,7 +505,11 @@ function BackupsPage() {
             <div className="relative w-full sm:w-80">
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Buscar por nome, CPF, e-mail, cargo..."
+                placeholder={
+                  backupTab === "matriz"
+                    ? "Buscar por nome, CPF, e-mail, cargo..."
+                    : "Buscar por título, colaborador, sistema..."
+                }
                 value={q}
                 onChange={(e) => {
                   setQ(e.target.value);
@@ -410,15 +520,17 @@ function BackupsPage() {
             </div>
 
             <div className="flex items-center justify-between w-full sm:w-auto gap-3">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setReveal((r) => !r)}
-                className="gap-2 text-xs h-9"
-              >
-                {reveal ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                {reveal ? "Ocultar Senhas" : "Exibir Senhas"}
-              </Button>
+              {backupTab === "matriz" && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setReveal((r) => !r)}
+                  className="gap-2 text-xs h-9"
+                >
+                  {reveal ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                  {reveal ? "Ocultar Senhas" : "Exibir Senhas"}
+                </Button>
+              )}
 
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <span>Exibir:</span>
@@ -452,11 +564,10 @@ function BackupsPage() {
             <Archive className="h-12 w-12 text-muted-foreground/60 mx-auto" />
             <h2 className="text-xl font-bold">Nenhum backup encontrado</h2>
             <p className="text-sm text-muted-foreground">
-              Você pode gerar um primeiro backup instantâneo da Matriz agora mesmo clicando no botão
-              abaixo.
+              Você pode gerar um primeiro backup instantâneo clicando no botão abaixo.
             </p>
             <Button
-              onClick={() => generateMutation.mutate("manual")}
+              onClick={() => generateMutation.mutate("dois_dias")}
               disabled={generateMutation.isPending}
               className="gap-2"
             >
@@ -470,7 +581,7 @@ function BackupsPage() {
           <RefreshCw className="h-8 w-8 animate-spin mx-auto text-primary" />
           <p className="text-sm text-muted-foreground mt-3">Carregando dados do backup...</p>
         </Card>
-      ) : (
+      ) : backupTab === "matriz" ? (
         <Card className="shadow-sm border-border/80 overflow-hidden">
           <div className="overflow-x-auto max-h-[70vh]">
             <table className="w-full text-xs text-left border-collapse">
@@ -539,32 +650,21 @@ function BackupsPage() {
                           !isAtivo ? "bg-amber-500/5 dark:bg-amber-500/10" : ""
                         }`}
                       >
-                        {/* Data do Layout */}
                         <td className="p-3 whitespace-nowrap font-mono text-[11px] border-r border-border/40 text-muted-foreground">
                           {row.data_layout || selectedBackup?.data_layout}
                         </td>
-
-                        {/* Nome */}
                         <td className="p-3 whitespace-nowrap font-medium border-r border-border/40">
                           {row.nome}
                         </td>
-
-                        {/* CPF */}
                         <td className="p-3 whitespace-nowrap font-mono text-[11px] border-r border-border/40 text-muted-foreground">
                           {row.cpf || "-"}
                         </td>
-
-                        {/* Data Nasc */}
                         <td className="p-3 whitespace-nowrap border-r border-border/40 text-muted-foreground">
                           {row.data_nascimento || "-"}
                         </td>
-
-                        {/* Email */}
                         <td className="p-3 whitespace-nowrap border-r border-border/40 font-mono text-[11px]">
                           {row.email || "-"}
                         </td>
-
-                        {/* Senha Email */}
                         <td className="p-3 whitespace-nowrap border-r border-border/40 font-mono text-[11px]">
                           {row.email_senha ? (
                             reveal ? (
@@ -578,26 +678,18 @@ function BackupsPage() {
                             "-"
                           )}
                         </td>
-
-                        {/* Telefone */}
                         <td className="p-3 whitespace-nowrap border-r border-border/40 text-muted-foreground">
                           {row.telefone || "-"}
                         </td>
-
-                        {/* Cargo */}
                         <td className="p-3 whitespace-nowrap border-r border-border/40 text-muted-foreground">
                           {row.cargo || "-"}
                         </td>
-
-                        {/* Operacao */}
                         <td className="p-3 whitespace-nowrap border-r border-border/40 text-muted-foreground">
                           {row.operacao_nome || "-"}
                         </td>
-
-                        {/* Status Operador */}
                         <td className="p-3 whitespace-nowrap border-r border-border/40">
                           {isAtivo ? (
-                            <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/20 border-emerald-500/30 gap-1 font-normal">
+                            <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30 gap-1 font-normal">
                               <CheckCircle2 className="h-3 w-3" /> Ativo
                             </Badge>
                           ) : (
@@ -606,8 +698,6 @@ function BackupsPage() {
                             </Badge>
                           )}
                         </td>
-
-                        {/* Data Inativação */}
                         <td className="p-3 whitespace-nowrap border-r border-border/40 font-mono text-[11px] text-amber-700 dark:text-amber-400">
                           {!isAtivo && row.inativado_em !== "-" ? (
                             <span className="font-semibold">{row.inativado_em}</span>
@@ -615,8 +705,6 @@ function BackupsPage() {
                             <span className="text-muted-foreground">-</span>
                           )}
                         </td>
-
-                        {/* System columns */}
                         {sistemas.map((s: any) => {
                           const acc = row.sistemas_acessos?.[s.id];
                           const hasAcc = acc && (acc.usuario || acc.senha);
@@ -657,6 +745,143 @@ function BackupsPage() {
                       </tr>
                     );
                   })
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Footer Pagination */}
+          {filteredData.length > 0 && (
+            <div className="p-4 border-t border-border flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-muted-foreground bg-muted/20">
+              <div>
+                Exibindo{" "}
+                <span className="font-medium text-foreground">
+                  {pageSize === 0
+                    ? filteredData.length
+                    : Math.min((page - 1) * pageSize + 1, filteredData.length)}
+                </span>{" "}
+                a{" "}
+                <span className="font-medium text-foreground">
+                  {pageSize === 0
+                    ? filteredData.length
+                    : Math.min(page * pageSize, filteredData.length)}
+                </span>{" "}
+                de <span className="font-medium text-foreground">{filteredData.length}</span>{" "}
+                registros
+              </div>
+
+              {pageSize > 0 && totalPages > 1 && (
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={page === 1}
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    className="h-8 text-xs"
+                  >
+                    Anterior
+                  </Button>
+                  <span>
+                    Página {page} de {totalPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={page >= totalPages}
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    className="h-8 text-xs"
+                  >
+                    Próxima
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+        </Card>
+      ) : (
+        <Card className="shadow-sm border-border/80 overflow-hidden">
+          <div className="overflow-x-auto max-h-[70vh]">
+            <table className="w-full text-xs text-left border-collapse">
+              <thead className="bg-muted/80 sticky top-0 z-10 backdrop-blur-xs border-b border-border font-semibold text-muted-foreground uppercase tracking-wider text-[11px]">
+                <tr>
+                  <th className="p-3 whitespace-nowrap min-w-[130px] border-r border-border/50">
+                    Data do Layout
+                  </th>
+                  <th className="p-3 whitespace-nowrap min-w-[200px] border-r border-border/50">
+                    Título
+                  </th>
+                  <th className="p-3 whitespace-nowrap min-w-[140px] border-r border-border/50">
+                    Tipo
+                  </th>
+                  <th className="p-3 whitespace-nowrap min-w-[100px] border-r border-border/50">
+                    Prioridade
+                  </th>
+                  <th className="p-3 whitespace-nowrap min-w-[120px] border-r border-border/50">
+                    Status
+                  </th>
+                  <th className="p-3 whitespace-nowrap min-w-[180px] border-r border-border/50">
+                    Colaborador
+                  </th>
+                  <th className="p-3 whitespace-nowrap min-w-[140px] border-r border-border/50">
+                    Sistema
+                  </th>
+                  <th className="p-3 whitespace-nowrap min-w-[120px] border-r border-border/50">
+                    Início
+                  </th>
+                  <th className="p-3 whitespace-nowrap min-w-[140px] border-r border-border/50">
+                    SLA Limite
+                  </th>
+                  <th className="p-3 whitespace-nowrap min-w-[140px] border-r border-border/50">
+                    Criado Em
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/60">
+                {currentPageData.length === 0 ? (
+                  <tr>
+                    <td colSpan={10} className="p-8 text-center text-muted-foreground">
+                      Nenhum registro encontrado com os filtros selecionados.
+                    </td>
+                  </tr>
+                ) : (
+                  currentPageData.map((row: any, idx: number) => (
+                    <tr key={row.id || idx} className="hover:bg-muted/40 transition-colors">
+                      <td className="p-3 whitespace-nowrap font-mono text-[11px] border-r border-border/40 text-muted-foreground">
+                        {row.data_layout || selectedBackup?.data_layout}
+                      </td>
+                      <td className="p-3 whitespace-nowrap font-medium border-r border-border/40">
+                        {row.titulo}
+                      </td>
+                      <td className="p-3 whitespace-nowrap border-r border-border/40 text-muted-foreground">
+                        {row.tipo}
+                      </td>
+                      <td className="p-3 whitespace-nowrap border-r border-border/40 font-medium">
+                        <Badge variant="outline" className="text-[10px] uppercase">
+                          {row.prioridade}
+                        </Badge>
+                      </td>
+                      <td className="p-3 whitespace-nowrap border-r border-border/40">
+                        <Badge className="bg-primary/10 text-primary border-primary/20">
+                          {row.status}
+                        </Badge>
+                      </td>
+                      <td className="p-3 whitespace-nowrap border-r border-border/40">
+                        {row.colaborador_nome}
+                      </td>
+                      <td className="p-3 whitespace-nowrap border-r border-border/40 text-muted-foreground">
+                        {row.sistema_nome}
+                      </td>
+                      <td className="p-3 whitespace-nowrap border-r border-border/40 text-muted-foreground">
+                        {row.data_inicio}
+                      </td>
+                      <td className="p-3 whitespace-nowrap border-r border-border/40 text-muted-foreground">
+                        {row.sla_em || "-"}
+                      </td>
+                      <td className="p-3 whitespace-nowrap border-r border-border/40 text-muted-foreground">
+                        {row.criado_em}
+                      </td>
+                    </tr>
+                  ))
                 )}
               </tbody>
             </table>

@@ -351,7 +351,7 @@ function Pendencias() {
 
   const pendenciasCounts = useMemo(() => {
     const activeList = list.filter((p: any) => {
-      if (p.solicitado !== true) return false;
+      if (p.solicitado === false) return false;
       const st = p.colaborador?.status;
       if (st === "inativo" || st === "desligado") return false;
       return true;
@@ -370,7 +370,7 @@ function Pendencias() {
 
   const listPorOperacao = useMemo(() => {
     const listSolicitados = list.filter((p: any) => {
-      if (p.solicitado !== true) return false;
+      if (p.solicitado === false) return false;
       const st = p.colaborador?.status;
       if (st === "inativo" || st === "desligado") return false;
       return true;
@@ -479,6 +479,7 @@ function Pendencias() {
                   .filter(Boolean)
               : [],
             criado_por: u.user?.id,
+            solicitado: true,
           };
         })
         .filter((r: any) => r.titulo);
@@ -800,6 +801,7 @@ function Pendencias() {
                     type="checkbox"
                     name="solicitado"
                     id="solicitado"
+                    defaultChecked
                     className="rounded border-gray-300 text-primary focus:ring-primary h-4 w-4"
                   />
                   <Label htmlFor="solicitado" className="cursor-pointer text-xs font-semibold">

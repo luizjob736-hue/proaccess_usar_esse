@@ -1305,6 +1305,7 @@ export async function importRows(
           new Date().toISOString().split("T")[0],
         sla_em: parseDateToISO(r.sla_em || r.sla || r.vencimento || r.data_limite),
         etiquetas: rawEtiquetas,
+        solicitado: true,
         criado_por: loggedIn.user?.id ?? null,
         ...(selectedOperacaoId !== "todas" && selectedOperacaoId !== "sem_operacao"
           ? { operacao_id: selectedOperacaoId }

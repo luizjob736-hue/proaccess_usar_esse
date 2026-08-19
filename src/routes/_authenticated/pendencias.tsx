@@ -307,6 +307,8 @@ function Pendencias() {
     onSuccess: () => {
       toast.success("Pendências criadas com sucesso");
       setOpen(false);
+      setSelectedSistemas([]);
+      setSelectedColaboradores([]);
       qc.invalidateQueries({ queryKey: ["pendencias"] });
       qc.invalidateQueries({ queryKey: ["acessos"] });
       qc.invalidateQueries({ queryKey: ["matriz-acessos-full"] });
@@ -579,10 +581,9 @@ function Pendencias() {
             open={open}
             onOpenChange={(o) => {
               setOpen(o);
-              if (!o) {
+              if (o) {
                 setSelectedSistemas([]);
                 setSelectedColaboradores([]);
-              } else {
                 setFormDateInicio(new Date().toISOString().slice(0, 10));
               }
             }}

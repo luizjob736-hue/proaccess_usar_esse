@@ -137,33 +137,35 @@ const TEMPLATES: Record<
     desc: "Importe novos colaboradores para a esteira de pré-atendimento com controle de admissão, produto, horários de entrada/saída e acessos.",
     icon: UserPlus,
     headers: [
-      "nome",
-      "cpf",
-      "admissão",
-      "produto",
-      "entrada",
-      "saída",
-      "data de nascimento",
-      "email",
-      "senha e-mail",
-      "operação",
-      "telefone",
-      "cargo",
+      "Nome",
+      "CPF",
+      "Admissão",
+      "Produto",
+      "Entrada",
+      "Saída",
+      "Data de Nascimento",
+      "Email",
+      "Senha e-mail",
+      "Operação",
+      "Telefone",
+      "Cargo",
+      "Status",
     ],
     sample: [
       {
-        nome: "Carlos Eduardo Santos",
-        cpf: "456.789.123-00",
-        admissão: "01/09/2026",
-        produto: "Atendimento Voz",
-        entrada: "08:00",
-        saída: "17:00",
-        "data de nascimento": "12/03/1998",
-        email: "carlos.santos@empresa.com",
-        "senha e-mail": "SenhaForte123",
-        operação: "Operação Central",
-        telefone: "11977777777",
-        cargo: "Operador",
+        Nome: "Carlos Eduardo Santos",
+        CPF: "456.789.123-00",
+        Admissão: "01/09/2026",
+        Produto: "Atendimento Voz",
+        Entrada: "08:00",
+        Saída: "17:00",
+        "Data de Nascimento": "12/03/1998",
+        Email: "carlos.santos@empresa.com",
+        "Senha e-mail": "SenhaForte123",
+        Operação: "Operação Central",
+        Telefone: "11977777777",
+        Cargo: "Operador",
+        Status: "ativo",
       },
     ],
   },
@@ -171,16 +173,30 @@ const TEMPLATES: Record<
     title: "Usuários Inativos",
     desc: "Importe ou atualize usuários inativos (desligados/afastados) usando o mesmo layout da Matriz unificada.",
     icon: Users,
-    headers: ["nome", "cpf", "email", "telefone", "cargo", "status", "data inativação"],
+    headers: [
+      "Nome",
+      "CPF",
+      "Data de Nascimento",
+      "Email",
+      "Senha e-mail",
+      "Operação",
+      "Telefone",
+      "Cargo",
+      "Status",
+      "Data Inativação",
+    ],
     sample: [
       {
-        nome: "Maria Oliveira",
-        cpf: "987.654.321-00",
-        email: "maria@empresa.com",
-        telefone: "11988888888",
-        cargo: "Operador",
-        status: "inativo",
-        "data inativação": "2026-07-30",
+        Nome: "Maria Oliveira",
+        CPF: "987.654.321-00",
+        "Data de Nascimento": "20/10/1992",
+        Email: "maria@empresa.com",
+        "Senha e-mail": "SenhaForteEmail987",
+        Operação: "Operação Central",
+        Telefone: "11988888888",
+        Cargo: "Operador",
+        Status: "inativo",
+        "Data Inativação": "30/07/2026",
       },
     ],
   },
@@ -188,12 +204,12 @@ const TEMPLATES: Record<
     title: "Operações",
     desc: "Importe ou atualize operações/setores da empresa em lote.",
     icon: Building2,
-    headers: ["nome", "descricao", "ativo"],
+    headers: ["Nome", "Descrição", "Ativo"],
     sample: [
       {
-        nome: "Operação São Paulo",
-        descricao: "Central de Atendimento SP",
-        ativo: "true",
+        Nome: "Operação São Paulo",
+        Descrição: "Central de Atendimento SP",
+        Ativo: "true",
       },
     ],
   },
@@ -201,15 +217,15 @@ const TEMPLATES: Record<
     title: "Sistemas",
     desc: "Importe ou atualize sistemas homologados em lote.",
     icon: Laptop,
-    headers: ["nome", "categoria", "criticidade", "descricao", "url", "ativo"],
+    headers: ["Nome", "Categoria", "Criticidade", "Descrição", "URL", "Ativo"],
     sample: [
       {
-        nome: "SAP ERP",
-        categoria: "Sistemas Core",
-        criticidade: "alta",
-        descricao: "Sistema ERP principal da empresa",
-        url: "https://sap.empresa.local",
-        ativo: "true",
+        Nome: "SAP ERP",
+        Categoria: "Sistemas Core",
+        Criticidade: "alta",
+        Descrição: "Sistema ERP principal da empresa",
+        URL: "https://sap.empresa.local",
+        Ativo: "true",
       },
     ],
   },
@@ -217,12 +233,12 @@ const TEMPLATES: Record<
     title: "Perfis de Acesso",
     desc: "Importe perfis de acesso vinculados aos sistemas. O sistema correspondente é localizado pelo nome.",
     icon: ShieldCheck,
-    headers: ["nome", "sistema", "descricao"],
+    headers: ["Nome", "Sistema", "Descrição"],
     sample: [
       {
-        nome: "Administrador SAP",
-        sistema: "SAP ERP",
-        descricao: "Perfil com privilégios administrativos no módulo SAP FI/CO",
+        Nome: "Administrador SAP",
+        Sistema: "SAP ERP",
+        Descrição: "Perfil com privilégios administrativos no módulo SAP FI/CO",
       },
     ],
   },
@@ -230,15 +246,15 @@ const TEMPLATES: Record<
     title: "Acessos (Credenciais)",
     desc: "Vincule logins e senhas de sistemas aos colaboradores. Localização automática por CPF do colaborador, nome do sistema e nome do perfil de acesso (opcional).",
     icon: KeyRound,
-    headers: ["cpf_colaborador", "sistema", "perfil_acesso", "login", "senha", "status"],
+    headers: ["CPF Colaborador", "Sistema", "Perfil de Acesso", "Login", "Senha", "Status"],
     sample: [
       {
-        cpf_colaborador: "123.456.789-00",
-        sistema: "SAP ERP",
-        perfil_acesso: "Administrador SAP",
-        login: "joao.silva",
-        senha: "MinhaSenhaForte123",
-        status: "ativo",
+        "CPF Colaborador": "123.456.789-00",
+        Sistema: "SAP ERP",
+        "Perfil de Acesso": "Administrador SAP",
+        Login: "joao.silva",
+        Senha: "MinhaSenhaForte123",
+        Status: "ativo",
       },
     ],
   },
@@ -247,27 +263,27 @@ const TEMPLATES: Record<
     desc: "Importe pendências e fluxos de trabalho de acessos. Vinculação por nome ou CPF do colaborador, nome do sistema, status e etiquetas.",
     icon: ClipboardList,
     headers: [
-      "titulo",
-      "descricao",
-      "tipo",
-      "prioridade",
-      "status",
-      "colaborador",
-      "sistema",
-      "sla_em",
-      "etiquetas",
+      "Título",
+      "Descrição",
+      "Tipo",
+      "Prioridade",
+      "Status",
+      "Colaborador",
+      "Sistema",
+      "SLA",
+      "Etiquetas",
     ],
     sample: [
       {
-        titulo: "Criar Acesso SAP - João",
-        descricao: "Realizar a criação de credencial do novo colaborador",
-        tipo: "solicitacao_acesso",
-        prioridade: "media",
-        status: "backlog",
-        colaborador: "João da Silva",
-        sistema: "SAP ERP",
-        sla_em: "2026-08-05",
-        etiquetas: "urgente;tributário",
+        Título: "Criar Acesso SAP - João",
+        Descrição: "Realizar a criação de credencial do novo colaborador",
+        Tipo: "solicitacao_acesso",
+        Prioridade: "media",
+        Status: "backlog",
+        Colaborador: "João da Silva",
+        Sistema: "SAP ERP",
+        SLA: "2026-08-05",
+        Etiquetas: "urgente;tributário",
       },
     ],
   },
@@ -276,25 +292,25 @@ const TEMPLATES: Record<
     desc: "Importe tíquetes e chamados de suporte técnico de acessos em lote. Vinculação automática do sistema por nome, operador (usuário) e tratador técnico por e-mail.",
     icon: LifeBuoy,
     headers: [
-      "titulo",
-      "tipo",
-      "status",
-      "descricao",
-      "sistema",
-      "email_operador",
-      "email_tratador",
-      "resposta",
+      "Título",
+      "Tipo",
+      "Status",
+      "Descrição",
+      "Sistema",
+      "Email Operador",
+      "Email Tratador",
+      "Resposta",
     ],
     sample: [
       {
-        titulo: "Senha do SAP expirada",
-        tipo: "erro",
-        status: "aberto",
-        descricao: "Usuário reporta bloqueio de login por tentativas incorretas",
-        sistema: "SAP ERP",
-        email_operador: "joao@empresa.com",
-        email_tratador: "tecnico@empresa.com",
-        resposta: "Solicitada redefinição provisória de senha",
+        Título: "Senha do SAP expirada",
+        Tipo: "erro",
+        Status: "aberto",
+        Descrição: "Usuário reporta bloqueio de login por tentativas incorretas",
+        Sistema: "SAP ERP",
+        "Email Operador": "joao@empresa.com",
+        "Email Tratador": "tecnico@empresa.com",
+        Resposta: "Solicitada redefinição provisória de senha",
       },
     ],
   },
@@ -303,29 +319,29 @@ const TEMPLATES: Record<
     desc: "Importe ou atualize todos os colaboradores, seus dados cadastrais, status (ativo/inativo) e todas as suas credenciais de acesso de uma só vez usando um único arquivo de planilha unificado.",
     icon: Grid3x3,
     headers: [
-      "nome",
-      "cpf",
-      "data de nascimento",
-      "email",
-      "senha e-mail",
-      "operação",
-      "telefone",
-      "cargo",
-      "status",
-      "data inativação",
+      "Nome",
+      "CPF",
+      "Data de Nascimento",
+      "Email",
+      "Senha e-mail",
+      "Operação",
+      "Telefone",
+      "Cargo",
+      "Status",
+      "Data Inativação",
     ],
     sample: [
       {
-        nome: "João da Silva",
-        cpf: "123.456.789-00",
-        "data de nascimento": "15/05/1995",
-        email: "joao@empresa.com",
-        "senha e-mail": "SenhaForteEmail123",
-        operação: "Operação Central",
-        telefone: "11999999999",
-        cargo: "Analista de Suporte",
-        status: "ativo",
-        "data inativação": "",
+        Nome: "João da Silva",
+        CPF: "123.456.789-00",
+        "Data de Nascimento": "15/05/1995",
+        Email: "joao@empresa.com",
+        "Senha e-mail": "SenhaForteEmail123",
+        Operação: "Operação Central",
+        Telefone: "11999999999",
+        Cargo: "Analista de Suporte",
+        Status: "ativo",
+        "Data Inativação": "",
       },
     ],
   },
@@ -522,37 +538,119 @@ function ImportCard({
   sistemasAll?: any[];
   selectedOperacaoId?: string;
 }) {
+  const [showPreview, setShowPreview] = useState(false);
+
   let t;
-  if (kind === "matriz" || kind === "inativos") {
-    const headers = [
-      "nome",
-      "cpf",
-      "data de nascimento",
-      "email",
-      "senha e-mail",
-      "operação",
-      "telefone",
-      "cargo",
-      "status",
-      ...(kind === "inativos" ? ["data inativação"] : []),
-      ...sistemasAll.flatMap((s: any) => [`${s.nome} - Usuário`, `${s.nome} - Senha`]),
-    ];
+  let baseHeaders: string[] = [];
+  let systemHeaders: string[] = [];
+
+  if (kind === "matriz" || kind === "inativos" || kind === "pre_atendimento") {
+    baseHeaders = ["Nome", "CPF"];
+    if (kind === "pre_atendimento") {
+      baseHeaders.push("Admissão", "Produto", "Entrada", "Saída");
+    }
+    baseHeaders.push(
+      "Data de Nascimento",
+      "Email",
+      "Senha e-mail",
+      "Operação",
+      "Telefone",
+      "Cargo",
+      "Status",
+    );
+    if (kind === "inativos") {
+      baseHeaders.push("Data Inativação");
+    }
+
+    systemHeaders = sistemasAll.flatMap((s: any) => [`${s.nome} - Usuário`, `${s.nome} - Senha`]);
+
     t = {
-      title: kind === "matriz" ? "Matriz de Acessos Unificada" : "Usuários Inativos",
+      title:
+        kind === "matriz"
+          ? "Matriz de Acessos Unificada"
+          : kind === "pre_atendimento"
+            ? "Pré-Atendimento"
+            : "Usuários Inativos",
       desc:
         kind === "matriz"
           ? "Importe ou atualize todos os colaboradores, seus dados cadastrais, status (ativo/inativo) e todas as suas credenciais de acesso de uma só vez usando um único arquivo de planilha unificado."
-          : "Importe ou atualize usuários inativos (desligados/afastados) usando o mesmo layout da Matriz unificada.",
-      headers,
-      icon: kind === "matriz" ? Grid3x3 : Users,
+          : kind === "pre_atendimento"
+            ? "Importe novos colaboradores para a esteira de pré-atendimento com controle de admissão, produto, horários de entrada/saída e acessos."
+            : "Importe ou atualize usuários inativos (desligados/afastados) usando o mesmo layout da Matriz unificada.",
+      headers: [...baseHeaders, ...systemHeaders],
+      icon: kind === "matriz" ? Grid3x3 : kind === "pre_atendimento" ? UserPlus : Users,
     };
   } else {
     t = TEMPLATES[kind];
+    baseHeaders = t.headers;
   }
   const Icon = t.icon;
   const qc = useQueryClient();
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ ok: number; fail: number; errors: string[] } | null>(null);
+
+  // Sample row for preview
+  const sampleRow: Record<string, string> =
+    kind === "matriz"
+      ? {
+          Nome: "João da Silva",
+          CPF: "123.456.789-00",
+          "Data de Nascimento": "15/05/1995",
+          Email: "joao@empresa.com",
+          "Senha e-mail": "SenhaForteEmail123",
+          Operação: "Operação Central",
+          Telefone: "11999999999",
+          Cargo: "Analista de Suporte",
+          Status: "ativo",
+          ...Object.fromEntries(
+            sistemasAll.flatMap((s: any) => [
+              [`${s.nome} - Usuário`, "joao.silva"],
+              [`${s.nome} - Senha`, "SenhaTemp123"],
+            ]),
+          ),
+        }
+      : kind === "pre_atendimento"
+        ? {
+            Nome: "Carlos Eduardo Santos",
+            CPF: "456.789.123-00",
+            Admissão: "01/09/2026",
+            Produto: "Atendimento Voz",
+            Entrada: "08:00",
+            Saída: "17:00",
+            "Data de Nascimento": "12/03/1998",
+            Email: "carlos.santos@empresa.com",
+            "Senha e-mail": "SenhaForte123",
+            Operação: "Operação Central",
+            Telefone: "11977777777",
+            Cargo: "Operador",
+            Status: "ativo",
+            ...Object.fromEntries(
+              sistemasAll.flatMap((s: any) => [
+                [`${s.nome} - Usuário`, "carlos.santos"],
+                [`${s.nome} - Senha`, "SenhaTemp123"],
+              ]),
+            ),
+          }
+        : kind === "inativos"
+          ? {
+              Nome: "Maria Oliveira",
+              CPF: "987.654.321-00",
+              "Data de Nascimento": "20/10/1992",
+              Email: "maria@empresa.com",
+              "Senha e-mail": "SenhaForteEmail987",
+              Operação: "Operação Central",
+              Telefone: "11988888888",
+              Cargo: "Operador",
+              Status: "inativo",
+              "Data Inativação": "30/07/2026",
+              ...Object.fromEntries(
+                sistemasAll.flatMap((s: any) => [
+                  [`${s.nome} - Usuário`, "maria.oliveira"],
+                  [`${s.nome} - Senha`, ""],
+                ]),
+              ),
+            }
+          : (TEMPLATES[kind]?.sample?.[0] ?? {});
 
   async function handleFile(file: File) {
     setBusy(true);
@@ -622,21 +720,109 @@ function ImportCard({
         <p className="text-sm text-muted-foreground leading-relaxed">{t.desc}</p>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div>
-          <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wider block mb-1.5">
-            Colunas Esperadas (Delimitador: Semicolon / Ponto e vírgula ";")
-          </span>
-          <div className="flex flex-wrap gap-1.5">
-            {t.headers.map((h) => (
-              <Badge
-                key={h}
-                variant="secondary"
-                className="font-mono text-[11px] px-2 py-0.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300"
-              >
-                {h}
-              </Badge>
-            ))}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wider block">
+              Colunas Esperadas (Delimitador: Semicolon / Ponto e vírgula ";")
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowPreview(!showPreview)}
+              className="text-xs h-7 text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100"
+            >
+              {showPreview ? "Ocultar Prévia" : "Ver Exemplo de Preenchimento"}
+            </Button>
           </div>
+
+          <div className="space-y-2">
+            <div>
+              <div className="flex flex-wrap gap-1.5">
+                {baseHeaders.map((h) => {
+                  const isRequired = h.toLowerCase() === "nome" || h.toLowerCase() === "cpf";
+                  return (
+                    <Badge
+                      key={h}
+                      variant="secondary"
+                      className={cn(
+                        "font-medium text-xs px-2.5 py-0.5 border shadow-none",
+                        isRequired
+                          ? "bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900 border-neutral-900 dark:border-neutral-100 font-semibold"
+                          : "bg-neutral-100 dark:bg-neutral-800/80 text-neutral-800 dark:text-neutral-200 border-neutral-200/80 dark:border-neutral-700/80",
+                      )}
+                    >
+                      {h}
+                      {isRequired && <span className="ml-1 text-[10px] opacity-75">*</span>}
+                    </Badge>
+                  );
+                })}
+              </div>
+            </div>
+
+            {systemHeaders.length > 0 && (
+              <div className="pt-1">
+                <span className="text-[11px] font-medium text-neutral-500 block mb-1.5">
+                  Credenciais por Sistema Homologado ({sistemasAll.length}{" "}
+                  {sistemasAll.length === 1 ? "sistema cadastrado" : "sistemas cadastrados"}):
+                </span>
+                <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-1.5 rounded-md bg-neutral-50 dark:bg-neutral-900/50 border border-neutral-200/60 dark:border-neutral-800/60">
+                  {sistemasAll.map((s: any) => (
+                    <span key={s.id} className="inline-flex items-center gap-1">
+                      <Badge
+                        variant="outline"
+                        className="text-[11px] px-2 py-0.5 bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-800"
+                      >
+                        {s.nome} - Usuário
+                      </Badge>
+                      <Badge
+                        variant="outline"
+                        className="text-[11px] px-2 py-0.5 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800"
+                      >
+                        {s.nome} - Senha
+                      </Badge>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {showPreview && (
+            <div className="rounded-md border border-neutral-200 dark:border-neutral-800 bg-neutral-50/50 dark:bg-neutral-900/30 p-3 space-y-2 text-xs animate-in fade-in">
+              <div className="flex items-center justify-between text-muted-foreground font-medium">
+                <span>Pré-visualização do Formato da Planilha:</span>
+                <span className="text-[11px]">Codificação: UTF-8 / Separador: ;</span>
+              </div>
+              <div className="overflow-x-auto border border-neutral-200 dark:border-neutral-800 rounded bg-white dark:bg-neutral-950">
+                <table className="min-w-full text-[11px] divide-y divide-neutral-200 dark:divide-neutral-800">
+                  <thead className="bg-neutral-100 dark:bg-neutral-900">
+                    <tr>
+                      {t.headers.map((h: string) => (
+                        <th
+                          key={h}
+                          className="px-2.5 py-1.5 text-left font-semibold text-neutral-700 dark:text-neutral-300 border-r border-neutral-200 dark:border-neutral-800 last:border-0 whitespace-nowrap"
+                        >
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
+                    <tr>
+                      {t.headers.map((h: string) => (
+                        <td
+                          key={h}
+                          className="px-2.5 py-1.5 text-neutral-600 dark:text-neutral-400 border-r border-neutral-200 dark:border-neutral-800 last:border-0 whitespace-nowrap font-mono text-[10.5px]"
+                        >
+                          {sampleRow[h] ?? "-"}
+                        </td>
+                      ))}
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="flex flex-wrap items-center gap-3 pt-2">

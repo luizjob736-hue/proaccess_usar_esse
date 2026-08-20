@@ -869,6 +869,20 @@ export const neonQueryServerFn = createServerFn({ method: "POST" })
         return { data: rows, error: null, count: totalCount };
       }
 
+      const serializeVal = (tableName: string, colName: string, val: any) => {
+        if (val === undefined) return undefined;
+        if (val === null) return null;
+        if (val instanceof Date) return val;
+        // Native Postgres ARRAY columns (like pendencias.etiquetas text[]) must remain native JS arrays
+        if (tableName === "pendencias" && colName === "etiquetas") {
+          return Array.isArray(val) ? val : [];
+        }
+        if (typeof val === "object") {
+          return JSON.stringify(val);
+        }
+        return val;
+      };
+
       if (data.action === "insert") {
         const payload = Array.isArray(data.payload) ? data.payload : [data.payload];
         if (payload.length === 0) return { data: [], error: null };
@@ -878,13 +892,7 @@ export const neonQueryServerFn = createServerFn({ method: "POST" })
           const keys = Object.keys(item).filter((k) => item[k] !== undefined);
           const cols = keys.map((k) => `"${k}"`).join(", ");
           const placeholders = keys.map((_, i) => `$${i + 1}`).join(", ");
-          const vals = keys.map((k) => {
-            const v = item[k];
-            if (typeof v === "object" && v !== null && !(v instanceof Date)) {
-              return JSON.stringify(v);
-            }
-            return v;
-          });
+          const vals = keys.map((k) => serializeVal(table, k, item[k]));
 
           const sql = `INSERT INTO public."${table}" (${cols}) VALUES (${placeholders}) RETURNING *`;
           const res = await client.query(sql, vals);
@@ -906,12 +914,8 @@ export const neonQueryServerFn = createServerFn({ method: "POST" })
         const params: any[] = [];
 
         keys.forEach((k) => {
-          const v = item[k];
-          if (typeof v === "object" && v !== null && !(v instanceof Date)) {
-            params.push(JSON.stringify(v));
-          } else {
-            params.push(v);
-          }
+          const v = serializeVal(table, k, item[k]);
+          params.push(v);
           setParts.push(`"${k}" = $${params.length}`);
         });
 

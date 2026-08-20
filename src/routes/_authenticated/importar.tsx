@@ -919,18 +919,14 @@ export async function importRows(
     if (incoming === null || incoming === undefined || incoming === "") {
       return false; // Skip empty incoming values to avoid overwriting existing data
     }
-    if (existing === null || existing === undefined) {
-      return true; // Any non-empty incoming value is different from null/undefined
+    if (existing === null || existing === undefined || existing === "") {
+      return true; // Any non-empty incoming value is different from null/undefined/empty
     }
 
-    if (k === "cpf" || k === "telefone") {
+    if (k === "cpf") {
       const cleanEx = String(existing).replace(/\D/g, "");
       const cleanNew = String(incoming).replace(/\D/g, "");
       return cleanEx !== cleanNew;
-    }
-
-    if (k === "email" || k === "nome" || k === "cargo" || k === "status") {
-      return String(existing).trim().toLowerCase() !== String(incoming).trim().toLowerCase();
     }
 
     if (
@@ -944,6 +940,22 @@ export async function importRows(
       const iso2 = parseDateToISO(incoming);
       if (!iso1 || !iso2) return String(existing ?? "").trim() !== String(incoming ?? "").trim();
       return iso1.split("T")[0] !== iso2.split("T")[0];
+    }
+
+    if (
+      k === "email" ||
+      k === "nome" ||
+      k === "cargo" ||
+      k === "status" ||
+      k === "telefone" ||
+      k === "produto" ||
+      k === "horario_entrada" ||
+      k === "horario_saida" ||
+      k === "matricula" ||
+      k === "email_senha" ||
+      k === "em_pre_atendimento"
+    ) {
+      return String(existing ?? "").trim() !== String(incoming ?? "").trim();
     }
 
     return String(existing).trim() !== String(incoming).trim();
@@ -1738,9 +1750,23 @@ export async function importRows(
         "dt_admissao",
         "admissao_em",
         "admissão em",
+        "dt_admissao_em",
+        "data de admissao",
+        "data de admissão",
       ];
 
-      const produtoKeys = ["produto", "produto/servico", "produto/serviço", "servico", "serviço"];
+      const produtoKeys = [
+        "produto",
+        "produto/servico",
+        "produto/serviço",
+        "servico",
+        "serviço",
+        "campanha",
+        "projeto",
+        "fila",
+        "skill",
+        "produto / servico",
+      ];
       const entradaKeys = [
         "entrada",
         "horario entrada",
@@ -1748,6 +1774,15 @@ export async function importRows(
         "horario_entrada",
         "hora entrada",
         "hora_entrada",
+        "horario de entrada",
+        "horário de entrada",
+        "inicio",
+        "início",
+        "horario inicio",
+        "horário início",
+        "hora inicio",
+        "hora início",
+        "entrada (horário)",
       ];
       const saidaKeys = [
         "saída",
@@ -1759,14 +1794,85 @@ export async function importRows(
         "hora saída",
         "hora saida",
         "hora_saida",
+        "horario de saída",
+        "horario de saida",
+        "termino",
+        "término",
+        "horario termino",
+        "horário término",
+        "hora termino",
+        "hora término",
+        "fim",
+        "horario fim",
+        "horário fim",
+        "hora fim",
+        "saida (horário)",
+        "saída (horário)",
+        "saida prevista",
       ];
+
+      const isTelefoneCol = (lk: string, ck: string) => {
+        const exact = [
+          "telefone",
+          "celular",
+          "fone",
+          "tel",
+          "cel",
+          "contato",
+          "whatsapp",
+          "whats",
+          "wpp",
+          "phone",
+          "mobile",
+        ];
+        if (exact.includes(lk) || exact.includes(ck)) return true;
+        return (
+          ck.includes("telefone") ||
+          ck.includes("celular") ||
+          ck.includes("fone") ||
+          ck.startsWith("tel") ||
+          ck.includes("contato") ||
+          ck.includes("whatsapp") ||
+          ck.includes("whats") ||
+          ck.includes("wpp")
+        );
+      };
+
+      const isSaidaCol = (lk: string, ck: string) => {
+        if (
+          ck.includes("inativac") ||
+          ck.includes("desligam") ||
+          ck.includes("datadeslig") ||
+          ck.includes("datainativ")
+        ) {
+          return false;
+        }
+        if (saidaKeys.includes(lk) || saidaKeys.map(cleanKey).includes(ck)) return true;
+        return (
+          ck.includes("said") ||
+          ck.includes("termin") ||
+          (ck.includes("horario") && ck.includes("fim")) ||
+          (ck.includes("hora") && ck.includes("fim"))
+        );
+      };
+
+      const isEntradaCol = (lk: string, ck: string) => {
+        if (entradaKeys.includes(lk) || entradaKeys.map(cleanKey).includes(ck)) return true;
+        return (
+          ck.includes("entrad") ||
+          (ck.includes("horario") && ck.includes("ini")) ||
+          (ck.includes("hora") && ck.includes("ini"))
+        );
+      };
 
       for (const [rowKey, rowValue] of Object.entries(r)) {
         const lowerKey = rowKey.toLowerCase().trim();
         const cleanedKey = cleanKey(lowerKey);
 
         if (lowerKey === "nome" || cleanedKey === "nome") {
-          nome = String(rowValue ?? "").trim();
+          nome = String(rowValue ?? "")
+            .trim()
+            .slice(0, 150);
         } else if (lowerKey === "cpf" || cleanedKey === "cpf") {
           rawCpf = String(rowValue ?? "").trim();
         } else if (isEmailSenhaColumn(lowerKey)) {
@@ -1779,21 +1885,20 @@ export async function importRows(
           cleanedKey === "webmail"
         ) {
           email = String(rowValue ?? "").trim();
-        } else if (
-          lowerKey === "telefone" ||
-          cleanedKey === "telefone" ||
-          cleanedKey === "celular" ||
-          cleanedKey === "fone" ||
-          cleanedKey === "tel"
-        ) {
-          telefone = String(rowValue ?? "").trim();
+        } else if (isTelefoneCol(lowerKey, cleanedKey)) {
+          // Allow any characters with limit of 80 characters
+          telefone = String(rowValue ?? "")
+            .trim()
+            .slice(0, 80);
         } else if (
           lowerKey === "cargo" ||
           cleanedKey === "cargo" ||
           cleanedKey === "funcao" ||
           cleanedKey === "posicao"
         ) {
-          cargo = String(rowValue ?? "").trim();
+          cargo = String(rowValue ?? "")
+            .trim()
+            .slice(0, 80);
         } else if (lowerKey === "status" || cleanedKey === "status" || cleanedKey === "situacao") {
           rawStatus = String(rowValue ?? "").trim();
         } else if (
@@ -1823,11 +1928,18 @@ export async function importRows(
           cleanedKey.includes("produt") ||
           cleanedKey.includes("servic")
         ) {
-          produto = String(rowValue ?? "").trim();
-        } else if (entradaKeys.includes(lowerKey) || cleanedKey.includes("entrad")) {
-          horarioEntrada = String(rowValue ?? "").trim();
-        } else if (saidaKeys.includes(lowerKey) || cleanedKey.includes("said")) {
-          horarioSaida = String(rowValue ?? "").trim();
+          produto = String(rowValue ?? "")
+            .trim()
+            .slice(0, 80);
+        } else if (isEntradaCol(lowerKey, cleanedKey)) {
+          horarioEntrada = String(rowValue ?? "")
+            .trim()
+            .slice(0, 80);
+        } else if (isSaidaCol(lowerKey, cleanedKey)) {
+          // Allow any characters with limit of 80 characters
+          horarioSaida = String(rowValue ?? "")
+            .trim()
+            .slice(0, 80);
         }
       }
 
@@ -1919,20 +2031,21 @@ export async function importRows(
           : colabExistente?.operacao_id || null);
 
       const colabPayload: any = {
-        nome,
+        nome: nome || colabExistente?.nome || "",
         cpf: rawCpf || null,
         email: email || null,
         email_senha: emailSenha || colabExistente?.email_senha || null,
-        telefone: telefone || null,
-        cargo: cargo || null,
+        telefone: telefone !== "" ? telefone : colabExistente?.telefone || null,
+        cargo: cargo !== "" ? cargo : colabExistente?.cargo || null,
         status: status as any,
         inativado_em,
         data_nascimento: parseDateToISO(dataNascimento) || colabExistente?.data_nascimento || null,
         operacao_id: finalOperacaoId || null,
         admissao_em: parseDateToISO(admissao) || colabExistente?.admissao_em || null,
-        produto: produto || colabExistente?.produto || null,
-        horario_entrada: horarioEntrada || colabExistente?.horario_entrada || null,
-        horario_saida: horarioSaida || colabExistente?.horario_saida || null,
+        produto: produto !== "" ? produto : colabExistente?.produto || null,
+        horario_entrada:
+          horarioEntrada !== "" ? horarioEntrada : colabExistente?.horario_entrada || null,
+        horario_saida: horarioSaida !== "" ? horarioSaida : colabExistente?.horario_saida || null,
       };
 
       if (kind === "pre_atendimento") {

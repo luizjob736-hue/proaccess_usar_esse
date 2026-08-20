@@ -878,7 +878,13 @@ export const neonQueryServerFn = createServerFn({ method: "POST" })
           const keys = Object.keys(item).filter((k) => item[k] !== undefined);
           const cols = keys.map((k) => `"${k}"`).join(", ");
           const placeholders = keys.map((_, i) => `$${i + 1}`).join(", ");
-          const vals = keys.map((k) => item[k]);
+          const vals = keys.map((k) => {
+            const v = item[k];
+            if (typeof v === "object" && v !== null && !(v instanceof Date)) {
+              return JSON.stringify(v);
+            }
+            return v;
+          });
 
           const sql = `INSERT INTO public."${table}" (${cols}) VALUES (${placeholders}) RETURNING *`;
           const res = await client.query(sql, vals);
@@ -900,7 +906,12 @@ export const neonQueryServerFn = createServerFn({ method: "POST" })
         const params: any[] = [];
 
         keys.forEach((k) => {
-          params.push(item[k]);
+          const v = item[k];
+          if (typeof v === "object" && v !== null && !(v instanceof Date)) {
+            params.push(JSON.stringify(v));
+          } else {
+            params.push(v);
+          }
           setParts.push(`"${k}" = $${params.length}`);
         });
 

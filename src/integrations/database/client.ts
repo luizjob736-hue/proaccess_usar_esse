@@ -43,7 +43,11 @@ class QueryBuilder {
   private table: string;
   private action: "select" | "insert" | "update" | "upsert" | "delete" = "select";
   private selectCols = "*";
-  private whereClauses: { col: string; op: "eq" | "neq" | "in" | "ilike" | "or"; val: any }[] = [];
+  private whereClauses: {
+    col: string;
+    op: "eq" | "neq" | "in" | "ilike" | "or" | "is" | "not" | "gt" | "gte" | "lt" | "lte";
+    val: any;
+  }[] = [];
   private orderBy: { col: string; ascending: boolean }[] = [];
   private limitVal?: number;
   private offsetVal?: number;
@@ -79,6 +83,36 @@ class QueryBuilder {
 
   neq(col: string, val: any) {
     this.whereClauses.push({ col, op: "neq", val });
+    return this;
+  }
+
+  is(col: string, val: any) {
+    this.whereClauses.push({ col, op: "is", val });
+    return this;
+  }
+
+  not(col: string, op: string, val: any) {
+    this.whereClauses.push({ col, op: "not", val: { op, val } });
+    return this;
+  }
+
+  gt(col: string, val: any) {
+    this.whereClauses.push({ col, op: "gt", val });
+    return this;
+  }
+
+  gte(col: string, val: any) {
+    this.whereClauses.push({ col, op: "gte", val });
+    return this;
+  }
+
+  lt(col: string, val: any) {
+    this.whereClauses.push({ col, op: "lt", val });
+    return this;
+  }
+
+  lte(col: string, val: any) {
+    this.whereClauses.push({ col, op: "lte", val });
     return this;
   }
 

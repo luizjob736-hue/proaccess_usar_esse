@@ -652,7 +652,11 @@ export const neonQueryServerFn = createServerFn({ method: "POST" })
       table: string;
       action: "select" | "insert" | "update" | "upsert" | "delete";
       selectCols?: string;
-      whereClauses?: { col: string; op: "eq" | "neq" | "in" | "ilike" | "or"; val: any }[];
+      whereClauses?: {
+        col: string;
+        op: "eq" | "neq" | "in" | "ilike" | "or" | "is" | "not" | "gt" | "gte" | "lt" | "lte";
+        val: any;
+      }[];
       orderBy?: { col: string; ascending: boolean }[];
       limitVal?: number;
       offsetVal?: number;
@@ -791,6 +795,50 @@ export const neonQueryServerFn = createServerFn({ method: "POST" })
               } else {
                 whereParts.push("1=0");
               }
+            } else if (w.op === "is") {
+              if (w.val === null || w.val === "null") {
+                whereParts.push(`"${table}"."${w.col}" IS NULL`);
+              } else if (w.val === true) {
+                whereParts.push(`"${table}"."${w.col}" IS TRUE`);
+              } else if (w.val === false) {
+                whereParts.push(`"${table}"."${w.col}" IS FALSE`);
+              } else if (w.val === "not.null") {
+                whereParts.push(`"${table}"."${w.col}" IS NOT NULL`);
+              } else {
+                params.push(w.val);
+                whereParts.push(`"${table}"."${w.col}" = $${params.length}`);
+              }
+            } else if (w.op === "not") {
+              if (w.val?.op === "is" && (w.val?.val === null || w.val?.val === "null")) {
+                whereParts.push(`"${table}"."${w.col}" IS NOT NULL`);
+              } else if (w.val?.op === "in") {
+                const rawArr = Array.isArray(w.val?.val)
+                  ? w.val.val
+                  : String(w.val?.val || "")
+                      .replace(/[()"]/g, "")
+                      .split(",")
+                      .map((s) => s.trim())
+                      .filter(Boolean);
+                if (rawArr.length > 0) {
+                  params.push(rawArr);
+                  whereParts.push(`NOT ("${table}"."${w.col}" = ANY($${params.length}))`);
+                }
+              } else {
+                params.push(w.val?.val ?? w.val);
+                whereParts.push(`"${table}"."${w.col}" != $${params.length}`);
+              }
+            } else if (w.op === "gt") {
+              params.push(w.val);
+              whereParts.push(`"${table}"."${w.col}" > $${params.length}`);
+            } else if (w.op === "gte") {
+              params.push(w.val);
+              whereParts.push(`"${table}"."${w.col}" >= $${params.length}`);
+            } else if (w.op === "lt") {
+              params.push(w.val);
+              whereParts.push(`"${table}"."${w.col}" < $${params.length}`);
+            } else if (w.op === "lte") {
+              params.push(w.val);
+              whereParts.push(`"${table}"."${w.col}" <= $${params.length}`);
             } else if (w.op === "or") {
               // ex: "nome.ilike.%foo%,cpf.ilike.%foo%"
               const conds = String(w.val)

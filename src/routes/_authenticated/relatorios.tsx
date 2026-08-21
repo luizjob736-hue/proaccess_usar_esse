@@ -19,17 +19,22 @@ const RELATORIOS = [
   },
   {
     key: "pendencias",
-    title: "Pendências (Fila Detalhada)",
-    desc: "Todas as pendências com colaborador, operação, sistema, tipo, status, prioridade, responsável e datas",
+    title: "Pendências Abertas (Fila Detalhada)",
+    desc: "Apenas pendências ativas e não tratadas com colaborador, operação, sistema, tipo, status e SLA",
   },
   {
     key: "pendencias_matriz",
-    title: "Pendências (Matriz por Sistema)",
-    desc: "Visão consolidada de pendências por Colaborador × Sistemas com operação e contatos",
+    title: "Pendências Abertas (Matriz por Sistema)",
+    desc: "Visão consolidada de pendências em aberto por Colaborador × Sistemas ativos",
+  },
+  {
+    key: "pendencias_historico",
+    title: "Histórico Completo de Pendências (Geral)",
+    desc: "Histórico integral de pendências (incluindo tratadas, concluídas e arquivadas) com datas de resolução",
   },
   {
     key: "colaboradores",
-    title: "Colaboradores",
+    title: "Colaboradores (Cadastro Completo)",
     desc: "Todos os colaboradores com operação, cargo, contatos, dados de e-mail e status cadastral",
   },
   {
@@ -264,6 +269,120 @@ async function fetchRel(k: string) {
       .select(
         "id,titulo,descricao,tipo,status,prioridade,solicitado,criado_em,data_inicio,sla_em,data_resolucao,concluido_em,arquivado,colaborador_id,sistema_id,responsavel_id",
       )
+      .eq("arquivado", false)
+      .is("concluido_em", null)
+      .order("criado_em", { ascending: false });
+
+    const { data: colabsAll = [] } = await db
+      .from("colaboradores")
+      .select(
+        "id,nome,cpf,data_nascimento,email,email_senha,telefone,cargo,status,operacao:operacoes(nome)",
+      );
+
+    const { data: sistemasAll = [] } = await db.from("sistemas").select("id,nome");
+    const { data: profilesAll = [] } = await db.from("profiles").select("id,nome,email");
+    const { data: acessosAll = [] } = await db
+      .from("acessos")
+      .select("colaborador_id,sistema_id,login,senha");
+
+    const accessLookup = new Set<string>();
+    for (const a of acessosAll ?? []) {
+      const isRealLogin =
+        a.login && !["", "-", "Solicitado", "solicitado"].includes(a.login.trim());
+      const isRealSenha =
+        a.senha &&
+        !["", "-", "Solicitado", "solicitado", "REDEFINIÇÃO", "REENVIAR"].includes(a.senha.trim());
+      if (isRealLogin && isRealSenha && a.colaborador_id && a.sistema_id) {
+        accessLookup.add(`${a.colaborador_id}:${a.sistema_id}`);
+      }
+    }
+
+    const colabById = new Map<string, any>();
+    const colabByName = new Map<string, any>();
+    for (const c of colabsAll ?? []) {
+      colabById.set(c.id, c);
+      if (c.nome) {
+        colabByName.set(c.nome.trim().toLowerCase(), c);
+      }
+    }
+
+    const sistemaById = new Map<string, any>();
+    for (const s of sistemasAll ?? []) {
+      sistemaById.set(s.id, s);
+    }
+
+    const profileById = new Map<string, any>();
+    for (const p of profilesAll ?? []) {
+      profileById.set(p.id, p);
+    }
+
+    const rows: any[] = [];
+    for (const p of pendenciasRaw ?? []) {
+      const stNorm = String(p.status ?? "")
+        .toLowerCase()
+        .trim();
+      if (["concluido", "concluído", "resolvido", "cancelado"].includes(stNorm)) {
+        continue;
+      }
+
+      let colab = p.colaborador_id ? colabById.get(p.colaborador_id) : null;
+      if (!colab && p.titulo) {
+        colab = colabByName.get(p.titulo.trim().toLowerCase());
+      }
+
+      // Skip inactive or departed collaborators
+      if (colab && ["inativo", "desligado"].includes(colab.status)) {
+        continue;
+      }
+
+      // Skip if access is already granted and credentials are active
+      if (
+        p.colaborador_id &&
+        p.sistema_id &&
+        accessLookup.has(`${p.colaborador_id}:${p.sistema_id}`)
+      ) {
+        if (p.tipo === "solicitacao_acesso" || (p.titulo || "").toUpperCase().includes("CRIAÇÃO")) {
+          continue;
+        }
+      }
+
+      const sistema = p.sistema_id ? sistemaById.get(p.sistema_id) : null;
+      const responsavel = p.responsavel_id ? profileById.get(p.responsavel_id) : null;
+
+      rows.push({
+        "ID / Protocolo": p.id,
+        Título: p.titulo ?? "",
+        Tipo: getPendenciaTipoLabel(p.tipo, p.titulo),
+        "Status da Pendência": getPendenciaStatusLabel(p.status),
+        Prioridade: getPendenciaPrioridadeLabel(p.prioridade),
+        Solicitado: p.solicitado ? "Sim" : "Não",
+        Sistema: sistema?.nome ?? "-",
+        Colaborador: colab?.nome ? colab.nome.toUpperCase() : p.titulo || "-",
+        CPF: formatCPF(colab?.cpf),
+        "Data de Nascimento": formatDateBR(colab?.data_nascimento),
+        Email: colab?.email ? colab.email.toLowerCase() : "",
+        "Senha E-mail": colab?.email_senha ?? "",
+        Operação: colab?.operacao?.nome ?? "",
+        Cargo: colab?.cargo ?? "",
+        "Status do Colaborador": colab?.status ? String(colab.status).toUpperCase() : "ATIVO",
+        Telefone: colab?.telefone ?? "",
+        Responsável: responsavel?.nome ?? (responsavel?.email || "-"),
+        "Criado em": formatDateTimeBR(p.criado_em),
+        SLA: formatDateBR(p.sla_em),
+        "Data Início": formatDateBR(p.data_inicio),
+        Descrição: p.descricao ?? "",
+      });
+    }
+
+    return rows;
+  }
+
+  if (k === "pendencias_historico") {
+    const { data: pendenciasRaw = [] } = await db
+      .from("pendencias")
+      .select(
+        "id,titulo,descricao,tipo,status,prioridade,solicitado,criado_em,data_inicio,sla_em,data_resolucao,concluido_em,arquivado,colaborador_id,sistema_id,responsavel_id",
+      )
       .order("criado_em", { ascending: false });
 
     const { data: colabsAll = [] } = await db
@@ -302,11 +421,16 @@ async function fetchRel(k: string) {
       const sistema = p.sistema_id ? sistemaById.get(p.sistema_id) : null;
       const responsavel = p.responsavel_id ? profileById.get(p.responsavel_id) : null;
 
+      let statusDisplay = getPendenciaStatusLabel(p.status);
+      if (p.arquivado && statusDisplay === "Pendente") {
+        statusDisplay = "Arquivado / Concluído";
+      }
+
       return {
         "ID / Protocolo": p.id,
         Título: p.titulo ?? "",
         Tipo: getPendenciaTipoLabel(p.tipo, p.titulo),
-        "Status da Pendência": getPendenciaStatusLabel(p.status),
+        "Status da Pendência": statusDisplay,
         Prioridade: getPendenciaPrioridadeLabel(p.prioridade),
         Solicitado: p.solicitado ? "Sim" : "Não",
         Sistema: sistema?.nome ?? "-",
@@ -333,8 +457,11 @@ async function fetchRel(k: string) {
   if (k === "pendencias_matriz") {
     const { data: activePendencias = [] } = await db
       .from("pendencias")
-      .select("id, colaborador_id, sistema_id, status, tipo, titulo, criado_em")
-      .eq("arquivado", false);
+      .select(
+        "id, colaborador_id, sistema_id, status, tipo, titulo, criado_em, concluido_em, data_resolucao, arquivado",
+      )
+      .eq("arquivado", false)
+      .is("concluido_em", null);
 
     const { data: rawSistemas = [] } = await db.from("sistemas").select("id, nome").order("nome");
     const sistemas = (rawSistemas ?? []).filter(
@@ -345,7 +472,24 @@ async function fetchRel(k: string) {
       .from("colaboradores")
       .select(
         "id, nome, cpf, data_nascimento, email, email_senha, telefone, cargo, status, operacao:operacoes(nome)",
-      );
+      )
+      .not("status", "in", '("inativo","desligado")');
+
+    const { data: acessosAll = [] } = await db
+      .from("acessos")
+      .select("colaborador_id,sistema_id,login,senha");
+
+    const accessLookup = new Set<string>();
+    for (const a of acessosAll ?? []) {
+      const isRealLogin =
+        a.login && !["", "-", "Solicitado", "solicitado"].includes(a.login.trim());
+      const isRealSenha =
+        a.senha &&
+        !["", "-", "Solicitado", "solicitado", "REDEFINIÇÃO", "REENVIAR"].includes(a.senha.trim());
+      if (isRealLogin && isRealSenha && a.colaborador_id && a.sistema_id) {
+        accessLookup.add(`${a.colaborador_id}:${a.sistema_id}`);
+      }
+    }
 
     const colabById = new Map<string, any>();
     const colabByName = new Map<string, any>();
@@ -358,6 +502,13 @@ async function fetchRel(k: string) {
 
     const colabPendencias = new Map<string, any[]>();
     for (const p of activePendencias ?? []) {
+      const stNorm = String(p.status ?? "")
+        .toLowerCase()
+        .trim();
+      if (["concluido", "concluído", "resolvido", "cancelado"].includes(stNorm)) {
+        continue;
+      }
+
       let matchedColabId = p.colaborador_id;
       if (!matchedColabId && p.titulo) {
         const matchedColab = colabByName.get(p.titulo.trim().toLowerCase());
@@ -366,15 +517,26 @@ async function fetchRel(k: string) {
         }
       }
 
-      if (matchedColabId) {
-        if (!colabPendencias.has(matchedColabId)) {
-          colabPendencias.set(matchedColabId, []);
-        }
-        colabPendencias.get(matchedColabId)!.push(p);
+      if (!matchedColabId || !colabById.has(matchedColabId)) {
+        continue;
       }
+
+      // If access has already been granted for this system, skip creation pendências
+      if (p.sistema_id && accessLookup.has(`${matchedColabId}:${p.sistema_id}`)) {
+        if (p.tipo === "solicitacao_acesso" || (p.titulo || "").toUpperCase().includes("CRIAÇÃO")) {
+          continue;
+        }
+      }
+
+      if (!colabPendencias.has(matchedColabId)) {
+        colabPendencias.set(matchedColabId, []);
+      }
+      colabPendencias.get(matchedColabId)!.push(p);
     }
 
-    const colabs = (colabsAll ?? []).filter((c: any) => colabPendencias.has(c.id));
+    const colabs = (colabsAll ?? []).filter(
+      (c: any) => colabPendencias.has(c.id) && colabPendencias.get(c.id)!.length > 0,
+    );
     colabs.sort((a: any, b: any) => (a.nome || "").localeCompare(b.nome || ""));
 
     return colabs.map((c: any) => {

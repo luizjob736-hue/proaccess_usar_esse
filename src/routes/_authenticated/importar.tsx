@@ -2187,6 +2187,29 @@ export async function importRows(
               );
             }
           }
+
+          // Auto-resolve any open pendência for this collaborator + system if real credentials were saved
+          const isRealLogin =
+            userVal && !["", "-", "Solicitado", "solicitado"].includes(userVal.trim());
+          const isRealSenha =
+            passVal &&
+            !["", "-", "Solicitado", "solicitado", "REDEFINIÇÃO", "REENVIAR"].includes(
+              passVal.trim(),
+            );
+          if (isRealLogin && isRealSenha) {
+            const nowIso = new Date().toISOString();
+            await db
+              .from("pendencias")
+              .update({
+                status: "concluido",
+                concluido_em: nowIso,
+                data_resolucao: nowIso.split("T")[0],
+                arquivado: true,
+              })
+              .eq("colaborador_id", colId)
+              .eq("sistema_id", s.id)
+              .eq("arquivado", false);
+          }
         }
       }
 

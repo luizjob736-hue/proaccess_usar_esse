@@ -296,11 +296,36 @@ export function MatrizView({
       };
       const { error } = await db.from("acessos").insert(toSend);
       if (error) throw error;
+
+      if (payload.colaborador_id && payload.sistema_id) {
+        const isRealLogin =
+          toSend.login && !["", "-", "Solicitado", "solicitado"].includes(toSend.login.trim());
+        const isRealSenha =
+          toSend.senha &&
+          !["", "-", "Solicitado", "solicitado", "REDEFINIÇÃO", "REENVIAR"].includes(
+            toSend.senha.trim(),
+          );
+        if (isRealLogin && isRealSenha) {
+          const nowIso = new Date().toISOString();
+          await db
+            .from("pendencias")
+            .update({
+              status: "concluido",
+              concluido_em: nowIso,
+              data_resolucao: nowIso.split("T")[0],
+              arquivado: true,
+            })
+            .eq("colaborador_id", payload.colaborador_id)
+            .eq("sistema_id", payload.sistema_id)
+            .eq("arquivado", false);
+        }
+      }
     },
     onSuccess: () => {
       toast.success("Acesso adicionado");
       setAddAcessoFor(null);
       qc.invalidateQueries({ queryKey: ["matriz-acessos-full"] });
+      qc.invalidateQueries({ queryKey: ["pendencias"] });
     },
     onError: (e: any) => toast.error(e.message),
   });
@@ -308,13 +333,40 @@ export function MatrizView({
   const editarAcesso = useMutation({
     mutationFn: async (payload: any) => {
       const { id, login, senha } = payload;
+      const { data: acs } = await db
+        .from("acessos")
+        .select("colaborador_id, sistema_id")
+        .eq("id", id)
+        .maybeSingle();
       const { error } = await db.from("acessos").update({ login, senha }).eq("id", id);
       if (error) throw error;
+
+      if (acs?.colaborador_id && acs?.sistema_id) {
+        const isRealLogin = login && !["", "-", "Solicitado", "solicitado"].includes(login.trim());
+        const isRealSenha =
+          senha &&
+          !["", "-", "Solicitado", "solicitado", "REDEFINIÇÃO", "REENVIAR"].includes(senha.trim());
+        if (isRealLogin && isRealSenha) {
+          const nowIso = new Date().toISOString();
+          await db
+            .from("pendencias")
+            .update({
+              status: "concluido",
+              concluido_em: nowIso,
+              data_resolucao: nowIso.split("T")[0],
+              arquivado: true,
+            })
+            .eq("colaborador_id", acs.colaborador_id)
+            .eq("sistema_id", acs.sistema_id)
+            .eq("arquivado", false);
+        }
+      }
     },
     onSuccess: () => {
       toast.success("Acesso atualizado");
       setEditAcesso(null);
       qc.invalidateQueries({ queryKey: ["matriz-acessos-full"] });
+      qc.invalidateQueries({ queryKey: ["pendencias"] });
     },
     onError: (e: any) => toast.error(e.message),
   });

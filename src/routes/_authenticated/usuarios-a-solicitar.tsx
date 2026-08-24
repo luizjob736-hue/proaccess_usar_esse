@@ -111,6 +111,13 @@ function UsuariosASolicitar() {
     queryFn: async () => (await db.from("operacoes").select("id,nome").order("nome")).data ?? [],
   });
 
+  const { data: quadros = [] } = useQuery({
+    queryKey: ["pendencia_quadros"],
+    queryFn: async () => (await db.from("pendencia_quadros").select("*").order("ordem")).data ?? [],
+  });
+
+  const [destQuadro, setDestQuadro] = useState<string>("");
+
   // Filter unsought entries (solicitado === false) and exclude inactive/desligado collaborators
   const listASolicitar = useMemo(() => {
     return list.filter((p: any) => {
@@ -172,15 +179,16 @@ function UsuariosASolicitar() {
 
   // Mutations
   const solicitMutation = useMutation({
-    mutationFn: async (id: string) => {
+    mutationFn: async ({ id, quadroNome }: { id: string; quadroNome?: string }) => {
       const nowStr = new Date().toISOString().split("T")[0];
+      const targetQuadro = quadroNome || (quadros.length > 0 ? quadros[0].nome : "backlog");
 
       // Fetch pendencia details to get colaborador_id and sistema_id
       const { data: item } = await db.from("pendencias").select("*").eq("id", id).maybeSingle();
 
       const { error } = await db
         .from("pendencias")
-        .update({ solicitado: true, data_inicio: nowStr, status: "backlog" })
+        .update({ solicitado: true, data_inicio: nowStr, status: targetQuadro })
         .eq("id", id);
       if (error) throw error;
 
@@ -472,7 +480,7 @@ function UsuariosASolicitar() {
                         className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex items-center gap-1.5 h-9 px-3 rounded-lg shadow-sm"
                         onClick={(e) => {
                           e.stopPropagation();
-                          solicitMutation.mutate(p.id);
+                          solicitMutation.mutate({ id: p.id });
                         }}
                       >
                         <CheckCircle className="h-4 w-4" />
@@ -512,7 +520,13 @@ function UsuariosASolicitar() {
       </Card>
 
       {/* Details Dialog */}
-      <Dialog open={!!detail} onOpenChange={(o) => !o && setDetailId(null)}>
+      <Dialog
+        open={!!detail}
+        onOpenChange={(o) => {
+          if (!o) setDetailId(null);
+          else if (quadros.length > 0) setDestQuadro(quadros[0].nome);
+        }}
+      >
         <DialogContent className="max-w-xl">
           <DialogHeader>
             <DialogTitle className="text-lg font-bold flex items-center gap-2">
@@ -561,11 +575,35 @@ function UsuariosASolicitar() {
                 </div>
               )}
 
+              <div className="rounded-lg border bg-card p-3 space-y-2">
+                <Label className="text-xs font-semibold">
+                  Quadro de Destino no Kanban ao Solicitar
+                </Label>
+                <Select
+                  value={destQuadro || (quadros.length > 0 ? quadros[0].nome : "backlog")}
+                  onValueChange={setDestQuadro}
+                >
+                  <SelectTrigger className="h-8 text-xs font-medium">
+                    <SelectValue placeholder="Selecione o quadro..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {quadros.map((q: any) => (
+                      <SelectItem key={q.id} value={q.nome}>
+                        {q.nome}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
               <DialogFooter className="gap-2">
                 <Button
                   className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex items-center gap-1.5"
                   onClick={() => {
-                    solicitMutation.mutate(detail.id);
+                    solicitMutation.mutate({
+                      id: detail.id,
+                      quadroNome: destQuadro || (quadros.length > 0 ? quadros[0].nome : "backlog"),
+                    });
                     setDetailId(null);
                   }}
                 >

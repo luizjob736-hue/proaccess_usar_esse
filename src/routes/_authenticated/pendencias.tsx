@@ -77,6 +77,18 @@ export function getQuadroColor(cor: string): string {
   return c;
 }
 
+export const QUADRO_COLOR_OPTIONS = [
+  { label: "Cinza", value: "bg-slate-500" },
+  { label: "Azul", value: "bg-blue-600" },
+  { label: "Verde", value: "bg-emerald-600" },
+  { label: "Amarelo", value: "bg-amber-500" },
+  { label: "Laranja", value: "bg-orange-500" },
+  { label: "Roxo", value: "bg-purple-600" },
+  { label: "Vermelho", value: "bg-red-600" },
+  { label: "Ciano", value: "bg-cyan-600" },
+  { label: "Rosa", value: "bg-pink-600" },
+];
+
 export function matchesColumnStatus(
   pStatus: string,
   colNome: string,
@@ -165,6 +177,8 @@ function Pendencias() {
   const [selectedSistemas, setSelectedSistemas] = useState<string[]>([]);
   const [selectedColaboradores, setSelectedColaboradores] = useState<string[]>([]);
   const [formDateInicio, setFormDateInicio] = useState(new Date().toISOString().slice(0, 10));
+  const [formQuadro, setFormQuadro] = useState<string>("");
+  const [novoQuadroCor, setNovoQuadroCor] = useState<string>("bg-slate-500");
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   const todayStr = useMemo(() => new Date().toISOString().split("T")[0], []);
@@ -336,7 +350,11 @@ function Pendencias() {
       const { error } = await db.from("pendencia_quadros").insert(form);
       if (error) throw error;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["pendencia_quadros"] }),
+    onSuccess: () => {
+      toast.success("Quadro criado com sucesso!");
+      qc.invalidateQueries({ queryKey: ["pendencia_quadros"] });
+      qc.invalidateQueries({ queryKey: ["pendencias"] });
+    },
     onError: (e: any) => toast.error(e.message),
   });
 
@@ -345,7 +363,11 @@ function Pendencias() {
       const { error } = await db.from("pendencia_quadros").delete().eq("id", id);
       if (error) throw error;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["pendencia_quadros"] }),
+    onSuccess: () => {
+      toast.success("Quadro removido com sucesso!");
+      qc.invalidateQueries({ queryKey: ["pendencia_quadros"] });
+      qc.invalidateQueries({ queryKey: ["pendencias"] });
+    },
     onError: (e: any) => toast.error(e.message),
   });
 
@@ -576,6 +598,7 @@ function Pendencias() {
                 setSelectedSistemas([]);
                 setSelectedColaboradores([]);
                 setFormDateInicio(new Date().toISOString().slice(0, 10));
+                setFormQuadro(quadros.length > 0 ? quadros[0].nome : "PENDENTE");
               }
             }}
           >
@@ -583,7 +606,7 @@ function Pendencias() {
               <Plus className="h-4 w-4" />
               Nova pendência
             </Button>
-            <DialogContent>
+            <DialogContent className="max-w-xl">
               <DialogHeader>
                 <DialogTitle>Nova pendência</DialogTitle>
               </DialogHeader>
@@ -592,11 +615,17 @@ function Pendencias() {
                   e.preventDefault();
                   const fd = new FormData(e.currentTarget);
                   const isAlreadySolicitado = fd.get("solicitado") === "on";
+                  const chosenQuadro =
+                    formQuadro ||
+                    (fd.get("status") as string) ||
+                    (quadros.length > 0 ? quadros[0].nome : "PENDENTE");
+
                   const basePayload = {
                     titulo: fd.get("titulo"),
                     descricao: fd.get("descricao"),
                     tipo: fd.get("tipo") || "outro",
                     prioridade: fd.get("prioridade") || "media",
+                    status: chosenQuadro,
                     operacao_id:
                       (fd.get("operacao_id") as string) ||
                       (selectedOperacaoId !== "todas" && selectedOperacaoId !== "sem_operacao"
@@ -649,16 +678,41 @@ function Pendencias() {
               >
                 <div>
                   <Label>Título</Label>
-                  <Input name="titulo" required />
+                  <Input name="titulo" placeholder="Ex: Solicitação de Acesso CRM" required />
                 </div>
                 <div>
                   <Label>Descrição</Label>
-                  <Textarea name="descricao" />
+                  <Textarea name="descricao" placeholder="Detalhes da pendência..." />
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <Label>Quadro de Destino</Label>
+                    <Select
+                      name="status"
+                      value={formQuadro || (quadros.length > 0 ? quadros[0].nome : "PENDENTE")}
+                      onValueChange={setFormQuadro}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione o quadro..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {quadros.map((q: any) => (
+                          <SelectItem key={q.id} value={q.nome}>
+                            <div className="flex items-center gap-2">
+                              <span
+                                className={`inline-block h-2.5 w-2.5 rounded-full ${getQuadroColor(q.cor)}`}
+                              />
+                              <span className="font-medium">{q.nome}</span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                   <div>
                     <Label>Tipo</Label>
-                    <Select name="tipo" defaultValue="outro">
+                    <Select name="tipo" defaultValue="solicitacao_acesso">
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
@@ -686,6 +740,7 @@ function Pendencias() {
                     </Select>
                   </div>
                 </div>
+
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <Label>Colaboradores (Marcação múltipla)</Label>
@@ -822,47 +877,106 @@ function Pendencias() {
             <Button onClick={() => setOpenQuadros(true)} variant="outline" className="gap-2">
               <Settings className="h-4 w-4" /> Quadros
             </Button>
-            <DialogContent>
+            <DialogContent className="max-w-md">
               <DialogHeader>
                 <DialogTitle>Gerenciar Quadros</DialogTitle>
               </DialogHeader>
               <div className="space-y-4">
-                {quadros.map((q: any) => (
-                  <div key={q.id} className="flex items-center justify-between gap-3">
-                    <Badge className={getQuadroColor(q.cor)}>{q.nome}</Badge>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-destructive"
-                      onClick={() => delQuadro.mutate(q.id)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ))}
+                <p className="text-xs text-muted-foreground">
+                  Quadros ativos no Kanban. Crie ou remova quadros conforme a necessidade do seu
+                  fluxo de trabalho.
+                </p>
+                <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                  {quadros.map((q: any) => {
+                    const quadrosNomes = quadros.map((x: any) => x.nome);
+                    const countInQuadro = list.filter(
+                      (p: any) =>
+                        p.solicitado !== false &&
+                        matchesColumnStatus(p.status, q.nome, quadrosNomes),
+                    ).length;
+
+                    return (
+                      <div
+                        key={q.id}
+                        className="flex items-center justify-between gap-3 p-2.5 rounded-md border bg-card/60"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`h-3 w-3 rounded-full shrink-0 ${getQuadroColor(q.cor)}`}
+                          />
+                          <span className="font-semibold text-sm">{q.nome}</span>
+                          <span className="text-xs text-muted-foreground ml-1">
+                            ({countInQuadro} card{countInQuadro === 1 ? "" : "s"})
+                          </span>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                          title="Remover quadro"
+                          onClick={() => {
+                            if (
+                              confirm(
+                                `Deseja realmente remover o quadro "${q.nome}"? As pendências existentes serão mantidas e redistribuídas.`,
+                              )
+                            ) {
+                              delQuadro.mutate(q.id);
+                            }
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    );
+                  })}
+                  {quadros.length === 0 && (
+                    <p className="text-xs text-muted-foreground text-center py-4">
+                      Nenhum quadro cadastrado.
+                    </p>
+                  )}
+                </div>
 
                 <form
                   onSubmit={(e) => {
                     e.preventDefault();
                     const fd = new FormData(e.currentTarget);
+                    const nome = (fd.get("nome") as string)?.trim();
+                    if (!nome) return;
                     addQuadro.mutate({
-                      nome: fd.get("nome"),
-                      cor: fd.get("cor") || "bg-slate-500",
+                      nome,
+                      cor: novoQuadroCor || "bg-slate-500",
                       ordem: quadros.length + 1,
                     });
                     e.currentTarget.reset();
+                    setNovoQuadroCor("bg-slate-500");
                   }}
-                  className="flex gap-2 items-end pt-4 border-t"
+                  className="space-y-3 pt-4 border-t"
                 >
-                  <div className="flex-1">
-                    <Label className="text-xs">Novo quadro (Nome)</Label>
-                    <Input name="nome" placeholder="Ex: EM TESTE" required />
+                  <div>
+                    <Label className="text-xs font-semibold">Nome do Novo Quadro</Label>
+                    <Input name="nome" placeholder="Ex: EM TESTE, EM HOMOLOGAÇÃO..." required />
                   </div>
-                  <div className="w-32">
-                    <Label className="text-xs">Cor (Tailwind bg)</Label>
-                    <Input name="cor" defaultValue="bg-slate-500" />
+                  <div>
+                    <Label className="text-xs font-semibold">Cor do Quadro</Label>
+                    <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
+                      {QUADRO_COLOR_OPTIONS.map((opt) => (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => setNovoQuadroCor(opt.value)}
+                          className={`h-6 w-6 rounded-full ${opt.value} transition-transform ${
+                            novoQuadroCor === opt.value
+                              ? "ring-2 ring-foreground ring-offset-2 scale-110"
+                              : "opacity-75 hover:opacity-100"
+                          }`}
+                          title={opt.label}
+                        />
+                      ))}
+                    </div>
                   </div>
-                  <Button type="submit">Add</Button>
+                  <Button type="submit" className="w-full" disabled={addQuadro.isPending}>
+                    {addQuadro.isPending ? "Adicionando..." : "Adicionar Quadro"}
+                  </Button>
                 </form>
               </div>
             </DialogContent>
@@ -1186,29 +1300,48 @@ function PendenciaDetail({ p, quadros, onClose }: any) {
         </div>
       </DialogHeader>
       <div className="space-y-3">
-        <div className="flex gap-2">
-          {(() => {
-            const quadrosNomes = quadros?.map((x: any) => x.nome) ?? [];
-            const selectedStatus =
-              quadros?.find((q: any) => matchesColumnStatus(p.status, q.nome, quadrosNomes))
-                ?.nome ?? p.status;
-            return (
-              <Select value={selectedStatus} onValueChange={updateStatus}>
-                <SelectTrigger className="h-7 text-xs w-[140px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {quadros?.map((q: any) => (
-                    <SelectItem key={q.id} value={q.nome}>
-                      {q.nome}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            );
-          })()}
-          <Badge variant="outline">{p.prioridade}</Badge>
-          <Badge variant="outline">{p.tipo}</Badge>
+        <div className="rounded-lg border bg-card p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <Label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+              <span>Quadro de Destino / Status</span>
+            </Label>
+            <span className="text-[11px] text-muted-foreground">
+              Mude o quadro a qualquer momento
+            </span>
+          </div>
+          <div className="flex items-center gap-2.5 flex-wrap">
+            {(() => {
+              const quadrosNomes = quadros?.map((x: any) => x.nome) ?? [];
+              const selectedStatus =
+                quadros?.find((q: any) => matchesColumnStatus(p.status, q.nome, quadrosNomes))
+                  ?.nome ?? p.status;
+              return (
+                <Select value={selectedStatus} onValueChange={updateStatus}>
+                  <SelectTrigger className="h-8 text-xs font-medium w-full sm:w-[220px]">
+                    <SelectValue placeholder="Selecione o quadro" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {quadros?.map((q: any) => (
+                      <SelectItem key={q.id} value={q.nome}>
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`inline-block h-2.5 w-2.5 rounded-full ${getQuadroColor(q.cor)}`}
+                          />
+                          <span className="font-medium">{q.nome}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              );
+            })()}
+            <Badge variant="outline" className="text-xs py-1">
+              Prioridade: <span className="font-semibold ml-1 capitalize">{p.prioridade}</span>
+            </Badge>
+            <Badge variant="outline" className="text-xs py-1">
+              Tipo: <span className="font-semibold ml-1 capitalize">{p.tipo}</span>
+            </Badge>
+          </div>
         </div>
         <p className="text-sm text-muted-foreground">{p.descricao || "Sem descrição"}</p>
         <div className="grid grid-cols-2 gap-3 rounded-md border p-3 bg-muted/30">

@@ -67,7 +67,7 @@ const NAV_FULL = [
   { to: "/chamados", icon: LifeBuoy, label: "Chamados" },
   { to: "/historico", icon: History, label: "Histórico" },
   { to: "/relatorios", icon: FileBarChart, label: "Relatórios" },
-  { to: "/notificacoes", icon: Bell, label: "Notificações" },
+  // { to: "/notificacoes", icon: Bell, label: "Notificações" }, // Temporariamente desativado
   { to: "/administracao", icon: ShieldCheck, label: "Administração" },
   { to: "/lixeira", icon: Trash2, label: "Lixeira" },
   { to: "/configuracoes", icon: Settings, label: "Configurações" },
@@ -119,9 +119,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     },
   });
 
+  // Notificações temporariamente desativadas
+  /*
   const { data: notifCount = 0 } = useQuery({
     queryKey: ["notif-count", me?.user?.id],
-    enabled: !!me?.user?.id,
+    enabled: false,
     queryFn: async () => {
       try {
         const res = await db
@@ -135,8 +137,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     },
     refetchInterval: 30_000,
   });
+  */
 
-  // Background check for scheduled access request dates arriving
+  // Background check for scheduled access request dates arriving (temporariamente desativado)
+  /*
   useEffect(() => {
     if (!me?.user?.id) return;
 
@@ -215,6 +219,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     const interval = setInterval(checkAndGenerateScheduledNotifications, 120_000);
     return () => clearInterval(interval);
   }, [me?.user?.id, qc]);
+  */
 
   function toggleTheme() {
     const next = !dark;
@@ -299,16 +304,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <Button size="icon" variant="ghost" onClick={toggleTheme} title="Tema">
             {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           </Button>
-          <Link to="/notificacoes">
-            <Button size="icon" variant="ghost" className="relative" title="Notificações">
-              <Bell className="h-4 w-4" />
-              {notifCount ? (
-                <Badge className="absolute -right-1 -top-1 h-5 min-w-5 rounded-full bg-accent p-0 text-[10px]">
-                  {notifCount}
-                </Badge>
-              ) : null}
-            </Button>
-          </Link>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="gap-2">

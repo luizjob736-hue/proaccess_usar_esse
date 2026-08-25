@@ -32,8 +32,8 @@ export function parseDateToISO(val: any): string | null {
   const str = String(val).trim();
   if (!str) return null;
 
-  // 1. Check Excel serial date number (e.g. 33009 for 1990-05-15, 45869 for 2025)
-  if (!isNaN(Number(str)) && Number(str) > 1000 && Number(str) < 90000) {
+  // 1. Check Excel serial date number (e.g. 33009 for 1990-05-15, 45869 for 2025, handles floats like 45869.5)
+  if (!isNaN(Number(str)) && Number(str) > 1000 && Number(str) < 900000) {
     const excelNum = Number(str);
     const dateObj = new Date((excelNum - (25567 + 2)) * 86400 * 1000);
     if (!isNaN(dateObj.getTime())) {
@@ -106,6 +106,38 @@ export function parseDateToISO(val: any): string | null {
   }
 
   return null;
+}
+
+export function formatTimeVal(val: any): string | null {
+  if (val === null || val === undefined) return null;
+  const str = String(val).trim();
+  if (!str) return null;
+
+  // If decimal between 0 and 1 (Excel time serial, e.g. 0.5694 for 13:40, 0.7083 for 17:00)
+  if (!isNaN(Number(str)) && Number(str) >= 0 && Number(str) < 1) {
+    const totalMinutes = Math.round(Number(str) * 24 * 60);
+    const h = Math.floor(totalMinutes / 60) % 24;
+    const m = totalMinutes % 60;
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+  }
+
+  // Convert 8h, 8h00, 08h30 to 08:00, 08:30
+  const hMatch = str.match(/^(\d{1,2})h(?:(\d{2}))?$/i);
+  if (hMatch) {
+    const h = hMatch[1].padStart(2, "0");
+    const m = hMatch[2] ? hMatch[2].padStart(2, "0") : "00";
+    return `${h}:${m}`;
+  }
+
+  // Standard time format 8:00 or 08:00:00 -> 08:00
+  const timeMatch = str.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  if (timeMatch) {
+    const h = timeMatch[1].padStart(2, "0");
+    const m = timeMatch[2];
+    return `${h}:${m}`;
+  }
+
+  return str;
 }
 
 export const Route = createFileRoute("/_authenticated/importar")({ component: Importar });
@@ -1687,9 +1719,480 @@ export async function importRows(
       return hasEmail && hasSenha;
     };
 
+    const isDataInativacaoCol = (lk: string, ck: string) => {
+      const exact = [
+        "data inativação",
+        "data inativacao",
+        "data_inativacao",
+        "datainativacao",
+        "inativado em",
+        "inativado_em",
+        "data desligamento",
+        "data de desligamento",
+        "data_desligamento",
+        "datadesligamento",
+        "desligado em",
+        "desligado_em",
+        "dt inativacao",
+        "dt inativação",
+        "dt desligamento",
+        "dt_desligamento",
+      ];
+      if (exact.includes(lk) || exact.map(cleanKey).includes(ck)) return true;
+      return (
+        ck.includes("inativac") ||
+        ck.includes("desligam") ||
+        ck.includes("datadeslig") ||
+        ck.includes("datainativ")
+      );
+    };
+
+    const isDataNascimentoCol = (lk: string, ck: string) => {
+      const exact = [
+        "data de nascimento",
+        "data_nascimento",
+        "datanascimento",
+        "nascimento",
+        "data nascimento",
+        "data nasc",
+        "data_nasc",
+        "datanasc",
+        "dt nascimento",
+        "dt_nascimento",
+        "dtnascimento",
+        "dt nasc",
+        "dt_nasc",
+        "dtnasc",
+        "d. nascimento",
+        "d.nascimento",
+        "d.nasc",
+        "aniversario",
+        "aniversário",
+        "dob",
+        "birthdate",
+        "data de nasc",
+      ];
+      if (exact.includes(lk) || exact.map(cleanKey).includes(ck)) return true;
+      return (
+        ck.includes("nasciment") ||
+        ck.includes("datanasc") ||
+        ck.includes("dtnasc") ||
+        ck.includes("aniversar")
+      );
+    };
+
+    const isInicioOperacaoCol = (lk: string, ck: string) => {
+      const exact = [
+        "início na operação",
+        "inicio na operacao",
+        "início na operacao",
+        "inicio na operação",
+        "início da operação",
+        "inicio da operacao",
+        "início da operacao",
+        "inicio da operação",
+        "início operação",
+        "inicio operacao",
+        "início operacao",
+        "inicio operação",
+        "data início operação",
+        "data inicio operacao",
+        "data início na operação",
+        "data inicio na operacao",
+        "data de início na operação",
+        "data de inicio na operacao",
+        "data de início operação",
+        "data de inicio operacao",
+        "dt início operação",
+        "dt inicio operacao",
+        "dt. início operação",
+        "dt. inicio operacao",
+        "dt início na operação",
+        "dt inicio na operacao",
+        "dt_inicio_operacao",
+        "dt_inicio_na_operacao",
+        "inicio producao",
+        "início produção",
+        "inicio em producao",
+        "início em produção",
+        "data producao",
+        "data produção",
+        "dt producao",
+        "dt produção",
+        "inicio atendimento",
+        "início atendimento",
+        "data atendimento",
+        "data de atendimento",
+        "entrada na operação",
+        "entrada na operacao",
+        "data entrada operacao",
+        "data entrada operação",
+        "data de entrada na operacao",
+        "data de entrada na operação",
+        "dt entrada operacao",
+        "dt entrada operação",
+        "inicio oper.",
+        "início oper.",
+        "inicio oper",
+        "início oper",
+        "inicio op",
+        "início op",
+        "dt inicio op",
+        "dt início op",
+        "operacao inicio",
+        "operação início",
+        "operacao_inicio",
+        "previsao inicio",
+        "previsão início",
+        "previsao_inicio",
+        "previsão_início",
+        "inicio treinamento",
+        "início treinamento",
+        "fim treinamento",
+        "fim de treinamento",
+        "início estágio",
+        "inicio estagio",
+      ];
+      if (exact.includes(lk) || exact.map(cleanKey).includes(ck)) return true;
+      return (
+        (ck.includes("inicio") || ck.includes("ini") || ck.includes("previs")) &&
+        (ck.includes("operac") ||
+          ck.includes("op") ||
+          ck.includes("prod") ||
+          ck.includes("atend") ||
+          ck.includes("trein"))
+      );
+    };
+
+    const isAdmissaoCol = (lk: string, ck: string) => {
+      if (isDataInativacaoCol(lk, ck)) return false;
+      if (isDataNascimentoCol(lk, ck)) return false;
+      if (isInicioOperacaoCol(lk, ck)) return false;
+
+      const exact = [
+        "admissao",
+        "admissão",
+        "admissao_em",
+        "admissão em",
+        "dt_admissao",
+        "dt_admissao_em",
+        "dt admissao",
+        "dt admissão",
+        "data admissao",
+        "data admissão",
+        "data de admissao",
+        "data de admissão",
+        "data_admissao",
+        "data_admissão",
+        "dataadmissao",
+        "dataadmissão",
+        "dt adm",
+        "dt adm.",
+        "dt. adm",
+        "data adm",
+        "data adm.",
+        "data_adm",
+        "adm",
+        "contratacao",
+        "contratação",
+        "data contratacao",
+        "data contratação",
+        "dt contratacao",
+        "dt contratação",
+        "data de contratacao",
+        "data de contratação",
+        "admitido em",
+        "admitido",
+        "data admissao/inicio",
+        "data admissão/início",
+      ];
+      if (exact.includes(lk) || exact.map(cleanKey).includes(ck)) return true;
+      return (
+        ck.includes("admiss") ||
+        ck.includes("contratac") ||
+        ck === "adm" ||
+        ck === "dataadm" ||
+        ck === "dtadm"
+      );
+    };
+
+    const isJornadaCol = (lk: string, ck: string) => {
+      const exact = [
+        "jornada",
+        "jornada de trabalho",
+        "jornada_trabalho",
+        "jornadatrabalho",
+        "jornadadetrabalho",
+        "escala",
+        "escala de trabalho",
+        "escala_trabalho",
+        "escaladetrabalho",
+        "tipo de escala",
+        "carga horaria",
+        "carga horária",
+        "carga_horaria",
+        "cargahoraria",
+        "ch",
+        "ch diaria",
+        "ch semanal",
+        "tipo jornada",
+        "tipo de jornada",
+        "tipo_jornada",
+        "tipodejornada",
+        "horas",
+        "horas semanais",
+        "horas/dia",
+        "regime",
+        "regime de trabalho",
+        "regime_trabalho",
+      ];
+      if (exact.includes(lk) || exact.map(cleanKey).includes(ck)) return true;
+      return (
+        ck.includes("jornad") ||
+        ck.includes("cargahor") ||
+        ck.includes("escala") ||
+        ck === "ch" ||
+        ck === "regime"
+      );
+    };
+
+    const isApelidoCol = (lk: string, ck: string) => {
+      const exact = [
+        "apelido intergrall",
+        "apelido integrall",
+        "apelido integral",
+        "apelido intergral",
+        "apelido_intergrall",
+        "apelido_integrall",
+        "apelidointergrall",
+        "apelidointegrall",
+        "apelido",
+        "apelido sistema",
+        "apelido_sistema",
+        "nick",
+        "nick intergrall",
+        "nick integrall",
+        "intergrall",
+        "integrall",
+        "usuario intergrall",
+        "usuário intergrall",
+        "usuario integrall",
+        "usuário integrall",
+        "user intergrall",
+        "user integrall",
+        "login intergrall",
+        "login integrall",
+        "login intergral",
+        "login integral",
+        "apelido intergrall (voz)",
+      ];
+      if (exact.includes(lk) || exact.map(cleanKey).includes(ck)) return true;
+      return (
+        ck.includes("intergral") ||
+        ck.includes("integral") ||
+        ck.includes("apelid") ||
+        ck.includes("nick")
+      );
+    };
+
+    const isSaidaCol = (lk: string, ck: string) => {
+      if (isDataInativacaoCol(lk, ck)) return false;
+      if (isInicioOperacaoCol(lk, ck)) return false;
+      if (isAdmissaoCol(lk, ck)) return false;
+
+      const exact = [
+        "saída",
+        "saida",
+        "horario saída",
+        "horario saida",
+        "horário saída",
+        "horário saida",
+        "horario_saida",
+        "horário_saida",
+        "hora saída",
+        "hora saida",
+        "hora_saida",
+        "hr saída",
+        "hr saida",
+        "hr. saída",
+        "hr. saida",
+        "horario de saída",
+        "horario de saida",
+        "horário de saída",
+        "horário de saida",
+        "termino",
+        "término",
+        "horario termino",
+        "horario término",
+        "horário término",
+        "horário termino",
+        "horario de termino",
+        "horario de término",
+        "hora termino",
+        "hora término",
+        "fim",
+        "horario fim",
+        "horário fim",
+        "hora fim",
+        "hr fim",
+        "saida (horário)",
+        "saída (horário)",
+        "saida (horario)",
+        "saída (horario)",
+        "saida prevista",
+        "saída prevista",
+        "fim de expediente",
+        "fim do turno",
+        "saida turno",
+        "saída turno",
+        "desconexao",
+        "desconexão",
+        "horario desconexao",
+        "horario desconexão",
+      ];
+      if (exact.includes(lk) || exact.map(cleanKey).includes(ck)) return true;
+      return (
+        ck.includes("said") ||
+        ck.includes("termin") ||
+        ck.includes("desconex") ||
+        (ck.includes("horario") && ck.includes("fim")) ||
+        (ck.includes("hora") && ck.includes("fim"))
+      );
+    };
+
+    const isEntradaCol = (lk: string, ck: string) => {
+      if (isInicioOperacaoCol(lk, ck)) return false;
+      if (isAdmissaoCol(lk, ck)) return false;
+      if (isDataNascimentoCol(lk, ck)) return false;
+      if (isDataInativacaoCol(lk, ck)) return false;
+
+      const exact = [
+        "entrada",
+        "horario entrada",
+        "horário entrada",
+        "horario_entrada",
+        "hora entrada",
+        "hora_entrada",
+        "horario de entrada",
+        "horário de entrada",
+        "hr entrada",
+        "hr. entrada",
+        "entrada (horário)",
+        "entrada (horario)",
+        "horario inicio",
+        "horário início",
+        "horario de início",
+        "horario de inicio",
+        "hora inicio",
+        "hora início",
+        "hr inicio",
+        "hr início",
+        "inicio turno",
+        "início turno",
+        "inicio do turno",
+        "início do turno",
+        "entrada turno",
+        "horario conexao",
+        "horario conexão",
+        "conexao",
+        "conexão",
+      ];
+      if (exact.includes(lk) || exact.map(cleanKey).includes(ck)) return true;
+      return (
+        ck.includes("entrad") ||
+        (ck.includes("horario") && (ck.includes("ini") || ck.includes("entr"))) ||
+        (ck.includes("hora") && (ck.includes("ini") || ck.includes("entr")))
+      );
+    };
+
+    const isTelefoneCol = (lk: string, ck: string) => {
+      const exact = [
+        "telefone",
+        "celular",
+        "fone",
+        "tel",
+        "cel",
+        "contato",
+        "whatsapp",
+        "whats",
+        "wpp",
+        "phone",
+        "mobile",
+      ];
+      if (exact.includes(lk) || exact.map(cleanKey).includes(ck)) return true;
+      return (
+        ck.includes("telefone") ||
+        ck.includes("celular") ||
+        ck.includes("fone") ||
+        ck.startsWith("tel") ||
+        ck.includes("contato") ||
+        ck.includes("whatsapp") ||
+        ck.includes("whats") ||
+        ck.includes("wpp")
+      );
+    };
+
+    const isCargoCol = (lk: string, ck: string) => {
+      const exact = [
+        "cargo",
+        "funcao",
+        "função",
+        "posicao",
+        "posição",
+        "role",
+        "perfil_cargo",
+        "ocupacao",
+        "ocupação",
+      ];
+      if (exact.includes(lk) || exact.map(cleanKey).includes(ck)) return true;
+      return ck === "cargo" || ck === "funcao" || ck === "posicao" || ck === "ocupacao";
+    };
+
+    const isStatusCol = (lk: string, ck: string) => {
+      const exact = ["status", "situacao", "situação", "estado", "condicao", "condição"];
+      if (exact.includes(lk) || exact.map(cleanKey).includes(ck)) return true;
+      return ck === "status" || ck === "situacao" || ck === "estado";
+    };
+
+    const isProdutoCol = (lk: string, ck: string) => {
+      if (isInicioOperacaoCol(lk, ck)) return false;
+      const exact = [
+        "produto",
+        "produto/servico",
+        "produto/serviço",
+        "produto / servico",
+        "produto / serviço",
+        "servico",
+        "serviço",
+        "campanha",
+        "projeto",
+        "fila",
+        "skill",
+        "segmento",
+        "carteira",
+        "linha de negocio",
+        "linha de negócio",
+      ];
+      if (exact.includes(lk) || exact.map(cleanKey).includes(ck)) return true;
+      return (
+        ck.includes("produt") ||
+        ck.includes("servic") ||
+        ck.includes("carteir") ||
+        ck.includes("segment")
+      );
+    };
+
     const isOperacaoColumn = (rawKey: string): boolean => {
       const lk = rawKey.toLowerCase().trim();
       const ck = cleanKey(lk);
+      if (isInicioOperacaoCol(lk, ck)) return false;
+      if (isEntradaCol(lk, ck)) return false;
+      if (isSaidaCol(lk, ck)) return false;
+      if (isAdmissaoCol(lk, ck)) return false;
+      if (isJornadaCol(lk, ck)) return false;
+      if (isApelidoCol(lk, ck)) return false;
+      if (isProdutoCol(lk, ck)) return false;
+
       const opKeys = [
         "operação",
         "operacao",
@@ -1741,257 +2244,32 @@ export async function importRows(
       let inicioOperacao = "";
       let apelidoIntergrall = "";
 
-      const dataInativacaoKeys = [
-        "data inativação",
-        "data inativacao",
-        "data_inativacao",
-        "datainativacao",
-        "inativado em",
-        "inativado_em",
-      ];
+      const rowEntries = Object.entries(r);
 
-      const dataNascimentoKeys = [
-        "data de nascimento",
-        "data_nascimento",
-        "datanascimento",
-        "nascimento",
-        "data nascimento",
-        "data nasc",
-        "data_nasc",
-        "datanasc",
-        "dt nascimento",
-        "dt_nascimento",
-        "dtnascimento",
-        "dt nasc",
-        "dt_nasc",
-        "dtnasc",
-        "d. nascimento",
-        "d.nascimento",
-        "d.nasc",
-        "aniversario",
-        "aniversário",
-        "dob",
-        "birthdate",
-      ];
-
-      const admissaoKeys = [
-        "admissão",
-        "admissao",
-        "data admissão",
-        "data admissao",
-        "data_admissao",
-        "dt admissao",
-        "dt_admissao",
-        "admissao_em",
-        "admissão em",
-        "dt_admissao_em",
-        "data de admissao",
-        "data de admissão",
-      ];
-
-      const jornadaKeys = [
-        "jornada",
-        "jornada de trabalho",
-        "jornada_trabalho",
-        "jornadatrabalho",
-        "carga horaria",
-        "carga horária",
-        "carga_horaria",
-        "cargahoraria",
-        "ch",
-        "escala",
-        "tipo jornada",
-        "tipo_jornada",
-        "tipo de jornada",
-      ];
-
-      const apelidoKeys = [
-        "apelido intergrall",
-        "apelido integrall",
-        "apelido_intergrall",
-        "apelido_integrall",
-        "apelidointergrall",
-        "apelidointegrall",
-        "apelido",
-        "apelido sistema",
-        "apelido_sistema",
-        "nick",
-        "intergrall",
-        "integrall",
-        "usuario intergrall",
-        "usuário intergrall",
-        "usuario integrall",
-        "usuário integrall",
-        "user intergrall",
-        "user integrall",
-      ];
-
-      const inicioOperacaoKeys = [
-        "início na operação",
-        "inicio na operacao",
-        "inicio na operação",
-        "início na operacao",
-        "inicio_na_operacao",
-        "início_na_operação",
-        "inicionaaoperacao",
-        "inicio operacao",
-        "início operação",
-        "inicio_operacao",
-        "data inicio operacao",
-        "data início operação",
-        "data_inicio_operacao",
-        "dt inicio operacao",
-        "dt início operação",
-        "dt_inicio_operacao",
-        "dt_inicio_na_operacao",
-        "dt início na operação",
-        "dt inicio na operacao",
-        "inicio em operacao",
-        "início em operação",
-        "inicio producao",
-        "início produção",
-      ];
-
-      const produtoKeys = [
-        "produto",
-        "produto/servico",
-        "produto/serviço",
-        "servico",
-        "serviço",
-        "campanha",
-        "projeto",
-        "fila",
-        "skill",
-        "produto / servico",
-      ];
-      const entradaKeys = [
-        "entrada",
-        "horario entrada",
-        "horário entrada",
-        "horario_entrada",
-        "hora entrada",
-        "hora_entrada",
-        "horario de entrada",
-        "horário de entrada",
-        "inicio",
-        "início",
-        "horario inicio",
-        "horário início",
-        "hora inicio",
-        "hora início",
-        "entrada (horário)",
-      ];
-      const saidaKeys = [
-        "saída",
-        "saida",
-        "horario saída",
-        "horario saida",
-        "horário saída",
-        "horario_saida",
-        "hora saída",
-        "hora saida",
-        "hora_saida",
-        "horario de saída",
-        "horario de saida",
-        "termino",
-        "término",
-        "horario termino",
-        "horário término",
-        "hora termino",
-        "hora término",
-        "fim",
-        "horario fim",
-        "horário fim",
-        "hora fim",
-        "saida (horário)",
-        "saída (horário)",
-        "saida prevista",
-      ];
-
-      const isTelefoneCol = (lk: string, ck: string) => {
-        const exact = [
-          "telefone",
-          "celular",
-          "fone",
-          "tel",
-          "cel",
-          "contato",
-          "whatsapp",
-          "whats",
-          "wpp",
-          "phone",
-          "mobile",
-        ];
-        if (exact.includes(lk) || exact.includes(ck)) return true;
-        return (
-          ck.includes("telefone") ||
-          ck.includes("celular") ||
-          ck.includes("fone") ||
-          ck.startsWith("tel") ||
-          ck.includes("contato") ||
-          ck.includes("whatsapp") ||
-          ck.includes("whats") ||
-          ck.includes("wpp")
-        );
-      };
-
-      const isJornadaCol = (lk: string, ck: string) => {
-        if (jornadaKeys.includes(lk) || jornadaKeys.map(cleanKey).includes(ck)) return true;
-        return ck.includes("jornad") || ck.includes("cargahor") || ck === "escala";
-      };
-
-      const isApelidoCol = (lk: string, ck: string) => {
-        if (apelidoKeys.includes(lk) || apelidoKeys.map(cleanKey).includes(ck)) return true;
-        return ck.includes("intergral") || ck.includes("integral") || ck.includes("apelid");
-      };
-
-      const isInicioOperacaoCol = (lk: string, ck: string) => {
-        if (inicioOperacaoKeys.includes(lk) || inicioOperacaoKeys.map(cleanKey).includes(ck))
-          return true;
-        return (
-          (ck.includes("inicio") || ck.includes("ini")) &&
-          (ck.includes("operac") || ck.includes("op") || ck.includes("prod"))
-        );
-      };
-
-      const isSaidaCol = (lk: string, ck: string) => {
-        if (
-          ck.includes("inativac") ||
-          ck.includes("desligam") ||
-          ck.includes("datadeslig") ||
-          ck.includes("datainativ")
-        ) {
-          return false;
-        }
-        if (saidaKeys.includes(lk) || saidaKeys.map(cleanKey).includes(ck)) return true;
-        return (
-          ck.includes("said") ||
-          ck.includes("termin") ||
-          (ck.includes("horario") && ck.includes("fim")) ||
-          (ck.includes("hora") && ck.includes("fim"))
-        );
-      };
-
-      const isEntradaCol = (lk: string, ck: string) => {
-        if (isInicioOperacaoCol(lk, ck)) return false;
-        if (entradaKeys.includes(lk) || entradaKeys.map(cleanKey).includes(ck)) return true;
-        return (
-          ck.includes("entrad") ||
-          (ck.includes("horario") && ck.includes("ini")) ||
-          (ck.includes("hora") && ck.includes("ini"))
-        );
-      };
-
-      for (const [rowKey, rowValue] of Object.entries(r)) {
+      for (const [rowKey, rowValue] of rowEntries) {
         const lowerKey = rowKey.toLowerCase().trim();
         const cleanedKey = cleanKey(lowerKey);
+        const rawVal = String(rowValue ?? "").trim();
+        if (!rawVal && rawVal !== "") continue;
 
-        if (lowerKey === "nome" || cleanedKey === "nome") {
-          nome = String(rowValue ?? "").trim();
-        } else if (lowerKey === "cpf" || cleanedKey === "cpf") {
-          rawCpf = String(rowValue ?? "").trim();
+        if (
+          lowerKey === "nome" ||
+          cleanedKey === "nome" ||
+          lowerKey === "coluna a" ||
+          lowerKey === "col a" ||
+          (lowerKey === "a" && rowEntries.length <= 4)
+        ) {
+          nome = rawVal;
+        } else if (
+          lowerKey === "cpf" ||
+          cleanedKey === "cpf" ||
+          lowerKey === "coluna b" ||
+          lowerKey === "col b" ||
+          (lowerKey === "b" && rowEntries.length <= 4)
+        ) {
+          rawCpf = rawVal;
         } else if (isEmailSenhaColumn(lowerKey)) {
-          emailSenha = String(rowValue ?? "").trim();
+          emailSenha = rawVal;
         } else if (
           lowerKey === "email" ||
           cleanedKey === "email" ||
@@ -1999,57 +2277,66 @@ export async function importRows(
           cleanedKey === "correio" ||
           cleanedKey === "webmail"
         ) {
-          email = String(rowValue ?? "").trim();
-        } else if (isTelefoneCol(lowerKey, cleanedKey)) {
-          telefone = String(rowValue ?? "").trim();
-        } else if (
-          lowerKey === "cargo" ||
-          cleanedKey === "cargo" ||
-          cleanedKey === "funcao" ||
-          cleanedKey === "posicao"
-        ) {
-          cargo = String(rowValue ?? "").trim();
-        } else if (lowerKey === "status" || cleanedKey === "status" || cleanedKey === "situacao") {
-          rawStatus = String(rowValue ?? "").trim();
-        } else if (
-          dataInativacaoKeys.includes(lowerKey) ||
-          cleanedKey.includes("inativac") ||
-          cleanedKey.includes("desligam")
-        ) {
-          dataInativacao = String(rowValue ?? "").trim();
-        } else if (
-          dataNascimentoKeys.includes(lowerKey) ||
-          cleanedKey.includes("nasciment") ||
-          cleanedKey.includes("datanasc") ||
-          cleanedKey.includes("dtnasc") ||
-          cleanedKey.includes("aniversar")
-        ) {
-          dataNascimento = String(rowValue ?? "").trim();
+          email = rawVal;
         } else if (isInicioOperacaoCol(lowerKey, cleanedKey)) {
-          inicioOperacao = String(rowValue ?? "").trim();
+          inicioOperacao = rawVal;
+        } else if (isAdmissaoCol(lowerKey, cleanedKey)) {
+          admissao = rawVal;
         } else if (isJornadaCol(lowerKey, cleanedKey)) {
-          jornada = String(rowValue ?? "").trim();
-        } else if (isApelidoCol(lowerKey, cleanedKey)) {
-          apelidoIntergrall = String(rowValue ?? "").trim();
-        } else if (isOperacaoColumn(lowerKey)) {
-          rowOperacao = String(rowValue ?? "").trim();
-        } else if (
-          admissaoKeys.includes(lowerKey) ||
-          cleanedKey.includes("admiss") ||
-          cleanedKey === "dataadmissao"
-        ) {
-          admissao = String(rowValue ?? "").trim();
-        } else if (
-          produtoKeys.includes(lowerKey) ||
-          cleanedKey.includes("produt") ||
-          cleanedKey.includes("servic")
-        ) {
-          produto = String(rowValue ?? "").trim();
-        } else if (isEntradaCol(lowerKey, cleanedKey)) {
-          horarioEntrada = String(rowValue ?? "").trim();
+          jornada = rawVal;
         } else if (isSaidaCol(lowerKey, cleanedKey)) {
-          horarioSaida = String(rowValue ?? "").trim();
+          horarioSaida = rawVal;
+        } else if (isEntradaCol(lowerKey, cleanedKey)) {
+          horarioEntrada = rawVal;
+        } else if (isApelidoCol(lowerKey, cleanedKey)) {
+          apelidoIntergrall = rawVal;
+        } else if (isDataInativacaoCol(lowerKey, cleanedKey)) {
+          dataInativacao = rawVal;
+        } else if (isDataNascimentoCol(lowerKey, cleanedKey)) {
+          dataNascimento = rawVal;
+        } else if (isTelefoneCol(lowerKey, cleanedKey)) {
+          telefone = rawVal;
+        } else if (isCargoCol(lowerKey, cleanedKey)) {
+          cargo = rawVal;
+        } else if (isStatusCol(lowerKey, cleanedKey)) {
+          rawStatus = rawVal;
+        } else if (isProdutoCol(lowerKey, cleanedKey)) {
+          produto = rawVal;
+        } else if (isOperacaoColumn(lowerKey)) {
+          rowOperacao = rawVal;
         }
+      }
+
+      // Fallback for 2 or 3-column files (e.g. Column A: Nome, Column B: CPF, Column C: Apelido Intergrall)
+      if (rowEntries.length >= 2 && rowEntries.length <= 4) {
+        if (!apelidoIntergrall && rowEntries[2]) {
+          const col3Val = String(rowEntries[2][1] ?? "").trim();
+          if (col3Val && !col3Val.includes("@")) {
+            apelidoIntergrall = col3Val;
+          }
+        }
+        if (!nome && rowEntries[0]) {
+          nome = String(rowEntries[0][1] ?? "").trim();
+        }
+        if (!rawCpf && rowEntries[1]) {
+          const col2Val = String(rowEntries[1][1] ?? "").trim();
+          if (col2Val.replace(/\D/g, "").length >= 7) {
+            rawCpf = col2Val;
+          }
+        }
+      }
+
+      const cpfKey = rawCpf.replace(/\D/g, "");
+      const nomeKey = nome.toLowerCase();
+
+      const colabExistente =
+        (cpfKey && colabMap.get(`cpf:${cpfKey}`)) || (nomeKey && colabMap.get(`nome:${nomeKey}`));
+
+      if (!nome && colabExistente) {
+        nome = colabExistente.nome;
+      }
+      if (!rawCpf && colabExistente) {
+        rawCpf = colabExistente.cpf || "";
       }
 
       if (!nome) {
@@ -2057,12 +2344,6 @@ export async function importRows(
         errors.push(`Linha ${i + 2}: O campo 'nome' é obrigatório.`);
         continue;
       }
-
-      const cpfKey = rawCpf.replace(/\D/g, "");
-      const nomeKey = nome.toLowerCase();
-
-      const colabExistente =
-        (cpfKey && colabMap.get(`cpf:${cpfKey}`)) || colabMap.get(`nome:${nomeKey}`);
 
       let status = "ativo";
       if (kind === "inativos") {
@@ -2154,8 +2435,11 @@ export async function importRows(
         jornada: jornada !== "" ? jornada : colabExistente?.jornada || null,
         produto: produto !== "" ? produto : colabExistente?.produto || null,
         horario_entrada:
-          horarioEntrada !== "" ? horarioEntrada : colabExistente?.horario_entrada || null,
-        horario_saida: horarioSaida !== "" ? horarioSaida : colabExistente?.horario_saida || null,
+          horarioEntrada !== ""
+            ? formatTimeVal(horarioEntrada)
+            : colabExistente?.horario_entrada || null,
+        horario_saida:
+          horarioSaida !== "" ? formatTimeVal(horarioSaida) : colabExistente?.horario_saida || null,
         inicio_na_operacao:
           parseDateToISO(inicioOperacao) || colabExistente?.inicio_na_operacao || null,
         apelido_intergrall:

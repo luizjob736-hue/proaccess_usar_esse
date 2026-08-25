@@ -583,7 +583,7 @@ async function fetchRel(k: string) {
     const { data: colabs = [] } = await db
       .from("colaboradores")
       .select(
-        "id,nome,cpf,email,email_senha,telefone,cargo,status,inativado_em,data_nascimento,admissao_em,produto,horario_entrada,horario_saida,em_pre_atendimento,operacao:operacoes(nome)" as any,
+        "id,nome,cpf,email,email_senha,telefone,cargo,status,inativado_em,data_nascimento,admissao_em,produto,horario_entrada,horario_saida,em_pre_atendimento,jornada,apelido_intergrall,inicio_na_operacao,operacao:operacoes(nome)" as any,
       )
       .order("nome");
     const { data: acessos = [] } = await db
@@ -624,9 +624,12 @@ async function fetchRel(k: string) {
 
       if (k === "pre_atendimento") {
         base["Admissão"] = formatDateBR(c.admissao_em);
+        base["Jornada"] = c.jornada ?? "";
         base["Produto"] = c.produto ?? "";
         base["Entrada"] = c.horario_entrada ?? "";
         base["Saída"] = c.horario_saida ?? "";
+        base["Início na Operação"] = formatDateBR(c.inicio_na_operacao);
+        base["Apelido Intergrall"] = c.apelido_intergrall ?? "";
       }
 
       base["Data de Nascimento"] = formatDateBR(c.data_nascimento);

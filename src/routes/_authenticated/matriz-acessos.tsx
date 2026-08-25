@@ -131,9 +131,12 @@ export function MatrizView({
   const [colFilterNome, setColFilterNome] = useState("");
   const [colFilterCpf, setColFilterCpf] = useState("");
   const [colFilterAdmissao, setColFilterAdmissao] = useState("");
+  const [colFilterJornada, setColFilterJornada] = useState("");
   const [colFilterProduto, setColFilterProduto] = useState("");
   const [colFilterEntrada, setColFilterEntrada] = useState("");
   const [colFilterSaida, setColFilterSaida] = useState("");
+  const [colFilterInicioOperacao, setColFilterInicioOperacao] = useState("");
+  const [colFilterApelidoIntergrall, setColFilterApelidoIntergrall] = useState("");
   const [colFilterNascimento, setColFilterNascimento] = useState("");
   const [colFilterEmail, setColFilterEmail] = useState("");
   const [colFilterSenhaEmail, setColFilterSenhaEmail] = useState("");
@@ -190,7 +193,7 @@ export function MatrizView({
       const { data, error } = await db
         .from("acessos")
         .select(
-          "id, login, senha, sistema:sistemas(id,nome), colaborador:colaboradores(id, nome, cpf, email, email_senha, telefone, cargo, status, operacao_id, matricula, admissao_em, inativado_em, data_nascimento, produto, horario_entrada, horario_saida, em_pre_atendimento)",
+          "id, login, senha, sistema:sistemas(id,nome), colaborador:colaboradores(id, nome, cpf, email, email_senha, telefone, cargo, status, operacao_id, matricula, admissao_em, inativado_em, data_nascimento, produto, horario_entrada, horario_saida, em_pre_atendimento, jornada, apelido_intergrall, inicio_na_operacao)",
         );
       if (error) throw error;
       return data ?? [];
@@ -205,7 +208,7 @@ export function MatrizView({
         await db
           .from("colaboradores")
           .select(
-            "id, nome, cpf, email, email_senha, telefone, cargo, status, operacao_id, matricula, admissao_em, inativado_em, data_nascimento, produto, horario_entrada, horario_saida, em_pre_atendimento" as any,
+            "id, nome, cpf, email, email_senha, telefone, cargo, status, operacao_id, matricula, admissao_em, inativado_em, data_nascimento, produto, horario_entrada, horario_saida, em_pre_atendimento, jornada, apelido_intergrall, inicio_na_operacao" as any,
           )
           .order("nome")
       ).data ?? [],
@@ -628,6 +631,14 @@ export function MatrizView({
           }
         }
         if (
+          colFilterJornada.trim() &&
+          !String(r.jornada ?? "")
+            .toLowerCase()
+            .includes(colFilterJornada.trim().toLowerCase())
+        ) {
+          return false;
+        }
+        if (
           colFilterProduto.trim() &&
           !String(r.produto ?? "")
             .toLowerCase()
@@ -648,6 +659,20 @@ export function MatrizView({
           !String(r.horario_saida ?? "")
             .toLowerCase()
             .includes(colFilterSaida.trim().toLowerCase())
+        ) {
+          return false;
+        }
+        if (colFilterInicioOperacao.trim()) {
+          const dateStr = formatDateBR(r.inicio_na_operacao).toLowerCase();
+          if (!dateStr.includes(colFilterInicioOperacao.trim().toLowerCase())) {
+            return false;
+          }
+        }
+        if (
+          colFilterApelidoIntergrall.trim() &&
+          !String(r.apelido_intergrall ?? "")
+            .toLowerCase()
+            .includes(colFilterApelidoIntergrall.trim().toLowerCase())
         ) {
           return false;
         }
@@ -678,9 +703,12 @@ export function MatrizView({
     colFilterNome,
     colFilterCpf,
     colFilterAdmissao,
+    colFilterJornada,
     colFilterProduto,
     colFilterEntrada,
     colFilterSaida,
+    colFilterInicioOperacao,
+    colFilterApelidoIntergrall,
     colFilterNascimento,
     colFilterEmail,
     colFilterSenhaEmail,
@@ -759,9 +787,12 @@ export function MatrizView({
 
       if (onlyPreAtendimento) {
         base["Admissão"] = formatDateBR(r.admissao_em);
+        base["Jornada"] = r.jornada ?? "";
         base["Produto"] = r.produto ?? "";
         base["Entrada"] = r.horario_entrada ?? "";
         base["Saída"] = r.horario_saida ?? "";
+        base["Início na Operação"] = formatDateBR(r.inicio_na_operacao);
+        base["Apelido Intergrall"] = r.apelido_intergrall ?? "";
       }
 
       base["Data de Nascimento"] = formatDateBR(r.data_nascimento);
@@ -948,9 +979,12 @@ export function MatrizView({
                         operacao_id: (fd.get("operacao_id") as string) || null,
                         admissao_em: (fd.get("admissao_em") as string) || null,
                         data_nascimento: (fd.get("data_nascimento") as string) || null,
+                        jornada: (fd.get("jornada") as string) || null,
                         produto: (fd.get("produto") as string) || null,
                         horario_entrada: (fd.get("horario_entrada") as string) || null,
                         horario_saida: (fd.get("horario_saida") as string) || null,
+                        inicio_na_operacao: (fd.get("inicio_na_operacao") as string) || null,
+                        apelido_intergrall: (fd.get("apelido_intergrall") as string) || null,
                         em_pre_atendimento: onlyPreAtendimento,
                         observacoes: (fd.get("observacoes") as string) || null,
                       });
@@ -972,6 +1006,10 @@ export function MatrizView({
                     {onlyPreAtendimento && (
                       <>
                         <div>
+                          <Label>Jornada</Label>
+                          <Input name="jornada" placeholder="Ex: 06:20 (6x1)" />
+                        </div>
+                        <div>
                           <Label>Produto</Label>
                           <Input name="produto" placeholder="Ex: Voz, Chat, Backoffice..." />
                         </div>
@@ -982,6 +1020,14 @@ export function MatrizView({
                         <div>
                           <Label>Saída (Horário)</Label>
                           <Input name="horario_saida" placeholder="Ex: 17:00" />
+                        </div>
+                        <div>
+                          <Label>Início na Operação</Label>
+                          <Input name="inicio_na_operacao" type="date" />
+                        </div>
+                        <div>
+                          <Label>Apelido Intergrall</Label>
+                          <Input name="apelido_intergrall" placeholder="Ex: CARLOS.S" />
                         </div>
                       </>
                     )}
@@ -1168,9 +1214,16 @@ export function MatrizView({
                 {onlyPreAtendimento && (
                   <>
                     <th className="p-2.5 text-left border-b border-r min-w-[110px]">Admissão</th>
+                    <th className="p-2.5 text-left border-b border-r min-w-[120px]">Jornada</th>
                     <th className="p-2.5 text-left border-b border-r min-w-[130px]">Produto</th>
                     <th className="p-2.5 text-left border-b border-r min-w-[90px]">Entrada</th>
                     <th className="p-2.5 text-left border-b border-r min-w-[90px]">Saída</th>
+                    <th className="p-2.5 text-left border-b border-r min-w-[125px]">
+                      Início na Operação
+                    </th>
+                    <th className="p-2.5 text-left border-b border-r min-w-[130px]">
+                      Apelido Intergrall
+                    </th>
                   </>
                 )}
                 <th className="p-2.5 text-left border-b border-r min-w-[100px]">Nascimento</th>
@@ -1197,6 +1250,9 @@ export function MatrizView({
                 <th className="border-r" />
                 {onlyPreAtendimento && (
                   <>
+                    <th className="border-r" />
+                    <th className="border-r" />
+                    <th className="border-r" />
                     <th className="border-r" />
                     <th className="border-r" />
                     <th className="border-r" />
@@ -1253,6 +1309,17 @@ export function MatrizView({
                         className="h-6 text-[10px] px-1.5 py-0 bg-background border border-muted-foreground/20 rounded font-normal w-full"
                       />
                     </th>
+                    <th className="p-1 border-r min-w-[120px]">
+                      <Input
+                        value={colFilterJornada}
+                        onChange={(e) => {
+                          setColFilterJornada(e.target.value);
+                          setPage(1);
+                        }}
+                        placeholder="Filtrar jornada..."
+                        className="h-6 text-[10px] px-1.5 py-0 bg-background border border-muted-foreground/20 rounded font-normal w-full"
+                      />
+                    </th>
                     <th className="p-1 border-r min-w-[130px]">
                       <Input
                         value={colFilterProduto}
@@ -1283,6 +1350,28 @@ export function MatrizView({
                           setPage(1);
                         }}
                         placeholder="Saída..."
+                        className="h-6 text-[10px] px-1.5 py-0 bg-background border border-muted-foreground/20 rounded font-normal w-full"
+                      />
+                    </th>
+                    <th className="p-1 border-r min-w-[125px]">
+                      <Input
+                        value={colFilterInicioOperacao}
+                        onChange={(e) => {
+                          setColFilterInicioOperacao(e.target.value);
+                          setPage(1);
+                        }}
+                        placeholder="Filtrar início..."
+                        className="h-6 text-[10px] px-1.5 py-0 bg-background border border-muted-foreground/20 rounded font-normal w-full"
+                      />
+                    </th>
+                    <th className="p-1 border-r min-w-[130px]">
+                      <Input
+                        value={colFilterApelidoIntergrall}
+                        onChange={(e) => {
+                          setColFilterApelidoIntergrall(e.target.value);
+                          setPage(1);
+                        }}
+                        placeholder="Filtrar apelido..."
                         className="h-6 text-[10px] px-1.5 py-0 bg-background border border-muted-foreground/20 rounded font-normal w-full"
                       />
                     </th>
@@ -1481,6 +1570,12 @@ export function MatrizView({
                       <>
                         <td className="p-2 border-r text-[11px]">{formatDateBR(r.admissao_em)}</td>
                         <td
+                          className="p-2 border-r text-[11px] truncate max-w-[120px]"
+                          title={r.jornada ?? ""}
+                        >
+                          {r.jornada || "—"}
+                        </td>
+                        <td
                           className="p-2 border-r text-[11px] truncate max-w-[130px]"
                           title={r.produto ?? ""}
                         >
@@ -1488,6 +1583,15 @@ export function MatrizView({
                         </td>
                         <td className="p-2 border-r text-[11px]">{r.horario_entrada || "—"}</td>
                         <td className="p-2 border-r text-[11px]">{r.horario_saida || "—"}</td>
+                        <td className="p-2 border-r text-[11px]">
+                          {formatDateBR(r.inicio_na_operacao)}
+                        </td>
+                        <td
+                          className="p-2 border-r text-[11px] font-mono truncate max-w-[130px]"
+                          title={r.apelido_intergrall ?? ""}
+                        >
+                          {r.apelido_intergrall || "—"}
+                        </td>
                       </>
                     )}
                     <td className="p-2 border-r text-[11px]">{formatDateBR(r.data_nascimento)}</td>
@@ -1807,9 +1911,12 @@ export function MatrizView({
                   cargo: (fd.get("cargo") as string) || null,
                   operacao_id: (fd.get("operacao_id") as string) || null,
                   admissao_em: (fd.get("admissao_em") as string) || null,
+                  jornada: (fd.get("jornada") as string) || null,
                   produto: (fd.get("produto") as string) || null,
                   horario_entrada: (fd.get("horario_entrada") as string) || null,
                   horario_saida: (fd.get("horario_saida") as string) || null,
+                  inicio_na_operacao: (fd.get("inicio_na_operacao") as string) || null,
+                  apelido_intergrall: (fd.get("apelido_intergrall") as string) || null,
                   data_nascimento: (fd.get("data_nascimento") as string) || null,
                   status: (fd.get("status") as string) || "ativo",
                 });
@@ -1868,6 +1975,10 @@ export function MatrizView({
                 />
               </div>
               <div>
+                <Label>Jornada</Label>
+                <Input name="jornada" defaultValue={editColab.jornada ?? ""} />
+              </div>
+              <div>
                 <Label>Produto</Label>
                 <Input name="produto" defaultValue={editColab.produto ?? ""} />
               </div>
@@ -1878,6 +1989,21 @@ export function MatrizView({
               <div>
                 <Label>Saída (Horário)</Label>
                 <Input name="horario_saida" defaultValue={editColab.horario_saida ?? ""} />
+              </div>
+              <div>
+                <Label>Início na Operação</Label>
+                <Input
+                  name="inicio_na_operacao"
+                  type="date"
+                  defaultValue={toInputDateValue(editColab.inicio_na_operacao)}
+                />
+              </div>
+              <div>
+                <Label>Apelido Intergrall</Label>
+                <Input
+                  name="apelido_intergrall"
+                  defaultValue={editColab.apelido_intergrall ?? ""}
+                />
               </div>
               <div>
                 <Label>Data de Nascimento</Label>

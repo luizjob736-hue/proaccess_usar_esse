@@ -135,15 +135,18 @@ const TEMPLATES: Record<
 > = {
   pre_atendimento: {
     title: "Pré-Atendimento",
-    desc: "Importe novos colaboradores para a esteira de pré-atendimento com controle de admissão, produto, horários de entrada/saída e acessos.",
+    desc: "Importe novos colaboradores para a esteira de pré-atendimento com controle de admissão, jornada, produto, horários de entrada/saída, início na operação, apelido intergrall e acessos.",
     icon: UserPlus,
     headers: [
       "Nome",
       "CPF",
       "Admissão",
+      "Jornada",
       "Produto",
       "Entrada",
       "Saída",
+      "Início na Operação",
+      "Apelido Intergrall",
       "Data de Nascimento",
       "Email",
       "Senha e-mail",
@@ -157,9 +160,12 @@ const TEMPLATES: Record<
         Nome: "Carlos Eduardo Santos",
         CPF: "456.789.123-00",
         Admissão: "01/09/2026",
+        Jornada: "06:20 (6x1)",
         Produto: "Atendimento Voz",
         Entrada: "08:00",
         Saída: "17:00",
+        "Início na Operação": "15/09/2026",
+        "Apelido Intergrall": "CARLOS.S",
         "Data de Nascimento": "12/03/1998",
         Email: "carlos.santos@empresa.com",
         "Senha e-mail": "SenhaForte123",
@@ -548,7 +554,15 @@ function ImportCard({
   if (kind === "matriz" || kind === "inativos" || kind === "pre_atendimento") {
     baseHeaders = ["Nome", "CPF"];
     if (kind === "pre_atendimento") {
-      baseHeaders.push("Admissão", "Produto", "Entrada", "Saída");
+      baseHeaders.push(
+        "Admissão",
+        "Jornada",
+        "Produto",
+        "Entrada",
+        "Saída",
+        "Início na Operação",
+        "Apelido Intergrall",
+      );
     }
     baseHeaders.push(
       "Data de Nascimento",
@@ -576,7 +590,7 @@ function ImportCard({
         kind === "matriz"
           ? "Importe ou atualize todos os colaboradores, seus dados cadastrais, status (ativo/inativo) e todas as suas credenciais de acesso de uma só vez usando um único arquivo de planilha unificado."
           : kind === "pre_atendimento"
-            ? "Importe novos colaboradores para a esteira de pré-atendimento com controle de admissão, produto, horários de entrada/saída e acessos."
+            ? "Importe novos colaboradores para a esteira de pré-atendimento com controle de admissão, jornada, produto, horários de entrada/saída, início na operação, apelido intergrall e acessos."
             : "Importe ou atualize usuários inativos (desligados/afastados) usando o mesmo layout da Matriz unificada.",
       headers: [...baseHeaders, ...systemHeaders],
       icon: kind === "matriz" ? Grid3x3 : kind === "pre_atendimento" ? UserPlus : Users,
@@ -615,9 +629,12 @@ function ImportCard({
             Nome: "Carlos Eduardo Santos",
             CPF: "456.789.123-00",
             Admissão: "01/09/2026",
+            Jornada: "06:20 (6x1)",
             Produto: "Atendimento Voz",
             Entrada: "08:00",
             Saída: "17:00",
+            "Início na Operação": "15/09/2026",
+            "Apelido Intergrall": "CARLOS.S",
             "Data de Nascimento": "12/03/1998",
             Email: "carlos.santos@empresa.com",
             "Senha e-mail": "SenhaForte123",
@@ -934,7 +951,8 @@ export async function importRows(
       k === "inativado_em" ||
       k === "sla_em" ||
       k === "data_inicio" ||
-      k === "data_nascimento"
+      k === "data_nascimento" ||
+      k === "inicio_na_operacao"
     ) {
       const iso1 = parseDateToISO(existing);
       const iso2 = parseDateToISO(incoming);
@@ -948,9 +966,11 @@ export async function importRows(
       k === "cargo" ||
       k === "status" ||
       k === "telefone" ||
+      k === "jornada" ||
       k === "produto" ||
       k === "horario_entrada" ||
       k === "horario_saida" ||
+      k === "apelido_intergrall" ||
       k === "matricula" ||
       k === "email_senha" ||
       k === "em_pre_atendimento"
@@ -1589,7 +1609,7 @@ export async function importRows(
     const { data: existentes } = await db
       .from("colaboradores")
       .select(
-        "id, nome, cpf, email, email_senha, telefone, cargo, status, inativado_em, data_nascimento, operacao_id, admissao_em, produto, horario_entrada, horario_saida, em_pre_atendimento" as any,
+        "id, nome, cpf, email, email_senha, telefone, cargo, status, inativado_em, data_nascimento, operacao_id, admissao_em, produto, horario_entrada, horario_saida, em_pre_atendimento, jornada, apelido_intergrall, inicio_na_operacao" as any,
       );
 
     const colabMap = new Map<string, any>();
@@ -1703,9 +1723,12 @@ export async function importRows(
       let dataNascimento = "";
       let rowOperacao = "";
       let admissao = "";
+      let jornada = "";
       let produto = "";
       let horarioEntrada = "";
       let horarioSaida = "";
+      let inicioOperacao = "";
+      let apelidoIntergrall = "";
 
       const dataInativacaoKeys = [
         "data inativação",
@@ -1753,6 +1776,69 @@ export async function importRows(
         "dt_admissao_em",
         "data de admissao",
         "data de admissão",
+      ];
+
+      const jornadaKeys = [
+        "jornada",
+        "jornada de trabalho",
+        "jornada_trabalho",
+        "jornadatrabalho",
+        "carga horaria",
+        "carga horária",
+        "carga_horaria",
+        "cargahoraria",
+        "ch",
+        "escala",
+        "tipo jornada",
+        "tipo_jornada",
+        "tipo de jornada",
+      ];
+
+      const apelidoKeys = [
+        "apelido intergrall",
+        "apelido integrall",
+        "apelido_intergrall",
+        "apelido_integrall",
+        "apelidointergrall",
+        "apelidointegrall",
+        "apelido",
+        "apelido sistema",
+        "apelido_sistema",
+        "nick",
+        "intergrall",
+        "integrall",
+        "usuario intergrall",
+        "usuário intergrall",
+        "usuario integrall",
+        "usuário integrall",
+        "user intergrall",
+        "user integrall",
+      ];
+
+      const inicioOperacaoKeys = [
+        "início na operação",
+        "inicio na operacao",
+        "inicio na operação",
+        "início na operacao",
+        "inicio_na_operacao",
+        "início_na_operação",
+        "inicionaaoperacao",
+        "inicio operacao",
+        "início operação",
+        "inicio_operacao",
+        "data inicio operacao",
+        "data início operação",
+        "data_inicio_operacao",
+        "dt inicio operacao",
+        "dt início operação",
+        "dt_inicio_operacao",
+        "dt_inicio_na_operacao",
+        "dt início na operação",
+        "dt inicio na operacao",
+        "inicio em operacao",
+        "início em operação",
+        "inicio producao",
+        "início produção",
       ];
 
       const produtoKeys = [
@@ -1838,6 +1924,25 @@ export async function importRows(
         );
       };
 
+      const isJornadaCol = (lk: string, ck: string) => {
+        if (jornadaKeys.includes(lk) || jornadaKeys.map(cleanKey).includes(ck)) return true;
+        return ck.includes("jornad") || ck.includes("cargahor") || ck === "escala";
+      };
+
+      const isApelidoCol = (lk: string, ck: string) => {
+        if (apelidoKeys.includes(lk) || apelidoKeys.map(cleanKey).includes(ck)) return true;
+        return ck.includes("intergral") || ck.includes("integral") || ck.includes("apelid");
+      };
+
+      const isInicioOperacaoCol = (lk: string, ck: string) => {
+        if (inicioOperacaoKeys.includes(lk) || inicioOperacaoKeys.map(cleanKey).includes(ck))
+          return true;
+        return (
+          (ck.includes("inicio") || ck.includes("ini")) &&
+          (ck.includes("operac") || ck.includes("op") || ck.includes("prod"))
+        );
+      };
+
       const isSaidaCol = (lk: string, ck: string) => {
         if (
           ck.includes("inativac") ||
@@ -1857,6 +1962,7 @@ export async function importRows(
       };
 
       const isEntradaCol = (lk: string, ck: string) => {
+        if (isInicioOperacaoCol(lk, ck)) return false;
         if (entradaKeys.includes(lk) || entradaKeys.map(cleanKey).includes(ck)) return true;
         return (
           ck.includes("entrad") ||
@@ -1870,9 +1976,7 @@ export async function importRows(
         const cleanedKey = cleanKey(lowerKey);
 
         if (lowerKey === "nome" || cleanedKey === "nome") {
-          nome = String(rowValue ?? "")
-            .trim()
-            .slice(0, 150);
+          nome = String(rowValue ?? "").trim();
         } else if (lowerKey === "cpf" || cleanedKey === "cpf") {
           rawCpf = String(rowValue ?? "").trim();
         } else if (isEmailSenhaColumn(lowerKey)) {
@@ -1886,19 +1990,14 @@ export async function importRows(
         ) {
           email = String(rowValue ?? "").trim();
         } else if (isTelefoneCol(lowerKey, cleanedKey)) {
-          // Allow any characters with limit of 80 characters
-          telefone = String(rowValue ?? "")
-            .trim()
-            .slice(0, 80);
+          telefone = String(rowValue ?? "").trim();
         } else if (
           lowerKey === "cargo" ||
           cleanedKey === "cargo" ||
           cleanedKey === "funcao" ||
           cleanedKey === "posicao"
         ) {
-          cargo = String(rowValue ?? "")
-            .trim()
-            .slice(0, 80);
+          cargo = String(rowValue ?? "").trim();
         } else if (lowerKey === "status" || cleanedKey === "status" || cleanedKey === "situacao") {
           rawStatus = String(rowValue ?? "").trim();
         } else if (
@@ -1915,6 +2014,12 @@ export async function importRows(
           cleanedKey.includes("aniversar")
         ) {
           dataNascimento = String(rowValue ?? "").trim();
+        } else if (isInicioOperacaoCol(lowerKey, cleanedKey)) {
+          inicioOperacao = String(rowValue ?? "").trim();
+        } else if (isJornadaCol(lowerKey, cleanedKey)) {
+          jornada = String(rowValue ?? "").trim();
+        } else if (isApelidoCol(lowerKey, cleanedKey)) {
+          apelidoIntergrall = String(rowValue ?? "").trim();
         } else if (isOperacaoColumn(lowerKey)) {
           rowOperacao = String(rowValue ?? "").trim();
         } else if (
@@ -1928,18 +2033,11 @@ export async function importRows(
           cleanedKey.includes("produt") ||
           cleanedKey.includes("servic")
         ) {
-          produto = String(rowValue ?? "")
-            .trim()
-            .slice(0, 80);
+          produto = String(rowValue ?? "").trim();
         } else if (isEntradaCol(lowerKey, cleanedKey)) {
-          horarioEntrada = String(rowValue ?? "")
-            .trim()
-            .slice(0, 80);
+          horarioEntrada = String(rowValue ?? "").trim();
         } else if (isSaidaCol(lowerKey, cleanedKey)) {
-          // Allow any characters with limit of 80 characters
-          horarioSaida = String(rowValue ?? "")
-            .trim()
-            .slice(0, 80);
+          horarioSaida = String(rowValue ?? "").trim();
         }
       }
 
@@ -2042,10 +2140,15 @@ export async function importRows(
         data_nascimento: parseDateToISO(dataNascimento) || colabExistente?.data_nascimento || null,
         operacao_id: finalOperacaoId || null,
         admissao_em: parseDateToISO(admissao) || colabExistente?.admissao_em || null,
+        jornada: jornada !== "" ? jornada : colabExistente?.jornada || null,
         produto: produto !== "" ? produto : colabExistente?.produto || null,
         horario_entrada:
           horarioEntrada !== "" ? horarioEntrada : colabExistente?.horario_entrada || null,
         horario_saida: horarioSaida !== "" ? horarioSaida : colabExistente?.horario_saida || null,
+        inicio_na_operacao:
+          parseDateToISO(inicioOperacao) || colabExistente?.inicio_na_operacao || null,
+        apelido_intergrall:
+          apelidoIntergrall !== "" ? apelidoIntergrall : colabExistente?.apelido_intergrall || null,
       };
 
       if (kind === "pre_atendimento") {

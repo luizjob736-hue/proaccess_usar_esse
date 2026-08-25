@@ -384,7 +384,15 @@ function downloadCSV(key: TemplateKey, sistemasAll: any[] = []) {
   if (key === "matriz" || key === "inativos" || key === "pre_atendimento") {
     headers = ["Nome", "CPF"];
     if (key === "pre_atendimento") {
-      headers.push("Admissão", "Produto", "Entrada", "Saída");
+      headers.push(
+        "Admissão",
+        "Jornada",
+        "Produto",
+        "Entrada",
+        "Saída",
+        "Início na Operação",
+        "Apelido Intergrall",
+      );
     }
     headers.push(
       "Data de Nascimento",
@@ -416,9 +424,12 @@ function downloadCSV(key: TemplateKey, sistemasAll: any[] = []) {
               Nome: "Carlos Eduardo Santos",
               CPF: "456.789.123-00",
               Admissão: "01/09/2026",
+              Jornada: "06:20 (6x1)",
               Produto: "Atendimento Voz",
               Entrada: "08:00",
               Saída: "17:00",
+              "Início na Operação": "15/09/2026",
+              "Apelido Intergrall": "CARLOS.S",
               "Data de Nascimento": "12/03/1998",
               Email: "carlos.santos@empresa.com",
               "Senha e-mail": "SenhaForte123",

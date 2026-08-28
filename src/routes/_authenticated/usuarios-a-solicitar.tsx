@@ -80,6 +80,7 @@ function UsuariosASolicitar() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedOperacaoId, setSelectedOperacaoId] = useState("todas");
   const [selectedSistemaId, setSelectedSistemaId] = useState("todos");
+  const [filaFilter, setFilaFilter] = useState<"todos_abertos" | "nao_solicitados" | "solicitados">("todos_abertos");
   const [dateFilter, setDateFilter] = useState<"todos" | "atrasados" | "hoje" | "futuros">("todos");
   const [detailId, setDetailId] = useState<string | null>(null);
 
@@ -96,9 +97,10 @@ function UsuariosASolicitar() {
         await db
           .from("pendencias")
           .select(
-            "*, colaborador:colaboradores(id, nome, operacao_id, status), sistema:sistemas(id, nome, sla_horas)",
+            "*, colaborador:colaboradores(id, nome, operacao_id, status, em_pre_atendimento), sistema:sistemas(id, nome, sla_horas)",
           )
           .eq("arquivado", false)
+          .is("concluido_em", null)
           .order("data_inicio", { ascending: true })
       ).data ?? [],
   });
@@ -134,15 +136,20 @@ function UsuariosASolicitar() {
 
   const [destQuadro, setDestQuadro] = useState<string>("");
 
-  // Filter unsought entries (solicitado === false) and exclude inactive/desligado collaborators
+  // Filter entries according to filaFilter and exclude inactive/desligado collaborators
   const listASolicitar = useMemo(() => {
     return list.filter((p: any) => {
-      if (p.solicitado !== false) return false;
+      const stNorm = String(p.status ?? "").toLowerCase().trim();
+      if (["concluido", "concluído", "resolvido", "cancelado"].includes(stNorm)) return false;
+
+      if (filaFilter === "nao_solicitados" && p.solicitado !== false) return false;
+      if (filaFilter === "solicitados" && p.solicitado === false) return false;
+
       const st = p.colaborador?.status;
       if (st === "inativo" || st === "desligado") return false;
       return true;
     });
-  }, [list]);
+  }, [list, filaFilter]);
 
   // Apply search/operation/product filters
   const filteredList = useMemo(() => {
@@ -504,7 +511,22 @@ function UsuariosASolicitar() {
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
-            <div className="w-full sm:w-48">
+            <div className="w-full sm:w-56">
+              <Select
+                value={filaFilter}
+                onValueChange={(v: any) => setFilaFilter(v)}
+              >
+                <SelectTrigger className="h-10">
+                  <SelectValue placeholder="Tipo de Fila" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos_abertos">Todas em Aberto (Geral)</SelectItem>
+                  <SelectItem value="nao_solicitados">Apenas Não Solicitados (Agendados)</SelectItem>
+                  <SelectItem value="solicitados">Em Fila (Já Solicitados)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="w-full sm:w-44">
               <Select value={selectedOperacaoId} onValueChange={setSelectedOperacaoId}>
                 <SelectTrigger className="h-10">
                   <SelectValue placeholder="Filtrar Operação" />
@@ -520,7 +542,7 @@ function UsuariosASolicitar() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="w-full sm:w-48">
+            <div className="w-full sm:w-44">
               <Select value={selectedSistemaId} onValueChange={setSelectedSistemaId}>
                 <SelectTrigger className="h-10">
                   <SelectValue placeholder="Filtrar Sistema" />
@@ -579,6 +601,29 @@ function UsuariosASolicitar() {
                             ? new Date(dateStr + "T12:00:00").toLocaleDateString("pt-BR")
                             : "Não definida"}
                         </Badge>
+                        {p.solicitado === false ? (
+                          <Badge
+                            variant="outline"
+                            className="bg-amber-50 text-amber-800 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300 text-[11px] font-semibold"
+                          >
+                            ⏳ A Solicitar
+                          </Badge>
+                        ) : (
+                          <Badge
+                            variant="outline"
+                            className="bg-blue-50 text-blue-800 border-blue-300 dark:bg-blue-950/40 dark:text-blue-300 text-[11px] font-semibold"
+                          >
+                            🚀 Em Fila: {p.status}
+                          </Badge>
+                        )}
+                        {p.colaborador?.em_pre_atendimento && (
+                          <Badge
+                            variant="outline"
+                            className="bg-purple-50 text-purple-800 border-purple-300 dark:bg-purple-950/40 dark:text-purple-300 text-[11px]"
+                          >
+                            Pré-Atendimento
+                          </Badge>
+                        )}
                         <h3 className="font-bold text-foreground text-sm truncate">{p.titulo}</h3>
                       </div>
                       <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
@@ -604,18 +649,28 @@ function UsuariosASolicitar() {
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0 w-full md:w-auto justify-end">
-                      <Button
-                        size="sm"
-                        variant="default"
-                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex items-center gap-1.5 h-9 px-3 rounded-lg shadow-sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          solicitMutation.mutate({ id: p.id });
-                        }}
-                      >
-                        <CheckCircle className="h-4 w-4" />
-                        Solicitado
-                      </Button>
+                      {p.solicitado === false ? (
+                        <Button
+                          size="sm"
+                          variant="default"
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex items-center gap-1.5 h-9 px-3 rounded-lg shadow-sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            solicitMutation.mutate({ id: p.id });
+                          }}
+                        >
+                          <CheckCircle className="h-4 w-4" />
+                          Solicitar Agora
+                        </Button>
+                      ) : (
+                        <Badge
+                          variant="secondary"
+                          className="h-8 px-2.5 text-xs text-muted-foreground font-medium flex items-center gap-1"
+                        >
+                          <CheckCircle className="h-3.5 w-3.5 text-blue-600" />
+                          No Quadro ({p.status})
+                        </Badge>
+                      )}
                       <Button
                         size="sm"
                         variant="outline"

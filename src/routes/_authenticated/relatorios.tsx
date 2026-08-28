@@ -242,13 +242,13 @@ export async function fetchRel(k: string) {
     const { data: colabsAll = [] } = await db
       .from("colaboradores")
       .select(
-        "id, nome, cpf, data_nascimento, email, email_senha, telefone, cargo, status, operacao:operacoes(nome)",
+        "id, nome, cpf, data_nascimento, email, email_senha, telefone, cargo, status, em_pre_atendimento, operacao:operacoes(nome)",
       )
       .not("status", "in", '("inativo","desligado")');
 
     const { data: acessosAll = [] } = await db
       .from("acessos")
-      .select("colaborador_id,sistema_id,login,senha");
+      .select("colaborador_id,sistema_id,login,senha,status");
 
     const accessLookup = new Set<string>();
     for (const a of acessosAll ?? []) {
@@ -275,11 +275,6 @@ export async function fetchRel(k: string) {
 
     const colabPendencias = new Map<string, any[]>();
     for (const p of activePendencias ?? []) {
-      // ONLY UNSOUGHT / PENDENTES DE SOLICITAÇÃO
-      if (p.solicitado !== false) {
-        continue;
-      }
-
       const stNorm = String(p.status ?? "")
         .toLowerCase()
         .trim();
@@ -312,13 +307,20 @@ export async function fetchRel(k: string) {
       colabPendencias.get(matchedColabId)!.push(p);
     }
 
-    const colabs = (colabsAll ?? []).filter(
-      (c: any) => colabPendencias.has(c.id) && colabPendencias.get(c.id)!.length > 0,
-    );
+    // Include all collaborators with open pendencias OR who are in pre-atendimento with pending setups
+    const colabs = (colabsAll ?? []).filter((c: any) => {
+      const hasPend = colabPendencias.has(c.id) && colabPendencias.get(c.id)!.length > 0;
+      const isPre = !!c.em_pre_atendimento;
+      return hasPend || isPre;
+    });
+
     colabs.sort((a: any, b: any) => (a.nome || "").localeCompare(b.nome || ""));
 
     return colabs.map((c: any) => {
       const pListAll = colabPendencias.get(c.id) || [];
+      const hasNaoSolicitado = pListAll.some((p: any) => p.solicitado === false);
+      const isPreAtendimento = !!c.em_pre_atendimento;
+
       const row: any = {
         Nome: c.nome ? c.nome.toUpperCase() : "",
         CPF: formatCPF(c.cpf),
@@ -328,8 +330,9 @@ export async function fetchRel(k: string) {
         Operação: c.operacao?.nome ?? "",
         Cargo: c.cargo ?? "",
         Status: c.status ? String(c.status).toUpperCase() : "ATIVO",
+        "Pré-Atendimento": isPreAtendimento ? "Sim" : "Não",
         Telefone: c.telefone ?? "",
-        "Total a Solicitar": pListAll.length,
+        "Total de Pendências": pListAll.length,
       };
 
       for (const s of sistemas) {
@@ -366,8 +369,16 @@ export async function fetchRel(k: string) {
         }
       }
 
+      let tipoFila = "Em Fila / Pendente";
+      if (hasNaoSolicitado) {
+        tipoFila = "Agendado / Não Solicitado";
+      } else if (isPreAtendimento && pListAll.length === 0) {
+        tipoFila = "Pré-Atendimento (Aguardando Configuração)";
+      }
+
       row["Data Programada"] = earliestDate ? formatDateBR(earliestDate) : "-";
       row["Situação do Agendamento"] = situacaoPrazo;
+      row["Tipo de Solicitação"] = tipoFila;
 
       return row;
     });
@@ -386,7 +397,7 @@ export async function fetchRel(k: string) {
     const { data: colabsAll = [] } = await db
       .from("colaboradores")
       .select(
-        "id,nome,cpf,data_nascimento,email,email_senha,telefone,cargo,status,operacao:operacoes(nome)",
+        "id,nome,cpf,data_nascimento,email,email_senha,telefone,cargo,status,em_pre_atendimento,operacao:operacoes(nome)",
       );
 
     const { data: sistemasAll = [] } = await db.from("sistemas").select("id,nome");
@@ -430,10 +441,6 @@ export async function fetchRel(k: string) {
     const rows: any[] = [];
 
     for (const p of pendenciasRaw ?? []) {
-      if (p.solicitado !== false) {
-        continue;
-      }
-
       const stNorm = String(p.status ?? "")
         .toLowerCase()
         .trim();
@@ -475,6 +482,8 @@ export async function fetchRel(k: string) {
         "ID / Protocolo": p.id,
         Título: p.titulo ?? "",
         Tipo: getPendenciaTipoLabel(p.tipo, p.titulo),
+        "Status / Quadro": getPendenciaStatusLabel(p.status),
+        "Já Solicitado": p.solicitado ? "Sim (Em Fila)" : "Não (Agendado / A Solicitar)",
         "Situação do Agendamento": situacaoPrazo,
         "Data Programada": formatDateBR(p.data_inicio),
         Prioridade: getPendenciaPrioridadeLabel(p.prioridade),
@@ -487,6 +496,7 @@ export async function fetchRel(k: string) {
         Operação: colab?.operacao?.nome ?? "",
         Cargo: colab?.cargo ?? "",
         "Status do Colaborador": colab?.status ? String(colab.status).toUpperCase() : "ATIVO",
+        "Pré-Atendimento": colab?.em_pre_atendimento ? "Sim" : "Não",
         Telefone: colab?.telefone ?? "",
         Responsável: responsavel?.nome ?? (responsavel?.email || "-"),
         "Criado em": formatDateTimeBR(p.criado_em),

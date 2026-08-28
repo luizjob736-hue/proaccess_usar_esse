@@ -80,7 +80,6 @@ function UsuariosASolicitar() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedOperacaoId, setSelectedOperacaoId] = useState("todas");
   const [selectedSistemaId, setSelectedSistemaId] = useState("todos");
-  const [filaFilter, setFilaFilter] = useState<"todos_abertos" | "nao_solicitados" | "solicitados">("todos_abertos");
   const [dateFilter, setDateFilter] = useState<"todos" | "atrasados" | "hoje" | "futuros">("todos");
   const [detailId, setDetailId] = useState<string | null>(null);
 
@@ -136,20 +135,18 @@ function UsuariosASolicitar() {
 
   const [destQuadro, setDestQuadro] = useState<string>("");
 
-  // Filter entries according to filaFilter and exclude inactive/desligado collaborators
+  // Filter unsought entries (solicitado === false) and exclude inactive/desligado collaborators
   const listASolicitar = useMemo(() => {
     return list.filter((p: any) => {
       const stNorm = String(p.status ?? "").toLowerCase().trim();
       if (["concluido", "concluído", "resolvido", "cancelado"].includes(stNorm)) return false;
-
-      if (filaFilter === "nao_solicitados" && p.solicitado !== false) return false;
-      if (filaFilter === "solicitados" && p.solicitado === false) return false;
+      if (p.solicitado !== false) return false;
 
       const st = p.colaborador?.status;
       if (st === "inativo" || st === "desligado") return false;
       return true;
     });
-  }, [list, filaFilter]);
+  }, [list]);
 
   // Apply search/operation/product filters
   const filteredList = useMemo(() => {
@@ -511,22 +508,7 @@ function UsuariosASolicitar() {
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
-            <div className="w-full sm:w-56">
-              <Select
-                value={filaFilter}
-                onValueChange={(v: any) => setFilaFilter(v)}
-              >
-                <SelectTrigger className="h-10">
-                  <SelectValue placeholder="Tipo de Fila" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todos_abertos">Todas em Aberto (Geral)</SelectItem>
-                  <SelectItem value="nao_solicitados">Apenas Não Solicitados (Agendados)</SelectItem>
-                  <SelectItem value="solicitados">Em Fila (Já Solicitados)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="w-full sm:w-44">
+            <div className="w-full sm:w-48">
               <Select value={selectedOperacaoId} onValueChange={setSelectedOperacaoId}>
                 <SelectTrigger className="h-10">
                   <SelectValue placeholder="Filtrar Operação" />
@@ -542,7 +524,7 @@ function UsuariosASolicitar() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="w-full sm:w-44">
+            <div className="w-full sm:w-48">
               <Select value={selectedSistemaId} onValueChange={setSelectedSistemaId}>
                 <SelectTrigger className="h-10">
                   <SelectValue placeholder="Filtrar Sistema" />

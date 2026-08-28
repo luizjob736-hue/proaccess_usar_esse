@@ -232,6 +232,7 @@ export async function fetchRel(k: string) {
         "id, colaborador_id, sistema_id, status, tipo, titulo, criado_em, concluido_em, data_resolucao, arquivado, solicitado, data_inicio, sla_em, descricao, prioridade",
       )
       .eq("arquivado", false)
+      .eq("solicitado", false)
       .is("concluido_em", null);
 
     const { data: rawSistemas = [] } = await db.from("sistemas").select("id, nome").order("nome");
@@ -242,25 +243,9 @@ export async function fetchRel(k: string) {
     const { data: colabsAll = [] } = await db
       .from("colaboradores")
       .select(
-        "id, nome, cpf, data_nascimento, email, email_senha, telefone, cargo, status, em_pre_atendimento, operacao:operacoes(nome)",
+        "id, nome, cpf, data_nascimento, email, email_senha, telefone, cargo, status, operacao:operacoes(nome)",
       )
       .not("status", "in", '("inativo","desligado")');
-
-    const { data: acessosAll = [] } = await db
-      .from("acessos")
-      .select("colaborador_id,sistema_id,login,senha,status");
-
-    const accessLookup = new Set<string>();
-    for (const a of acessosAll ?? []) {
-      const isRealLogin =
-        a.login && !["", "-", "Solicitado", "solicitado"].includes(a.login.trim());
-      const isRealSenha =
-        a.senha &&
-        !["", "-", "Solicitado", "solicitado", "REDEFINIÇÃO", "REENVIAR"].includes(a.senha.trim());
-      if (isRealLogin && isRealSenha && a.colaborador_id && a.sistema_id) {
-        accessLookup.add(`${a.colaborador_id}:${a.sistema_id}`);
-      }
-    }
 
     const colabById = new Map<string, any>();
     const colabByName = new Map<string, any>();
@@ -294,32 +279,21 @@ export async function fetchRel(k: string) {
         continue;
       }
 
-      // If access has already been granted for this system, skip creation pendências
-      if (p.sistema_id && accessLookup.has(`${matchedColabId}:${p.sistema_id}`)) {
-        if (p.tipo === "solicitacao_acesso" || (p.titulo || "").toUpperCase().includes("CRIAÇÃO")) {
-          continue;
-        }
-      }
-
       if (!colabPendencias.has(matchedColabId)) {
         colabPendencias.set(matchedColabId, []);
       }
       colabPendencias.get(matchedColabId)!.push(p);
     }
 
-    // Include all collaborators with open pendencias OR who are in pre-atendimento with pending setups
-    const colabs = (colabsAll ?? []).filter((c: any) => {
-      const hasPend = colabPendencias.has(c.id) && colabPendencias.get(c.id)!.length > 0;
-      const isPre = !!c.em_pre_atendimento;
-      return hasPend || isPre;
-    });
+    // Include ONLY collaborators who have users/accesses pending request (solicitado === false)
+    const colabs = (colabsAll ?? []).filter(
+      (c: any) => colabPendencias.has(c.id) && colabPendencias.get(c.id)!.length > 0,
+    );
 
     colabs.sort((a: any, b: any) => (a.nome || "").localeCompare(b.nome || ""));
 
     return colabs.map((c: any) => {
       const pListAll = colabPendencias.get(c.id) || [];
-      const hasNaoSolicitado = pListAll.some((p: any) => p.solicitado === false);
-      const isPreAtendimento = !!c.em_pre_atendimento;
 
       const row: any = {
         Nome: c.nome ? c.nome.toUpperCase() : "",
@@ -330,9 +304,8 @@ export async function fetchRel(k: string) {
         Operação: c.operacao?.nome ?? "",
         Cargo: c.cargo ?? "",
         Status: c.status ? String(c.status).toUpperCase() : "ATIVO",
-        "Pré-Atendimento": isPreAtendimento ? "Sim" : "Não",
         Telefone: c.telefone ?? "",
-        "Total de Pendências": pListAll.length,
+        "Total a Solicitar": pListAll.length,
       };
 
       for (const s of sistemas) {
@@ -369,16 +342,8 @@ export async function fetchRel(k: string) {
         }
       }
 
-      let tipoFila = "Em Fila / Pendente";
-      if (hasNaoSolicitado) {
-        tipoFila = "Agendado / Não Solicitado";
-      } else if (isPreAtendimento && pListAll.length === 0) {
-        tipoFila = "Pré-Atendimento (Aguardando Configuração)";
-      }
-
       row["Data Programada"] = earliestDate ? formatDateBR(earliestDate) : "-";
       row["Situação do Agendamento"] = situacaoPrazo;
-      row["Tipo de Solicitação"] = tipoFila;
 
       return row;
     });
@@ -391,32 +356,18 @@ export async function fetchRel(k: string) {
         "id,titulo,descricao,tipo,status,prioridade,solicitado,criado_em,data_inicio,sla_em,data_resolucao,concluido_em,arquivado,colaborador_id,sistema_id,responsavel_id",
       )
       .eq("arquivado", false)
+      .eq("solicitado", false)
       .is("concluido_em", null)
       .order("data_inicio", { ascending: true });
 
     const { data: colabsAll = [] } = await db
       .from("colaboradores")
       .select(
-        "id,nome,cpf,data_nascimento,email,email_senha,telefone,cargo,status,em_pre_atendimento,operacao:operacoes(nome)",
+        "id,nome,cpf,data_nascimento,email,email_senha,telefone,cargo,status,operacao:operacoes(nome)",
       );
 
     const { data: sistemasAll = [] } = await db.from("sistemas").select("id,nome");
     const { data: profilesAll = [] } = await db.from("profiles").select("id,nome,email");
-    const { data: acessosAll = [] } = await db
-      .from("acessos")
-      .select("colaborador_id,sistema_id,login,senha");
-
-    const accessLookup = new Set<string>();
-    for (const a of acessosAll ?? []) {
-      const isRealLogin =
-        a.login && !["", "-", "Solicitado", "solicitado"].includes(a.login.trim());
-      const isRealSenha =
-        a.senha &&
-        !["", "-", "Solicitado", "solicitado", "REDEFINIÇÃO", "REENVIAR"].includes(a.senha.trim());
-      if (isRealLogin && isRealSenha && a.colaborador_id && a.sistema_id) {
-        accessLookup.add(`${a.colaborador_id}:${a.sistema_id}`);
-      }
-    }
 
     const colabById = new Map<string, any>();
     const colabByName = new Map<string, any>();
@@ -457,16 +408,6 @@ export async function fetchRel(k: string) {
         continue;
       }
 
-      if (
-        p.colaborador_id &&
-        p.sistema_id &&
-        accessLookup.has(`${p.colaborador_id}:${p.sistema_id}`)
-      ) {
-        if (p.tipo === "solicitacao_acesso" || (p.titulo || "").toUpperCase().includes("CRIAÇÃO")) {
-          continue;
-        }
-      }
-
       const sistema = p.sistema_id ? sistemaById.get(p.sistema_id) : null;
       const responsavel = p.responsavel_id ? profileById.get(p.responsavel_id) : null;
 
@@ -483,7 +424,6 @@ export async function fetchRel(k: string) {
         Título: p.titulo ?? "",
         Tipo: getPendenciaTipoLabel(p.tipo, p.titulo),
         "Status / Quadro": getPendenciaStatusLabel(p.status),
-        "Já Solicitado": p.solicitado ? "Sim (Em Fila)" : "Não (Agendado / A Solicitar)",
         "Situação do Agendamento": situacaoPrazo,
         "Data Programada": formatDateBR(p.data_inicio),
         Prioridade: getPendenciaPrioridadeLabel(p.prioridade),
@@ -496,7 +436,6 @@ export async function fetchRel(k: string) {
         Operação: colab?.operacao?.nome ?? "",
         Cargo: colab?.cargo ?? "",
         "Status do Colaborador": colab?.status ? String(colab.status).toUpperCase() : "ATIVO",
-        "Pré-Atendimento": colab?.em_pre_atendimento ? "Sim" : "Não",
         Telefone: colab?.telefone ?? "",
         Responsável: responsavel?.nome ?? (responsavel?.email || "-"),
         "Criado em": formatDateTimeBR(p.criado_em),

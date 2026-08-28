@@ -138,7 +138,9 @@ function UsuariosASolicitar() {
   // Filter unsought entries (solicitado === false) and exclude inactive/desligado collaborators
   const listASolicitar = useMemo(() => {
     return list.filter((p: any) => {
-      const stNorm = String(p.status ?? "").toLowerCase().trim();
+      const stNorm = String(p.status ?? "")
+        .toLowerCase()
+        .trim();
       if (["concluido", "concluído", "resolvido", "cancelado"].includes(stNorm)) return false;
       if (p.solicitado !== false) return false;
 

@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, useMemo } from "react";
 import { db } from "@/integrations/database/client";
@@ -21,6 +21,14 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import {
@@ -32,7 +40,15 @@ import {
   Search,
   Edit,
   ArrowRight,
+  FileSpreadsheet,
+  FileText,
+  FileDown,
+  FileBarChart,
 } from "lucide-react";
+import * as XLSX from "xlsx";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
+import { fetchRel } from "@/routes/_authenticated/relatorios";
 
 function toYMDString(val: any): string {
   if (!val) return "";
@@ -260,6 +276,56 @@ function UsuariosASolicitar() {
     return listASolicitar.find((p) => p.id === detailId);
   }, [listASolicitar, detailId]);
 
+  async function exportarRelatorio(
+    tipo: "usuarios_a_solicitar_matriz" | "usuarios_a_solicitar",
+    fmt: "xlsx" | "csv" | "pdf",
+  ) {
+    const toastId = toast.loading("Gerando relatório...");
+    try {
+      const rawData = await fetchRel(tipo);
+      if (rawData.length === 0) {
+        toast.dismiss(toastId);
+        return toast.warning("Sem dados para exportar no relatório.");
+      }
+      const title =
+        tipo === "usuarios_a_solicitar_matriz"
+          ? "Usuários a Solicitar (Matriz por Sistema)"
+          : "Usuários a Solicitar (Fila Detalhada)";
+      const filename = `relatorio_${tipo}_${new Date().toISOString().slice(0, 10)}`;
+
+      if (fmt === "xlsx" || fmt === "csv") {
+        const ws = XLSX.utils.json_to_sheet(rawData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "A Solicitar");
+        XLSX.writeFile(wb, `${filename}.${fmt}`);
+      } else {
+        const doc = new jsPDF({ orientation: "landscape" });
+        doc.setFontSize(14);
+        doc.text(title, 14, 13);
+        doc.setFontSize(8);
+        doc.text(
+          `Gerado em: ${new Date().toLocaleString("pt-BR")} | Total: ${rawData.length} registros`,
+          14,
+          18,
+        );
+        autoTable(doc, {
+          head: [Object.keys(rawData[0])],
+          body: rawData.map((r: any) => Object.values(r).map((v) => String(v ?? ""))),
+          startY: 22,
+          styles: { fontSize: 6.5, cellPadding: 1.2 },
+          headStyles: { fillColor: [41, 58, 82] },
+        });
+        doc.save(`${filename}.pdf`);
+      }
+      toast.dismiss(toastId);
+      toast.success("Relatório exportado com sucesso!");
+    } catch (err: any) {
+      console.error("Erro ao exportar relatório:", err);
+      toast.dismiss(toastId);
+      toast.error(`Erro ao exportar relatório: ${err?.message || err}`);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -271,6 +337,70 @@ function UsuariosASolicitar() {
             Gerencie o planejamento de novos acessos e marque-os como solicitado para integrá-los ao
             Kanban.
           </p>
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="gap-2 border-primary/30 hover:border-primary">
+                <FileDown className="h-4 w-4 text-primary" />
+                <span className="font-semibold text-xs sm:text-sm">Exportar Relatório</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-64">
+              <DropdownMenuLabel className="text-xs uppercase tracking-wider text-muted-foreground">
+                Matriz de Pendências (A Solicitar)
+              </DropdownMenuLabel>
+              <DropdownMenuItem
+                onClick={() => exportarRelatorio("usuarios_a_solicitar_matriz", "xlsx")}
+                className="gap-2 cursor-pointer text-xs"
+              >
+                <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
+                <span>Matriz em Excel (.xlsx)</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => exportarRelatorio("usuarios_a_solicitar_matriz", "pdf")}
+                className="gap-2 cursor-pointer text-xs"
+              >
+                <FileText className="h-4 w-4 text-rose-600" />
+                <span>Matriz em PDF</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => exportarRelatorio("usuarios_a_solicitar_matriz", "csv")}
+                className="gap-2 cursor-pointer text-xs"
+              >
+                <FileDown className="h-4 w-4 text-blue-600" />
+                <span>Matriz em CSV</span>
+              </DropdownMenuItem>
+
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel className="text-xs uppercase tracking-wider text-muted-foreground">
+                Fila Detalhada
+              </DropdownMenuLabel>
+              <DropdownMenuItem
+                onClick={() => exportarRelatorio("usuarios_a_solicitar", "xlsx")}
+                className="gap-2 cursor-pointer text-xs"
+              >
+                <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
+                <span>Lista Detalhada (.xlsx)</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => exportarRelatorio("usuarios_a_solicitar", "pdf")}
+                className="gap-2 cursor-pointer text-xs"
+              >
+                <FileText className="h-4 w-4 text-rose-600" />
+                <span>Lista Detalhada (PDF)</span>
+              </DropdownMenuItem>
+
+              <DropdownMenuSeparator />
+              <DropdownMenuItem asChild className="cursor-pointer text-xs">
+                <Link to="/relatorios" className="flex items-center gap-2">
+                  <FileBarChart className="h-4 w-4 text-muted-foreground" />
+                  <span>Central de Relatórios</span>
+                </Link>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 

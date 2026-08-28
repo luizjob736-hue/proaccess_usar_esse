@@ -13,6 +13,16 @@ export const Route = createFileRoute("/_authenticated/relatorios")({ component: 
 
 const RELATORIOS = [
   {
+    key: "usuarios_a_solicitar_matriz",
+    title: "Usuários a Solicitar (Matriz por Sistema)",
+    desc: "Visão consolidada em matriz (Colaborador × Sistemas) contendo apenas os usuários com acessos pendentes de solicitação",
+  },
+  {
+    key: "usuarios_a_solicitar",
+    title: "Usuários a Solicitar (Fila Detalhada)",
+    desc: "Lista detalhada de solicitações a solicitar / agendadas com colaborador, sistema, datas, status e prioridade",
+  },
+  {
     key: "pre_atendimento",
     title: "Pré-Atendimento (Esteira de Admissão)",
     desc: "Colaboradores em pré-atendimento com Admissão, Produto, Entrada, Saída, Operação e Credenciais",
@@ -58,6 +68,21 @@ const RELATORIOS = [
     desc: "Sistemas cadastrados com responsáveis, categoria e nível de criticidade",
   },
 ] as const;
+
+const toYMDString = (val: any): string => {
+  if (!val) return "";
+  if (typeof val === "string") return val.split("T")[0];
+  if (val instanceof Date && !isNaN(val.getTime())) return val.toISOString().split("T")[0];
+  try {
+    const str = String(val);
+    if (str.includes("T")) return str.split("T")[0];
+    const d = new Date(val);
+    if (!isNaN(d.getTime())) return d.toISOString().split("T")[0];
+  } catch {
+    // ignore
+  }
+  return "";
+};
 
 const formatCPF = (val: string | null | undefined) => {
   if (!val) return "";
@@ -199,7 +224,280 @@ const getPendenciaGridLabel = (p: any) => {
   return statusNorm || "SOLICITADO";
 };
 
-async function fetchRel(k: string) {
+export async function fetchRel(k: string) {
+  if (k === "usuarios_a_solicitar_matriz") {
+    const { data: activePendencias = [] } = await db
+      .from("pendencias")
+      .select(
+        "id, colaborador_id, sistema_id, status, tipo, titulo, criado_em, concluido_em, data_resolucao, arquivado, solicitado, data_inicio, sla_em, descricao, prioridade",
+      )
+      .eq("arquivado", false)
+      .is("concluido_em", null);
+
+    const { data: rawSistemas = [] } = await db.from("sistemas").select("id, nome").order("nome");
+    const sistemas = (rawSistemas ?? []).filter(
+      (s: any) => s.nome.toLowerCase() !== "e-mail" && s.nome.toLowerCase() !== "email",
+    );
+
+    const { data: colabsAll = [] } = await db
+      .from("colaboradores")
+      .select(
+        "id, nome, cpf, data_nascimento, email, email_senha, telefone, cargo, status, operacao:operacoes(nome)",
+      )
+      .not("status", "in", '("inativo","desligado")');
+
+    const { data: acessosAll = [] } = await db
+      .from("acessos")
+      .select("colaborador_id,sistema_id,login,senha");
+
+    const accessLookup = new Set<string>();
+    for (const a of acessosAll ?? []) {
+      const isRealLogin =
+        a.login && !["", "-", "Solicitado", "solicitado"].includes(a.login.trim());
+      const isRealSenha =
+        a.senha &&
+        !["", "-", "Solicitado", "solicitado", "REDEFINIÇÃO", "REENVIAR"].includes(a.senha.trim());
+      if (isRealLogin && isRealSenha && a.colaborador_id && a.sistema_id) {
+        accessLookup.add(`${a.colaborador_id}:${a.sistema_id}`);
+      }
+    }
+
+    const colabById = new Map<string, any>();
+    const colabByName = new Map<string, any>();
+    for (const c of colabsAll ?? []) {
+      colabById.set(c.id, c);
+      if (c.nome) {
+        colabByName.set(c.nome.trim().toLowerCase(), c);
+      }
+    }
+
+    const todayStr = new Date().toISOString().split("T")[0];
+
+    const colabPendencias = new Map<string, any[]>();
+    for (const p of activePendencias ?? []) {
+      // ONLY UNSOUGHT / PENDENTES DE SOLICITAÇÃO
+      if (p.solicitado !== false) {
+        continue;
+      }
+
+      const stNorm = String(p.status ?? "")
+        .toLowerCase()
+        .trim();
+      if (["concluido", "concluído", "resolvido", "cancelado"].includes(stNorm)) {
+        continue;
+      }
+
+      let matchedColabId = p.colaborador_id;
+      if (!matchedColabId && p.titulo) {
+        const matchedColab = colabByName.get(p.titulo.trim().toLowerCase());
+        if (matchedColab) {
+          matchedColabId = matchedColab.id;
+        }
+      }
+
+      if (!matchedColabId || !colabById.has(matchedColabId)) {
+        continue;
+      }
+
+      // If access has already been granted for this system, skip creation pendências
+      if (p.sistema_id && accessLookup.has(`${matchedColabId}:${p.sistema_id}`)) {
+        if (p.tipo === "solicitacao_acesso" || (p.titulo || "").toUpperCase().includes("CRIAÇÃO")) {
+          continue;
+        }
+      }
+
+      if (!colabPendencias.has(matchedColabId)) {
+        colabPendencias.set(matchedColabId, []);
+      }
+      colabPendencias.get(matchedColabId)!.push(p);
+    }
+
+    const colabs = (colabsAll ?? []).filter(
+      (c: any) => colabPendencias.has(c.id) && colabPendencias.get(c.id)!.length > 0,
+    );
+    colabs.sort((a: any, b: any) => (a.nome || "").localeCompare(b.nome || ""));
+
+    return colabs.map((c: any) => {
+      const pListAll = colabPendencias.get(c.id) || [];
+      const row: any = {
+        Nome: c.nome ? c.nome.toUpperCase() : "",
+        CPF: formatCPF(c.cpf),
+        "Data de Nascimento": formatDateBR(c.data_nascimento),
+        Email: c.email ? c.email.toLowerCase() : "",
+        "Senha E-mail": c.email_senha ?? "",
+        Operação: c.operacao?.nome ?? "",
+        Cargo: c.cargo ?? "",
+        Status: c.status ? String(c.status).toUpperCase() : "ATIVO",
+        Telefone: c.telefone ?? "",
+        "Total a Solicitar": pListAll.length,
+      };
+
+      for (const s of sistemas) {
+        const pList = pListAll.filter((p: any) => p.sistema_id === s.id);
+        if (pList.length === 0) {
+          row[s.nome] = "-";
+        } else {
+          const labels = pList.map(getPendenciaGridLabel);
+          const uniqueLabels = Array.from(new Set(labels));
+          row[s.nome] = uniqueLabels.join(", ");
+        }
+      }
+
+      let earliestDate: string | null = null;
+      for (const p of pListAll) {
+        if (p.data_inicio) {
+          const dStr = toYMDString(p.data_inicio);
+          if (dStr) {
+            if (!earliestDate || dStr < earliestDate) {
+              earliestDate = dStr;
+            }
+          }
+        }
+      }
+
+      let situacaoPrazo = "Sem data definida";
+      if (earliestDate) {
+        if (earliestDate < todayStr) {
+          situacaoPrazo = "Pendente / Em Atraso";
+        } else if (earliestDate === todayStr) {
+          situacaoPrazo = "Solicitar Hoje";
+        } else {
+          situacaoPrazo = "Agendado Futuro";
+        }
+      }
+
+      row["Data Programada"] = earliestDate ? formatDateBR(earliestDate) : "-";
+      row["Situação do Agendamento"] = situacaoPrazo;
+
+      return row;
+    });
+  }
+
+  if (k === "usuarios_a_solicitar") {
+    const { data: pendenciasRaw = [] } = await db
+      .from("pendencias")
+      .select(
+        "id,titulo,descricao,tipo,status,prioridade,solicitado,criado_em,data_inicio,sla_em,data_resolucao,concluido_em,arquivado,colaborador_id,sistema_id,responsavel_id",
+      )
+      .eq("arquivado", false)
+      .is("concluido_em", null)
+      .order("data_inicio", { ascending: true });
+
+    const { data: colabsAll = [] } = await db
+      .from("colaboradores")
+      .select(
+        "id,nome,cpf,data_nascimento,email,email_senha,telefone,cargo,status,operacao:operacoes(nome)",
+      );
+
+    const { data: sistemasAll = [] } = await db.from("sistemas").select("id,nome");
+    const { data: profilesAll = [] } = await db.from("profiles").select("id,nome,email");
+    const { data: acessosAll = [] } = await db
+      .from("acessos")
+      .select("colaborador_id,sistema_id,login,senha");
+
+    const accessLookup = new Set<string>();
+    for (const a of acessosAll ?? []) {
+      const isRealLogin =
+        a.login && !["", "-", "Solicitado", "solicitado"].includes(a.login.trim());
+      const isRealSenha =
+        a.senha &&
+        !["", "-", "Solicitado", "solicitado", "REDEFINIÇÃO", "REENVIAR"].includes(a.senha.trim());
+      if (isRealLogin && isRealSenha && a.colaborador_id && a.sistema_id) {
+        accessLookup.add(`${a.colaborador_id}:${a.sistema_id}`);
+      }
+    }
+
+    const colabById = new Map<string, any>();
+    const colabByName = new Map<string, any>();
+    for (const c of colabsAll ?? []) {
+      colabById.set(c.id, c);
+      if (c.nome) {
+        colabByName.set(c.nome.trim().toLowerCase(), c);
+      }
+    }
+
+    const sistemaById = new Map<string, any>();
+    for (const s of sistemasAll ?? []) {
+      sistemaById.set(s.id, s);
+    }
+
+    const profileById = new Map<string, any>();
+    for (const p of profilesAll ?? []) {
+      profileById.set(p.id, p);
+    }
+
+    const todayStr = new Date().toISOString().split("T")[0];
+    const rows: any[] = [];
+
+    for (const p of pendenciasRaw ?? []) {
+      if (p.solicitado !== false) {
+        continue;
+      }
+
+      const stNorm = String(p.status ?? "")
+        .toLowerCase()
+        .trim();
+      if (["concluido", "concluído", "resolvido", "cancelado"].includes(stNorm)) {
+        continue;
+      }
+
+      let colab = p.colaborador_id ? colabById.get(p.colaborador_id) : null;
+      if (!colab && p.titulo) {
+        colab = colabByName.get(p.titulo.trim().toLowerCase());
+      }
+
+      if (colab && ["inativo", "desligado"].includes(colab.status)) {
+        continue;
+      }
+
+      if (
+        p.colaborador_id &&
+        p.sistema_id &&
+        accessLookup.has(`${p.colaborador_id}:${p.sistema_id}`)
+      ) {
+        if (p.tipo === "solicitacao_acesso" || (p.titulo || "").toUpperCase().includes("CRIAÇÃO")) {
+          continue;
+        }
+      }
+
+      const sistema = p.sistema_id ? sistemaById.get(p.sistema_id) : null;
+      const responsavel = p.responsavel_id ? profileById.get(p.responsavel_id) : null;
+
+      const dInicioStr = toYMDString(p.data_inicio);
+      let situacaoPrazo = "Sem data";
+      if (dInicioStr) {
+        if (dInicioStr < todayStr) situacaoPrazo = "Pendente / Em Atraso";
+        else if (dInicioStr === todayStr) situacaoPrazo = "Solicitar Hoje";
+        else situacaoPrazo = "Agendado Futuro";
+      }
+
+      rows.push({
+        "ID / Protocolo": p.id,
+        Título: p.titulo ?? "",
+        Tipo: getPendenciaTipoLabel(p.tipo, p.titulo),
+        "Situação do Agendamento": situacaoPrazo,
+        "Data Programada": formatDateBR(p.data_inicio),
+        Prioridade: getPendenciaPrioridadeLabel(p.prioridade),
+        Sistema: sistema?.nome ?? "-",
+        Colaborador: colab?.nome ? colab.nome.toUpperCase() : p.titulo || "-",
+        CPF: formatCPF(colab?.cpf),
+        "Data de Nascimento": formatDateBR(colab?.data_nascimento),
+        Email: colab?.email ? colab.email.toLowerCase() : "",
+        "Senha E-mail": colab?.email_senha ?? "",
+        Operação: colab?.operacao?.nome ?? "",
+        Cargo: colab?.cargo ?? "",
+        "Status do Colaborador": colab?.status ? String(colab.status).toUpperCase() : "ATIVO",
+        Telefone: colab?.telefone ?? "",
+        Responsável: responsavel?.nome ?? (responsavel?.email || "-"),
+        "Criado em": formatDateTimeBR(p.criado_em),
+        SLA: formatDateBR(p.sla_em),
+        Descrição: p.descricao ?? "",
+      });
+    }
+
+    return rows;
+  }
+
   if (k === "colaboradores") {
     const { data: colabs = [] } = await db
       .from("colaboradores")
@@ -677,25 +975,36 @@ function Relatorios() {
         toast.dismiss(loadingToast);
         return toast.warning("Sem dados para exportar");
       }
+      const itemInfo = RELATORIOS.find((r) => r.key === k);
+      const title = itemInfo?.title || k;
+      const safeFilename = `relatorio_${k}_${new Date().toISOString().slice(0, 10)}`;
+
       if (fmt === "xlsx" || fmt === "csv") {
         const ws = XLSX.utils.json_to_sheet(rows);
         const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, k);
-        XLSX.writeFile(wb, `${k}.${fmt}`);
+        XLSX.utils.book_append_sheet(wb, ws, k.slice(0, 31));
+        XLSX.writeFile(wb, `${safeFilename}.${fmt}`);
       } else {
         const doc = new jsPDF({ orientation: "landscape" });
-        doc.text(`Relatório: ${k}`, 14, 14);
+        doc.setFontSize(14);
+        doc.text(title, 14, 13);
+        doc.setFontSize(8);
+        doc.text(
+          `Gerado em: ${new Date().toLocaleString("pt-BR")} | Total de registros: ${rows.length}`,
+          14,
+          18,
+        );
         autoTable(doc, {
           head: [Object.keys(rows[0])],
           body: rows.map((r) => Object.values(r).map((v) => String(v ?? ""))),
-          startY: 20,
-          styles: { fontSize: 7, cellPadding: 1.5 },
+          startY: 22,
+          styles: { fontSize: 6.5, cellPadding: 1.2 },
           headStyles: { fillColor: [41, 58, 82] },
         });
-        doc.save(`${k}.pdf`);
+        doc.save(`${safeFilename}.pdf`);
       }
       toast.dismiss(loadingToast);
-      toast.success("Exportado com sucesso!");
+      toast.success("Relatório exportado com sucesso!");
     } catch (error: any) {
       console.error("Erro ao exportar relatório:", error);
       toast.dismiss(loadingToast);

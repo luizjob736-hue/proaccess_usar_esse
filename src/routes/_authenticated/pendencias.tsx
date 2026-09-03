@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { db } from "@/integrations/database/client";
 import { useState, useMemo, useEffect } from "react";
+import * as XLSX from "xlsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,6 +15,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
@@ -22,7 +31,16 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Plus, MessageSquare, Upload, FileDown, Settings, Trash2 } from "lucide-react";
+import {
+  Plus,
+  MessageSquare,
+  Upload,
+  FileDown,
+  Settings,
+  Trash2,
+  ChevronDown,
+  FileSpreadsheet,
+} from "lucide-react";
 import { toast } from "sonner";
 import Papa from "papaparse";
 import { parseDateToISO } from "@/routes/_authenticated/importar";
@@ -499,6 +517,74 @@ function Pendencias() {
     );
   }, [listPorOperacao, sistemaFiltro]);
 
+  const handleExport = (type: "atual_xlsx" | "atual_csv" | "todas_xlsx" | "todas_csv") => {
+    const isTodas = type.startsWith("todas");
+    const isCsv = type.endsWith("csv");
+    const sourceList = isTodas ? list : listFiltrada;
+
+    if (sourceList.length === 0) {
+      toast.warning("Nenhuma pendência encontrada para exportar.");
+      return;
+    }
+
+    const operacaoMap = new Map((operacoes as any[]).map((op) => [op.id, op.nome]));
+
+    const rows = sourceList.map((p: any) => {
+      const colabName = p.colaborador?.nome ? p.colaborador.nome.toUpperCase() : p.titulo || "-";
+      const opName =
+        (p.operacao_id ? operacaoMap.get(p.operacao_id) : null) ||
+        p.colaborador?.operacao?.nome ||
+        "-";
+
+      const dataInicioStr = p.data_inicio
+        ? String(p.data_inicio).slice(0, 10).split("-").reverse().join("/")
+        : "";
+      const slaStr = p.sla_em ? String(p.sla_em).slice(0, 10).split("-").reverse().join("/") : "";
+      const criadoEmStr = p.criado_em ? new Date(p.criado_em).toLocaleString("pt-BR") : "";
+
+      return {
+        "ID / Protocolo": p.id,
+        Título: p.titulo || "",
+        Tipo: p.tipo || "Geral",
+        "Status / Quadro": p.status || "PENDENTE",
+        Prioridade: p.prioridade ? String(p.prioridade).toUpperCase() : "MÉDIA",
+        Solicitado: p.solicitado ? "Sim" : "Não",
+        Sistema: p.sistema?.nome || "-",
+        Colaborador: colabName,
+        CPF: p.colaborador?.cpf || "",
+        Operação: opName,
+        "Status do Colaborador": p.colaborador?.status
+          ? String(p.colaborador.status).toUpperCase()
+          : "ATIVO",
+        "Data Início": dataInicioStr,
+        "SLA / Prazo": slaStr,
+        "Criado em": criadoEmStr,
+        Descrição: p.descricao || "",
+      };
+    });
+
+    const prefix = isTodas ? "todas_pendencias" : "pendencias_filtradas";
+    const filename = `${prefix}_${new Date().toISOString().slice(0, 10)}`;
+
+    if (isCsv) {
+      const ws = XLSX.utils.json_to_sheet(rows);
+      const csvOutput = XLSX.utils.sheet_to_csv(ws);
+      const blob = new Blob(["\uFEFF" + csvOutput], { type: "text/csv;charset=utf-8;" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `${filename}.csv`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } else {
+      const ws = XLSX.utils.json_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Pendências");
+      XLSX.writeFile(wb, `${filename}.xlsx`);
+    }
+
+    toast.success(`${rows.length} pendência(s) exportada(s) com sucesso!`);
+  };
+
   const importCsv = useMutation({
     mutationFn: async (file: File) => {
       let text = await file.text();
@@ -512,27 +598,47 @@ function Pendencias() {
       });
 
       const colabMap = new Map();
+      const colabObjMap = new Map();
       (colabs as any[]).forEach((c) => {
-        if (c.nome) colabMap.set(c.nome.toLowerCase().trim(), c.id);
-        if (c.cpf) colabMap.set(c.cpf.replace(/\D/g, ""), c.id);
-        if (c.email) colabMap.set(c.email.toLowerCase().trim(), c.id);
+        if (c.nome) {
+          colabMap.set(c.nome.toLowerCase().trim(), c.id);
+          colabObjMap.set(c.id, c);
+        }
+        if (c.cpf) {
+          colabMap.set(c.cpf.replace(/\D/g, ""), c.id);
+          colabObjMap.set(c.id, c);
+        }
+        if (c.email) {
+          colabMap.set(c.email.toLowerCase().trim(), c.id);
+          colabObjMap.set(c.id, c);
+        }
       });
 
       const sisMap = new Map((sistemas as any[]).map((s) => [s.nome.toLowerCase().trim(), s.id]));
+      const opMap = new Map(
+        (operacoes as any[]).map((op) => [op.nome.toLowerCase().trim(), op.id]),
+      );
       const quadrosNomes = (quadros as any[]).map((q) => q.nome);
       const { data: u } = await db.auth.getUser();
 
       const rawRows = parsed.data.map((r: any) => {
         const newR: any = {};
         for (const [k, v] of Object.entries(r)) {
-          newR[k] = String(v ?? "").substring(0, 200);
+          newR[String(k).toLowerCase().trim()] = String(v ?? "").trim();
         }
         return newR;
       });
 
       // Auto-create missing systems if needed
       for (const r of rawRows) {
-        const sisVal = (r.sistema || r.nome_sistema || r.produto || "").trim();
+        const sisVal = (
+          r.sistema ||
+          r.nome_sistema ||
+          r.produto ||
+          r.aplicacao ||
+          r.modulo ||
+          ""
+        ).trim();
         if (sisVal && !sisMap.has(sisVal.toLowerCase())) {
           const { data: newSis } = await db
             .from("sistemas")
@@ -547,18 +653,48 @@ function Pendencias() {
 
       const rows = rawRows
         .map((r: any) => {
-          const colabVal = (r.colaborador || r.cpf_colaborador || r.cpf || "").trim();
+          const colabVal = (
+            r.colaborador ||
+            r.nome_colaborador ||
+            r.colaborador_nome ||
+            r.nome ||
+            r.funcionario ||
+            r.usuario ||
+            r.cpf_colaborador ||
+            r.cpf ||
+            ""
+          ).trim();
           const colabDigits = colabVal.replace(/\D/g, "");
           const colId =
             (colabDigits ? colabMap.get(colabDigits) : null) ??
             colabMap.get(colabVal.toLowerCase()) ??
             null;
 
-          const sisVal = (r.sistema || r.nome_sistema || r.produto || "").trim();
+          const matchedColab = colId ? colabObjMap.get(colId) : null;
+
+          const sisVal = (
+            r.sistema ||
+            r.nome_sistema ||
+            r.produto ||
+            r.aplicacao ||
+            r.modulo ||
+            ""
+          ).trim();
           const sisId = sisVal ? (sisMap.get(sisVal.toLowerCase()) ?? null) : null;
 
-          const rawStatus = (r.status ?? "").trim();
-          let statusVal = rawStatus || "backlog";
+          const opVal = (
+            r.operacao ||
+            r.operação ||
+            r.operacao_id ||
+            r.filial ||
+            r.setor ||
+            ""
+          ).trim();
+          const explicitOpId = opVal ? (opMap.get(opVal.toLowerCase()) ?? null) : null;
+          const resolvedOpId = explicitOpId || matchedColab?.operacao_id || null;
+
+          const rawStatus = (r.status || r.quadro || r.coluna || r.fase || "").trim();
+          let statusVal = rawStatus || (quadrosNomes.length > 0 ? quadrosNomes[0] : "PENDENTE");
           if (quadrosNomes.length > 0) {
             const matchedQ = quadrosNomes.find((qName) =>
               matchesColumnStatus(rawStatus, qName, quadrosNomes),
@@ -566,17 +702,41 @@ function Pendencias() {
             if (matchedQ) statusVal = matchedQ;
           }
 
-          const dataInicioVal = (r.data_inicio || r.data_início || r.inicio || "").trim();
-          const slaVal = (r.sla_em || r.sla || r.vencimento || r.data_limite || "").trim();
+          const dataInicioVal = (r.data_inicio || r.data_início || r.inicio || r.data || "").trim();
+          const slaVal = (
+            r.sla_em ||
+            r.sla ||
+            r.vencimento ||
+            r.data_limite ||
+            r.prazo ||
+            ""
+          ).trim();
+
+          const rawTitulo = (
+            r.titulo ||
+            r.título ||
+            r.assunto ||
+            r.tarefa ||
+            r.solicitacao ||
+            ""
+          ).trim();
+          const finalTitulo =
+            rawTitulo ||
+            (colabVal
+              ? `Solicitação de Acesso - ${colabVal}`
+              : sisVal
+                ? `Acesso ${sisVal}`
+                : "Nova Pendência");
 
           return {
-            titulo: r.titulo || r.título || "",
-            descricao: r.descricao || r.descrição || null,
-            tipo: r.tipo || "solicitacao_acesso",
-            prioridade: r.prioridade || "media",
+            titulo: finalTitulo,
+            descricao: r.descricao || r.descrição || r.detalhes || r.obs || r.observacao || null,
+            tipo: r.tipo || r.categoria || "solicitacao_acesso",
+            prioridade: r.prioridade || r.urgencia || "media",
             status: statusVal,
             colaborador_id: colId,
             sistema_id: sisId,
+            operacao_id: resolvedOpId,
             data_inicio: parseDateToISO(dataInicioVal) || new Date().toISOString().split("T")[0],
             sla_em: parseDateToISO(slaVal),
             etiquetas: r.etiquetas
@@ -585,16 +745,24 @@ function Pendencias() {
                   .map((s: string) => s.trim())
                   .filter(Boolean)
               : [],
-            criado_por: u.user?.id,
+            criado_por: u.user?.id || null,
             solicitado: true,
           };
         })
         .filter((r: any) => r.titulo);
 
-      if (rows.length === 0) throw new Error("CSV vazio ou sem coluna 'titulo'");
-      const { error } = await db.from("pendencias").insert(rows);
-      if (error) throw error;
-      return rows.length;
+      if (rows.length === 0) throw new Error("CSV vazio ou nenhum registro válido encontrado");
+
+      const CHUNK_SIZE = 50;
+      let totalInserted = 0;
+      for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
+        const chunk = rows.slice(i, i + CHUNK_SIZE);
+        const { error } = await db.from("pendencias").insert(chunk);
+        if (error) throw error;
+        totalInserted += chunk.length;
+      }
+
+      return totalInserted;
     },
     onSuccess: (n) => {
       toast.success(`${n} pendência(s) importada(s) com sucesso!`);
@@ -697,6 +865,49 @@ function Pendencias() {
               </span>
             </Button>
           </label>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="gap-2">
+                <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
+                <span>Exportar</span>
+                <ChevronDown className="h-3.5 w-3.5 opacity-70" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-60">
+              <DropdownMenuLabel>Exportar Visão Atual ({listFiltrada.length})</DropdownMenuLabel>
+              <DropdownMenuItem
+                onClick={() => handleExport("atual_xlsx")}
+                className="cursor-pointer gap-2"
+              >
+                <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
+                <span>Visão Atual (.xlsx)</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => handleExport("atual_csv")}
+                className="cursor-pointer gap-2"
+              >
+                <FileDown className="h-4 w-4" />
+                <span>Visão Atual (.csv)</span>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>Todas as Pendências ({list.length})</DropdownMenuLabel>
+              <DropdownMenuItem
+                onClick={() => handleExport("todas_xlsx")}
+                className="cursor-pointer gap-2"
+              >
+                <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
+                <span>Todas as Pendências (.xlsx)</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => handleExport("todas_csv")}
+                className="cursor-pointer gap-2"
+              >
+                <FileDown className="h-4 w-4" />
+                <span>Todas as Pendências (.csv)</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           {isAdmin && (
             <Button variant="outline" asChild className="gap-2">

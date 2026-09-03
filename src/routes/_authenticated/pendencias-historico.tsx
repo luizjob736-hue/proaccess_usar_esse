@@ -7,7 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useState, useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
-import { FileDown, Search } from "lucide-react";
+import { FileDown, Search, FileSpreadsheet } from "lucide-react";
+import * as XLSX from "xlsx";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/pendencias-historico")({
   component: PendenciasHistorico,
@@ -33,7 +35,9 @@ function PendenciasHistorico() {
       (
         await db
           .from("pendencias")
-          .select("*, colaborador:colaboradores(nome), sistema:sistemas(nome)")
+          .select(
+            "*, colaborador:colaboradores(nome, cpf, operacao:operacoes(nome)), sistema:sistemas(nome)",
+          )
           .eq("arquivado", true)
           .order("concluido_em", { ascending: false })
       ).data ?? [],
@@ -47,47 +51,52 @@ function PendenciasHistorico() {
         p.titulo?.toLowerCase().includes(lower) ||
         p.descricao?.toLowerCase().includes(lower) ||
         p.colaborador?.nome?.toLowerCase().includes(lower) ||
-        p.sistema?.nome?.toLowerCase().includes(lower),
+        p.colaborador?.cpf?.includes(lower) ||
+        p.sistema?.nome?.toLowerCase().includes(lower) ||
+        p.colaborador?.operacao?.nome?.toLowerCase().includes(lower),
     );
   }, [historico, busca]);
 
-  const handleExportCSV = () => {
-    if (filtered.length === 0) return;
-    const headers = [
-      "ID",
-      "Título",
-      "Tipo",
-      "Prioridade",
-      "Status de Finalização",
-      "Colaborador",
-      "Sistema",
-      "Criado Em",
-      "Finalizado Em",
-    ];
+  const handleExport = (fmt: "xlsx" | "csv") => {
+    if (filtered.length === 0) {
+      toast.warning("Nenhum histórico encontrado para exportar.");
+      return;
+    }
 
-    const rows = filtered.map((p: any) => [
-      p.id,
-      `"${(p.titulo || "").replace(/"/g, '""')}"`,
-      p.tipo,
-      p.prioridade,
-      p.status,
-      `"${(p.colaborador?.nome || "").replace(/"/g, '""')}"`,
-      `"${(p.sistema?.nome || "").replace(/"/g, '""')}"`,
-      p.criado_em,
-      p.concluido_em || "",
-    ]);
+    const rows = filtered.map((p: any) => ({
+      ID: p.id,
+      Título: p.titulo || "",
+      Tipo: p.tipo || "Geral",
+      Prioridade: p.prioridade ? String(p.prioridade).toUpperCase() : "MÉDIA",
+      "Status de Finalização": p.status || "CONCLUIDO",
+      Colaborador: p.colaborador?.nome ? p.colaborador.nome.toUpperCase() : p.titulo || "-",
+      CPF: p.colaborador?.cpf || "",
+      Operação: p.colaborador?.operacao?.nome || "-",
+      Sistema: p.sistema?.nome || "-",
+      "Criado Em": p.criado_em ? format(new Date(p.criado_em), "dd/MM/yyyy HH:mm") : "",
+      "Finalizado Em": p.concluido_em ? format(new Date(p.concluido_em), "dd/MM/yyyy HH:mm") : "",
+      Descrição: p.descricao || "",
+    }));
 
-    const csvContent =
-      "data:text/csv;charset=utf-8," +
-      [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+    const filename = `historico_pendencias_${format(new Date(), "yyyy-MM-dd")}`;
 
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `historico_pendencias_${format(new Date(), "yyyy-MM-dd")}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    if (fmt === "csv") {
+      const ws = XLSX.utils.json_to_sheet(rows);
+      const csvOutput = XLSX.utils.sheet_to_csv(ws);
+      const blob = new Blob(["\uFEFF" + csvOutput], { type: "text/csv;charset=utf-8;" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `${filename}.csv`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } else {
+      const ws = XLSX.utils.json_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Histórico");
+      XLSX.writeFile(wb, `${filename}.xlsx`);
+    }
+
+    toast.success(`${rows.length} registro(s) exportado(s) com sucesso!`);
   };
 
   if (isLoadingRole)
@@ -112,7 +121,10 @@ function PendenciasHistorico() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" className="gap-2" onClick={handleExportCSV}>
+          <Button variant="outline" className="gap-2" onClick={() => handleExport("xlsx")}>
+            <FileSpreadsheet className="h-4 w-4 text-emerald-600" /> Exportar Excel (.xlsx)
+          </Button>
+          <Button variant="outline" className="gap-2" onClick={() => handleExport("csv")}>
             <FileDown className="h-4 w-4" /> Exportar CSV
           </Button>
         </div>

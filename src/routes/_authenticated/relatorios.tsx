@@ -229,7 +229,7 @@ export async function fetchRel(k: string) {
     const { data: activePendencias = [] } = await db
       .from("pendencias")
       .select(
-        "id, colaborador_id, sistema_id, status, tipo, titulo, criado_em, concluido_em, data_resolucao, arquivado, solicitado, data_inicio, sla_em, descricao, prioridade",
+        "id, colaborador_id, sistema_id, status, tipo, titulo, criado_em, concluido_em, data_resolucao, arquivado, solicitado, data_inicio, sla_em, descricao, prioridade, operacao_id",
       )
       .eq("arquivado", false)
       .eq("solicitado", false)
@@ -249,10 +249,14 @@ export async function fetchRel(k: string) {
 
     const colabById = new Map<string, any>();
     const colabByName = new Map<string, any>();
+    const colabByCPF = new Map<string, any>();
     for (const c of colabsAll ?? []) {
       colabById.set(c.id, c);
       if (c.nome) {
         colabByName.set(c.nome.trim().toLowerCase(), c);
+      }
+      if (c.cpf) {
+        colabByCPF.set(c.cpf.replace(/\D/g, ""), c);
       }
     }
 
@@ -272,6 +276,12 @@ export async function fetchRel(k: string) {
         const matchedColab = colabByName.get(p.titulo.trim().toLowerCase());
         if (matchedColab) {
           matchedColabId = matchedColab.id;
+        }
+      }
+      if (!matchedColabId && p.descricao) {
+        const digits = p.descricao.replace(/\D/g, "");
+        if (digits.length === 11 && colabByCPF.has(digits)) {
+          matchedColabId = colabByCPF.get(digits).id;
         }
       }
 
@@ -353,7 +363,7 @@ export async function fetchRel(k: string) {
     const { data: pendenciasRaw = [] } = await db
       .from("pendencias")
       .select(
-        "id,titulo,descricao,tipo,status,prioridade,solicitado,criado_em,data_inicio,sla_em,data_resolucao,concluido_em,arquivado,colaborador_id,sistema_id,responsavel_id",
+        "id,titulo,descricao,tipo,status,prioridade,solicitado,criado_em,data_inicio,sla_em,data_resolucao,concluido_em,arquivado,colaborador_id,sistema_id,responsavel_id,operacao_id",
       )
       .eq("arquivado", false)
       .eq("solicitado", false)
@@ -366,15 +376,25 @@ export async function fetchRel(k: string) {
         "id,nome,cpf,data_nascimento,email,email_senha,telefone,cargo,status,operacao:operacoes(nome)",
       );
 
+    const { data: operacoesAll = [] } = await db.from("operacoes").select("id,nome");
     const { data: sistemasAll = [] } = await db.from("sistemas").select("id,nome");
     const { data: profilesAll = [] } = await db.from("profiles").select("id,nome,email");
 
+    const operacaoById = new Map<string, any>();
+    for (const op of operacoesAll ?? []) {
+      operacaoById.set(op.id, op);
+    }
+
     const colabById = new Map<string, any>();
     const colabByName = new Map<string, any>();
+    const colabByCPF = new Map<string, any>();
     for (const c of colabsAll ?? []) {
       colabById.set(c.id, c);
       if (c.nome) {
         colabByName.set(c.nome.trim().toLowerCase(), c);
+      }
+      if (c.cpf) {
+        colabByCPF.set(c.cpf.replace(/\D/g, ""), c);
       }
     }
 
@@ -403,6 +423,12 @@ export async function fetchRel(k: string) {
       if (!colab && p.titulo) {
         colab = colabByName.get(p.titulo.trim().toLowerCase());
       }
+      if (!colab && p.descricao) {
+        const digits = p.descricao.replace(/\D/g, "");
+        if (digits.length === 11 && colabByCPF.has(digits)) {
+          colab = colabByCPF.get(digits);
+        }
+      }
 
       if (colab && ["inativo", "desligado"].includes(colab.status)) {
         continue;
@@ -410,6 +436,10 @@ export async function fetchRel(k: string) {
 
       const sistema = p.sistema_id ? sistemaById.get(p.sistema_id) : null;
       const responsavel = p.responsavel_id ? profileById.get(p.responsavel_id) : null;
+      const opName =
+        (p.operacao_id ? operacaoById.get(p.operacao_id)?.nome : null) ||
+        colab?.operacao?.nome ||
+        "-";
 
       const dInicioStr = toYMDString(p.data_inicio);
       let situacaoPrazo = "Sem data";
@@ -433,7 +463,7 @@ export async function fetchRel(k: string) {
         "Data de Nascimento": formatDateBR(colab?.data_nascimento),
         Email: colab?.email ? colab.email.toLowerCase() : "",
         "Senha E-mail": colab?.email_senha ?? "",
-        Operação: colab?.operacao?.nome ?? "",
+        Operação: opName,
         Cargo: colab?.cargo ?? "",
         "Status do Colaborador": colab?.status ? String(colab.status).toUpperCase() : "ATIVO",
         Telefone: colab?.telefone ?? "",
@@ -514,10 +544,9 @@ export async function fetchRel(k: string) {
     const { data: pendenciasRaw = [] } = await db
       .from("pendencias")
       .select(
-        "id,titulo,descricao,tipo,status,prioridade,solicitado,criado_em,data_inicio,sla_em,data_resolucao,concluido_em,arquivado,colaborador_id,sistema_id,responsavel_id",
+        "id,titulo,descricao,tipo,status,prioridade,solicitado,criado_em,data_inicio,sla_em,data_resolucao,concluido_em,arquivado,colaborador_id,sistema_id,responsavel_id,operacao_id",
       )
       .eq("arquivado", false)
-      .is("concluido_em", null)
       .order("criado_em", { ascending: false });
 
     const { data: colabsAll = [] } = await db
@@ -526,30 +555,25 @@ export async function fetchRel(k: string) {
         "id,nome,cpf,data_nascimento,email,email_senha,telefone,cargo,status,operacao:operacoes(nome)",
       );
 
+    const { data: operacoesAll = [] } = await db.from("operacoes").select("id,nome");
     const { data: sistemasAll = [] } = await db.from("sistemas").select("id,nome");
     const { data: profilesAll = [] } = await db.from("profiles").select("id,nome,email");
-    const { data: acessosAll = [] } = await db
-      .from("acessos")
-      .select("colaborador_id,sistema_id,login,senha");
 
-    const accessLookup = new Set<string>();
-    for (const a of acessosAll ?? []) {
-      const isRealLogin =
-        a.login && !["", "-", "Solicitado", "solicitado"].includes(a.login.trim());
-      const isRealSenha =
-        a.senha &&
-        !["", "-", "Solicitado", "solicitado", "REDEFINIÇÃO", "REENVIAR"].includes(a.senha.trim());
-      if (isRealLogin && isRealSenha && a.colaborador_id && a.sistema_id) {
-        accessLookup.add(`${a.colaborador_id}:${a.sistema_id}`);
-      }
+    const operacaoById = new Map<string, any>();
+    for (const op of operacoesAll ?? []) {
+      operacaoById.set(op.id, op);
     }
 
     const colabById = new Map<string, any>();
     const colabByName = new Map<string, any>();
+    const colabByCPF = new Map<string, any>();
     for (const c of colabsAll ?? []) {
       colabById.set(c.id, c);
       if (c.nome) {
         colabByName.set(c.nome.trim().toLowerCase(), c);
+      }
+      if (c.cpf) {
+        colabByCPF.set(c.cpf.replace(/\D/g, ""), c);
       }
     }
 
@@ -568,7 +592,13 @@ export async function fetchRel(k: string) {
       const stNorm = String(p.status ?? "")
         .toLowerCase()
         .trim();
-      if (["concluido", "concluído", "resolvido", "cancelado"].includes(stNorm)) {
+      // Skip completed or canceled items only when marked as finished
+      if (
+        ["concluido", "concluído", "resolvido", "resolvida", "cancelado", "cancelada"].includes(
+          stNorm,
+        ) &&
+        p.concluido_em
+      ) {
         continue;
       }
 
@@ -576,31 +606,25 @@ export async function fetchRel(k: string) {
       if (!colab && p.titulo) {
         colab = colabByName.get(p.titulo.trim().toLowerCase());
       }
-
-      // Skip inactive or departed collaborators
-      if (colab && ["inativo", "desligado"].includes(colab.status)) {
-        continue;
-      }
-
-      // Skip if access is already granted and credentials are active
-      if (
-        p.colaborador_id &&
-        p.sistema_id &&
-        accessLookup.has(`${p.colaborador_id}:${p.sistema_id}`)
-      ) {
-        if (p.tipo === "solicitacao_acesso" || (p.titulo || "").toUpperCase().includes("CRIAÇÃO")) {
-          continue;
+      if (!colab && p.descricao) {
+        const digits = p.descricao.replace(/\D/g, "");
+        if (digits.length === 11 && colabByCPF.has(digits)) {
+          colab = colabByCPF.get(digits);
         }
       }
 
       const sistema = p.sistema_id ? sistemaById.get(p.sistema_id) : null;
       const responsavel = p.responsavel_id ? profileById.get(p.responsavel_id) : null;
+      const opName =
+        (p.operacao_id ? operacaoById.get(p.operacao_id)?.nome : null) ||
+        colab?.operacao?.nome ||
+        "-";
 
       rows.push({
         "ID / Protocolo": p.id,
         Título: p.titulo ?? "",
         Tipo: getPendenciaTipoLabel(p.tipo, p.titulo),
-        "Status da Pendência": getPendenciaStatusLabel(p.status),
+        "Status / Quadro": getPendenciaStatusLabel(p.status),
         Prioridade: getPendenciaPrioridadeLabel(p.prioridade),
         Solicitado: p.solicitado ? "Sim" : "Não",
         Sistema: sistema?.nome ?? "-",
@@ -609,7 +633,7 @@ export async function fetchRel(k: string) {
         "Data de Nascimento": formatDateBR(colab?.data_nascimento),
         Email: colab?.email ? colab.email.toLowerCase() : "",
         "Senha E-mail": colab?.email_senha ?? "",
-        Operação: colab?.operacao?.nome ?? "",
+        Operação: opName,
         Cargo: colab?.cargo ?? "",
         "Status do Colaborador": colab?.status ? String(colab.status).toUpperCase() : "ATIVO",
         Telefone: colab?.telefone ?? "",
@@ -628,7 +652,7 @@ export async function fetchRel(k: string) {
     const { data: pendenciasRaw = [] } = await db
       .from("pendencias")
       .select(
-        "id,titulo,descricao,tipo,status,prioridade,solicitado,criado_em,data_inicio,sla_em,data_resolucao,concluido_em,arquivado,colaborador_id,sistema_id,responsavel_id",
+        "id,titulo,descricao,tipo,status,prioridade,solicitado,criado_em,data_inicio,sla_em,data_resolucao,concluido_em,arquivado,colaborador_id,sistema_id,responsavel_id,operacao_id",
       )
       .order("criado_em", { ascending: false });
 
@@ -638,15 +662,25 @@ export async function fetchRel(k: string) {
         "id,nome,cpf,data_nascimento,email,email_senha,telefone,cargo,status,operacao:operacoes(nome)",
       );
 
+    const { data: operacoesAll = [] } = await db.from("operacoes").select("id,nome");
     const { data: sistemasAll = [] } = await db.from("sistemas").select("id,nome");
     const { data: profilesAll = [] } = await db.from("profiles").select("id,nome,email");
 
+    const operacaoById = new Map<string, any>();
+    for (const op of operacoesAll ?? []) {
+      operacaoById.set(op.id, op);
+    }
+
     const colabById = new Map<string, any>();
     const colabByName = new Map<string, any>();
+    const colabByCPF = new Map<string, any>();
     for (const c of colabsAll ?? []) {
       colabById.set(c.id, c);
       if (c.nome) {
         colabByName.set(c.nome.trim().toLowerCase(), c);
+      }
+      if (c.cpf) {
+        colabByCPF.set(c.cpf.replace(/\D/g, ""), c);
       }
     }
 
@@ -665,8 +699,19 @@ export async function fetchRel(k: string) {
       if (!colab && p.titulo) {
         colab = colabByName.get(p.titulo.trim().toLowerCase());
       }
+      if (!colab && p.descricao) {
+        const digits = p.descricao.replace(/\D/g, "");
+        if (digits.length === 11 && colabByCPF.has(digits)) {
+          colab = colabByCPF.get(digits);
+        }
+      }
+
       const sistema = p.sistema_id ? sistemaById.get(p.sistema_id) : null;
       const responsavel = p.responsavel_id ? profileById.get(p.responsavel_id) : null;
+      const opName =
+        (p.operacao_id ? operacaoById.get(p.operacao_id)?.nome : null) ||
+        colab?.operacao?.nome ||
+        "-";
 
       let statusDisplay = getPendenciaStatusLabel(p.status);
       if (p.arquivado && statusDisplay === "Pendente") {
@@ -686,7 +731,7 @@ export async function fetchRel(k: string) {
         "Data de Nascimento": formatDateBR(colab?.data_nascimento),
         Email: colab?.email ? colab.email.toLowerCase() : "",
         "Senha E-mail": colab?.email_senha ?? "",
-        Operação: colab?.operacao?.nome ?? "",
+        Operação: opName,
         Cargo: colab?.cargo ?? "",
         "Status do Colaborador": colab?.status ? String(colab.status).toUpperCase() : "",
         Telefone: colab?.telefone ?? "",
@@ -705,10 +750,9 @@ export async function fetchRel(k: string) {
     const { data: activePendencias = [] } = await db
       .from("pendencias")
       .select(
-        "id, colaborador_id, sistema_id, status, tipo, titulo, criado_em, concluido_em, data_resolucao, arquivado",
+        "id, colaborador_id, sistema_id, status, tipo, titulo, criado_em, concluido_em, data_resolucao, arquivado, operacao_id",
       )
-      .eq("arquivado", false)
-      .is("concluido_em", null);
+      .eq("arquivado", false);
 
     const { data: rawSistemas = [] } = await db.from("sistemas").select("id, nome").order("nome");
     const sistemas = (rawSistemas ?? []).filter(
@@ -722,28 +766,16 @@ export async function fetchRel(k: string) {
       )
       .not("status", "in", '("inativo","desligado")');
 
-    const { data: acessosAll = [] } = await db
-      .from("acessos")
-      .select("colaborador_id,sistema_id,login,senha");
-
-    const accessLookup = new Set<string>();
-    for (const a of acessosAll ?? []) {
-      const isRealLogin =
-        a.login && !["", "-", "Solicitado", "solicitado"].includes(a.login.trim());
-      const isRealSenha =
-        a.senha &&
-        !["", "-", "Solicitado", "solicitado", "REDEFINIÇÃO", "REENVIAR"].includes(a.senha.trim());
-      if (isRealLogin && isRealSenha && a.colaborador_id && a.sistema_id) {
-        accessLookup.add(`${a.colaborador_id}:${a.sistema_id}`);
-      }
-    }
-
     const colabById = new Map<string, any>();
     const colabByName = new Map<string, any>();
+    const colabByCPF = new Map<string, any>();
     for (const c of colabsAll ?? []) {
       colabById.set(c.id, c);
       if (c.nome) {
         colabByName.set(c.nome.trim().toLowerCase(), c);
+      }
+      if (c.cpf) {
+        colabByCPF.set(c.cpf.replace(/\D/g, ""), c);
       }
     }
 
@@ -752,7 +784,12 @@ export async function fetchRel(k: string) {
       const stNorm = String(p.status ?? "")
         .toLowerCase()
         .trim();
-      if (["concluido", "concluído", "resolvido", "cancelado"].includes(stNorm)) {
+      if (
+        ["concluido", "concluído", "resolvido", "resolvida", "cancelado", "cancelada"].includes(
+          stNorm,
+        ) &&
+        p.concluido_em
+      ) {
         continue;
       }
 
@@ -763,16 +800,15 @@ export async function fetchRel(k: string) {
           matchedColabId = matchedColab.id;
         }
       }
+      if (!matchedColabId && p.descricao) {
+        const digits = p.descricao.replace(/\D/g, "");
+        if (digits.length === 11 && colabByCPF.has(digits)) {
+          matchedColabId = colabByCPF.get(digits).id;
+        }
+      }
 
       if (!matchedColabId || !colabById.has(matchedColabId)) {
         continue;
-      }
-
-      // If access has already been granted for this system, skip creation pendências
-      if (p.sistema_id && accessLookup.has(`${matchedColabId}:${p.sistema_id}`)) {
-        if (p.tipo === "solicitacao_acesso" || (p.titulo || "").toUpperCase().includes("CRIAÇÃO")) {
-          continue;
-        }
       }
 
       if (!colabPendencias.has(matchedColabId)) {

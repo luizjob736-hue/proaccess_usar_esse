@@ -24,22 +24,27 @@ if (typeof window !== "undefined" && typeof Node !== "undefined") {
   const originalRemoveChild = Node.prototype.removeChild;
   Node.prototype.removeChild = function <T extends Node>(child: T): T {
     if (!child) return child;
-    if (child.parentNode !== this) {
+    try {
+      if (child.parentNode === this) {
+        return originalRemoveChild.call(this, child) as T;
+      }
       if (child.parentNode) {
-        return child.parentNode.removeChild(child);
+        try {
+          return originalRemoveChild.call(child.parentNode, child) as T;
+        } catch {
+          // Swallow any parent-child removal mismatch
+        }
       }
       return child;
-    }
-    try {
-      return originalRemoveChild.call(this, child) as T;
-    } catch (err: any) {
-      if (err?.name === "NotFoundError" || String(err?.message || "").includes("not a child")) {
+    } catch {
+      try {
         if (child.parentNode) {
-          return child.parentNode.removeChild(child);
+          return originalRemoveChild.call(child.parentNode, child) as T;
         }
-        return child;
+      } catch {
+        // Ignore
       }
-      throw err;
+      return child;
     }
   };
 
@@ -49,46 +54,67 @@ if (typeof window !== "undefined" && typeof Node !== "undefined") {
     referenceNode: Node | null,
   ): T {
     if (!newNode) return newNode;
-    if (referenceNode && referenceNode.parentNode !== this) {
+    try {
+      if (!referenceNode || referenceNode.parentNode === this) {
+        return originalInsertBefore.call(this, newNode, referenceNode) as T;
+      }
       if (referenceNode.parentNode) {
-        return referenceNode.parentNode.insertBefore(newNode, referenceNode);
+        try {
+          return originalInsertBefore.call(referenceNode.parentNode, newNode, referenceNode) as T;
+        } catch {
+          // Fallback to appendChild
+        }
       }
       return this.appendChild(newNode);
-    }
-    try {
-      return originalInsertBefore.call(this, newNode, referenceNode) as T;
-    } catch (err: any) {
-      if (err?.name === "NotFoundError" || String(err?.message || "").includes("not a child")) {
-        if (referenceNode && referenceNode.parentNode) {
-          return referenceNode.parentNode.insertBefore(newNode, referenceNode);
-        }
+    } catch {
+      try {
         return this.appendChild(newNode);
+      } catch {
+        return newNode;
       }
-      throw err;
     }
   };
 
   const originalReplaceChild = Node.prototype.replaceChild;
   Node.prototype.replaceChild = function <T extends Node>(newChild: Node, oldChild: T): T {
     if (!newChild || !oldChild) return oldChild;
-    if (oldChild.parentNode !== this) {
-      if (oldChild.parentNode) {
-        return oldChild.parentNode.replaceChild(newChild, oldChild) as T;
+    try {
+      if (oldChild.parentNode === this) {
+        return originalReplaceChild.call(this, newChild, oldChild) as T;
       }
-      this.appendChild(newChild);
+      if (oldChild.parentNode) {
+        try {
+          return originalReplaceChild.call(oldChild.parentNode, newChild, oldChild) as T;
+        } catch {
+          // Fallback
+        }
+      }
+      try {
+        this.appendChild(newChild);
+      } catch {
+        // Ignore
+      }
+      return oldChild;
+    } catch {
+      try {
+        this.appendChild(newChild);
+      } catch {
+        // Ignore
+      }
       return oldChild;
     }
-    try {
-      return originalReplaceChild.call(this, newChild, oldChild) as T;
-    } catch (err: any) {
-      if (err?.name === "NotFoundError" || String(err?.message || "").includes("not a child")) {
-        if (oldChild.parentNode) {
-          return oldChild.parentNode.replaceChild(newChild, oldChild) as T;
-        }
-        this.appendChild(newChild);
-        return oldChild;
-      }
-      throw err;
-    }
   };
+
+  // Also protect Element prototype if it has own implementations
+  if (typeof Element !== "undefined") {
+    if (Element.prototype.removeChild !== Node.prototype.removeChild) {
+      Element.prototype.removeChild = Node.prototype.removeChild;
+    }
+    if (Element.prototype.insertBefore !== Node.prototype.insertBefore) {
+      Element.prototype.insertBefore = Node.prototype.insertBefore;
+    }
+    if (Element.prototype.replaceChild !== Node.prototype.replaceChild) {
+      Element.prototype.replaceChild = Node.prototype.replaceChild;
+    }
+  }
 }

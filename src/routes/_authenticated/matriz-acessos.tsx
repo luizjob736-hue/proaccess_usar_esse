@@ -831,29 +831,8 @@ export function MatrizView({
     toast.success(`${rows.length} operador(es) exportado(s) com sucesso!`);
   }
 
-  const Val = ({
-    v,
-    label,
-    onEdit,
-  }: {
-    v: string | null | undefined;
-    label: string;
-    onEdit?: () => void;
-  }) => (
-    <div className="flex items-center gap-1 group min-w-0">
-      <span className="font-mono text-[11px] truncate">{v ? (reveal ? v : "••••") : "—"}</span>
-      {v && (
-        <button onClick={() => copy(v, label)} className="opacity-0 group-hover:opacity-100">
-          <Copy className="h-3 w-3 text-muted-foreground" />
-        </button>
-      )}
-      {onEdit && (
-        <button onClick={onEdit} className="opacity-0 group-hover:opacity-100">
-          <Pencil className="h-3 w-3 text-muted-foreground" />
-        </button>
-      )}
-    </div>
-  );
+  const baseColsCount = onlyPreAtendimento ? 15 : 8 + (onlyInativos ? 1 : 0);
+  const totalColsCount = baseColsCount + sistemas.length * 2;
 
   return (
     <div className="space-y-6">
@@ -1745,7 +1724,7 @@ export function MatrizView({
               {filtered.length === 0 && (
                 <tr>
                   <td
-                    colSpan={8 + (onlyInativos ? 1 : 0) + sistemas.length * 2}
+                    colSpan={totalColsCount}
                     className="p-8 text-center text-muted-foreground text-sm"
                   >
                     Nenhum colaborador encontrado.

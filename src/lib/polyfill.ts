@@ -21,6 +21,15 @@ if (typeof window !== "undefined") {
 // Polyfill to prevent React crashes caused by Google Translate, browser extensions,
 // or DOM portal unmount race conditions (NotFoundError: The node to be removed is not a child of this node)
 if (typeof window !== "undefined" && typeof Node !== "undefined") {
+  // Helper to find the ancestor of child that is an immediate child of parent
+  const findDirectChild = (parent: Node, target: Node | null): Node | null => {
+    let curr: Node | null = target;
+    while (curr && curr.parentNode !== parent) {
+      curr = curr.parentNode;
+    }
+    return curr;
+  };
+
   const originalRemoveChild = Node.prototype.removeChild;
   Node.prototype.removeChild = function <T extends Node>(child: T): T {
     if (!child) return child;
@@ -28,16 +37,26 @@ if (typeof window !== "undefined" && typeof Node !== "undefined") {
       if (child.parentNode === this) {
         return originalRemoveChild.call(this, child) as T;
       }
+      // If child is wrapped by Google Translate <font> tags inside `this`
+      const directChild = findDirectChild(this, child);
+      if (directChild && directChild.parentNode === this) {
+        return originalRemoveChild.call(this, directChild) as T;
+      }
+      // If child is somewhere else in the DOM
       if (child.parentNode) {
         try {
           return originalRemoveChild.call(child.parentNode, child) as T;
         } catch {
-          // Swallow any parent-child removal mismatch
+          // Ignore
         }
       }
       return child;
     } catch {
       try {
+        const directChild = findDirectChild(this, child);
+        if (directChild && directChild.parentNode === this) {
+          return originalRemoveChild.call(this, directChild) as T;
+        }
         if (child.parentNode) {
           return originalRemoveChild.call(child.parentNode, child) as T;
         }
@@ -58,11 +77,16 @@ if (typeof window !== "undefined" && typeof Node !== "undefined") {
       if (!referenceNode || referenceNode.parentNode === this) {
         return originalInsertBefore.call(this, newNode, referenceNode) as T;
       }
+      // If referenceNode is wrapped by Google Translate <font> inside `this`
+      const directChild = findDirectChild(this, referenceNode);
+      if (directChild && directChild.parentNode === this) {
+        return originalInsertBefore.call(this, newNode, directChild) as T;
+      }
       if (referenceNode.parentNode) {
         try {
           return originalInsertBefore.call(referenceNode.parentNode, newNode, referenceNode) as T;
         } catch {
-          // Fallback to appendChild
+          // Fallback to appendChild on this
         }
       }
       return this.appendChild(newNode);
@@ -81,6 +105,11 @@ if (typeof window !== "undefined" && typeof Node !== "undefined") {
     try {
       if (oldChild.parentNode === this) {
         return originalReplaceChild.call(this, newChild, oldChild) as T;
+      }
+      // If oldChild is wrapped by Google Translate <font> inside `this`
+      const directChild = findDirectChild(this, oldChild);
+      if (directChild && directChild.parentNode === this) {
+        return originalReplaceChild.call(this, newChild, directChild) as T;
       }
       if (oldChild.parentNode) {
         try {

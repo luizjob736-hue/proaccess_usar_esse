@@ -1157,7 +1157,7 @@ export function MatrizView({
         </Card>
       )}
 
-      <Card className="overflow-hidden border shadow-sm">
+      <Card className="overflow-hidden border shadow-sm notranslate" translate="no">
         <CardHeader className="py-3 px-4 bg-muted/20 border-b flex flex-row items-center justify-between">
           <CardTitle className="text-base font-medium flex items-center gap-2">
             <Grid3x3 className="h-4 w-4 text-primary" /> Colaboradores × Sistemas
@@ -1176,7 +1176,7 @@ export function MatrizView({
         </CardHeader>
 
         <CardContent className="p-0 overflow-auto max-h-[calc(100vh-280px)] relative">
-          <table className="text-xs border-collapse w-full relative">
+          <table className="text-xs border-collapse w-full relative notranslate" translate="no">
             <thead className="bg-muted uppercase text-[11px] font-semibold text-muted-foreground sticky top-0 z-30 shadow-sm">
               <tr>
                 <th className="p-2.5 text-left border-b border-r sticky left-0 top-0 bg-muted z-40 min-w-[210px] shadow-sm">

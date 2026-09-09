@@ -371,11 +371,10 @@ function BackupsPage() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     const safeDate = (backup.data_layout || "diario").replace(/[/ :]/g, "_");
-    link.setAttribute("href", url);
-    link.setAttribute("download", `Backup_${activeGuia}_${safeDate}.csv`);
-    document.body.appendChild(link);
+    link.href = url;
+    link.download = `Backup_${activeGuia}_${safeDate}.csv`;
     link.click();
-    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
     toast.success(`Guia "${activeGuia}" exportada em CSV com sucesso!`);
   };
 

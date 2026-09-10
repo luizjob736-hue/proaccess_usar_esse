@@ -470,6 +470,9 @@ function parseSelectSpecs(table: string, selectStr: string) {
         let fkCol = `${alias}_id`;
         if (joinTable === "profiles" && alias === "responsavel") fkCol = "responsavel_id";
         if (joinTable === "profiles" && alias === "autor") fkCol = "autor_id";
+        if (joinTable === "profiles" && alias === "ator") fkCol = "ator_id";
+        if (joinTable === "profiles" && alias === "operador") fkCol = "operador_id";
+        if (joinTable === "profiles" && alias === "concedido_por_user") fkCol = "concedido_por";
         if (joinTable === "colaboradores" && alias === "colaborador") fkCol = "colaborador_id";
         if (joinTable === "sistemas" && alias === "sistema") fkCol = "sistema_id";
         if (joinTable === "operacoes" && alias === "operacao") fkCol = "operacao_id";
@@ -641,6 +644,103 @@ async function ensurePreAtendimentoSchema(client: any) {
       ALTER TABLE public.colaboradores ADD COLUMN IF NOT EXISTS jornada TEXT;
       ALTER TABLE public.colaboradores ADD COLUMN IF NOT EXISTS apelido_intergrall TEXT;
       ALTER TABLE public.colaboradores ADD COLUMN IF NOT EXISTS inicio_na_operacao TIMESTAMP WITH TIME ZONE;
+
+      -- Garantir função aprimorada de auditoria no histórico
+      CREATE OR REPLACE FUNCTION public.tg_log_historico() RETURNS TRIGGER
+      LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+      DECLARE 
+        v_ator UUID; 
+        v_id UUID;
+        v_session_user TEXT;
+        v_desc TEXT;
+      BEGIN
+        v_session_user := NULLIF(current_setting('app.current_user_id', true), '');
+        IF v_session_user IS NULL THEN
+          v_session_user := NULLIF(current_setting('request.jwt.claim.sub', true), '');
+        END IF;
+        
+        IF v_session_user IS NOT NULL THEN
+          BEGIN
+            v_ator := v_session_user::uuid;
+          EXCEPTION WHEN OTHERS THEN
+            v_ator := NULL;
+          END;
+        END IF;
+
+        IF v_ator IS NULL THEN
+          v_ator := auth.uid();
+        END IF;
+
+        v_id := COALESCE((NEW).id, (OLD).id);
+        
+        IF TG_TABLE_NAME = 'colaboradores' THEN
+          IF TG_OP = 'INSERT' THEN
+            v_desc := 'Colaborador ' || COALESCE(NEW.nome, 'Sem nome') || ' cadastrado';
+          ELSIF TG_OP = 'UPDATE' THEN
+            IF OLD.status IS DISTINCT FROM NEW.status THEN
+              v_desc := 'Status de ' || COALESCE(NEW.nome, 'Colaborador') || ' alterado para ' || COALESCE(NEW.status::text, '-');
+            ELSE
+              v_desc := 'Dados de ' || COALESCE(NEW.nome, 'Colaborador') || ' atualizados';
+            END IF;
+          ELSIF TG_OP = 'DELETE' THEN
+            v_desc := 'Colaborador ' || COALESCE(OLD.nome, 'Sem nome') || ' excluído';
+          END IF;
+        ELSIF TG_TABLE_NAME = 'acessos' THEN
+          IF TG_OP = 'INSERT' THEN
+            v_desc := 'Acesso cadastrado';
+          ELSIF TG_OP = 'UPDATE' THEN
+            IF OLD.status IS DISTINCT FROM NEW.status THEN
+              v_desc := 'Status do acesso alterado para ' || COALESCE(NEW.status::text, '-');
+            ELSE
+              v_desc := 'Acesso/Credencial atualizado';
+            END IF;
+          ELSIF TG_OP = 'DELETE' THEN
+            v_desc := 'Acesso removido';
+          END IF;
+        ELSIF TG_TABLE_NAME = 'sistemas' THEN
+          IF TG_OP = 'INSERT' THEN
+            v_desc := 'Sistema ' || COALESCE(NEW.nome, '') || ' cadastrado';
+          ELSIF TG_OP = 'UPDATE' THEN
+            v_desc := 'Sistema ' || COALESCE(NEW.nome, '') || ' atualizado';
+          ELSIF TG_OP = 'DELETE' THEN
+            v_desc := 'Sistema ' || COALESCE(OLD.nome, '') || ' excluído';
+          END IF;
+        ELSIF TG_TABLE_NAME = 'pendencias' THEN
+          IF TG_OP = 'INSERT' THEN
+            v_desc := 'Pendência: ' || COALESCE(NEW.titulo, '');
+          ELSIF TG_OP = 'UPDATE' THEN
+            IF OLD.status IS DISTINCT FROM NEW.status THEN
+              v_desc := 'Pendência "' || COALESCE(NEW.titulo, '') || '" alterada para ' || COALESCE(NEW.status::text, '-');
+            ELSE
+              v_desc := 'Pendência "' || COALESCE(NEW.titulo, '') || '" atualizada';
+            END IF;
+          ELSIF TG_OP = 'DELETE' THEN
+            v_desc := 'Pendência "' || COALESCE(OLD.titulo, '') || '" excluída';
+          END IF;
+        ELSIF TG_TABLE_NAME = 'operacoes' THEN
+          IF TG_OP = 'INSERT' THEN
+            v_desc := 'Operação ' || COALESCE(NEW.nome, '') || ' criada';
+          ELSIF TG_OP = 'UPDATE' THEN
+            v_desc := 'Operação ' || COALESCE(NEW.nome, '') || ' atualizada';
+          ELSIF TG_OP = 'DELETE' THEN
+            v_desc := 'Operação ' || COALESCE(OLD.nome, '') || ' excluída';
+          END IF;
+        ELSE
+          v_desc := TG_TABLE_NAME || ' (' || TG_OP || ')';
+        END IF;
+
+        INSERT INTO public.historico(entidade, entidade_id, acao, ator_id, descricao, dados_antes, dados_depois)
+        VALUES (
+          TG_TABLE_NAME, 
+          v_id, 
+          TG_OP, 
+          v_ator,
+          v_desc,
+          CASE WHEN TG_OP IN ('UPDATE','DELETE') THEN to_jsonb(OLD) END,
+          CASE WHEN TG_OP IN ('UPDATE','INSERT') THEN to_jsonb(NEW) END
+        );
+        RETURN COALESCE(NEW, OLD);
+      END; $$;
     `);
     preAtendimentoSchemaInitialized = true;
   } catch (err) {
@@ -684,6 +784,15 @@ export const neonQueryServerFn = createServerFn({ method: "POST" })
 
       if (!currentUser && isWrite) {
         throw new Error("Não autorizado: É necessário fazer login.");
+      }
+
+      if (currentUser?.id) {
+        try {
+          await client.query(`SET LOCAL app.current_user_id = $1`, [currentUser.id]);
+          await client.query(`SET LOCAL "request.jwt.claim.sub" = $1`, [currentUser.id]);
+        } catch (_e) {
+          // ignore
+        }
       }
 
       // Role-based Access Controls
@@ -767,14 +876,16 @@ export const neonQueryServerFn = createServerFn({ method: "POST" })
         const selectParts = [...cols];
 
         joins.forEach((j, i) => {
-          const jsonObjFields = j.fields.map((f) => `'${f}', ${j.alias}.${f}`).join(", ");
-          selectParts.push(`jsonb_build_object(${jsonObjFields}) as "${j.alias}"`);
+          const jsonObjFields = j.fields.map((f) => `'${f}', "${j.alias}"."${f}"`).join(", ");
+          selectParts.push(
+            `CASE WHEN "${table}"."${j.fkCol}" IS NULL THEN NULL ELSE jsonb_build_object(${jsonObjFields}) END as "${j.alias}"`,
+          );
         });
 
         let sql = `SELECT ${selectParts.join(", ")} FROM public."${table}" "${table}"`;
 
         joins.forEach((j) => {
-          sql += ` LEFT JOIN public."${j.joinTable}" "${j.alias}" ON "${j.alias}".id = "${table}"."${j.fkCol}"`;
+          sql += ` LEFT JOIN public."${j.joinTable}" "${j.alias}" ON "${j.alias}".id::text = "${table}"."${j.fkCol}"::text`;
         });
 
         const whereParts: string[] = [];

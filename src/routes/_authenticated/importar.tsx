@@ -2862,5 +2862,28 @@ export async function importRows(
     }
   }
 
+  // Registrar auditoria da importação no histórico
+  try {
+    const templateTitle = TEMPLATES[kind]?.name || kind;
+    const desc = `Importação em lote: ${templateTitle} (${ok} processados com sucesso, ${fail} falhas)`;
+    await db.from("historico").insert({
+      entidade: "importacao",
+      acao: "IMPORT",
+      ator_id: loggedIn.user?.id || null,
+      descricao: desc,
+      dados_depois: {
+        tipo: kind,
+        template: templateTitle,
+        total_linhas: rows.length,
+        sucesso: ok,
+        falhas: fail,
+        operacao_id: selectedOperacaoId !== "todas" ? selectedOperacaoId : null,
+        data_execucao: new Date().toISOString(),
+      },
+    });
+  } catch (histErr) {
+    console.warn("Falha ao registrar histórico de importação:", histErr);
+  }
+
   return { ok, fail, errors };
 }

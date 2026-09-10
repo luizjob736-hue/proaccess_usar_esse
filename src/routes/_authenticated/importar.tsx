@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import Papa from "papaparse";
+import * as XLSX from "xlsx";
 import { db } from "@/integrations/database/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -29,8 +30,26 @@ import { OperationFilterBar } from "@/components/OperationFilterBar";
 
 export function parseDateToISO(val: any): string | null {
   if (!val) return null;
+  if (val instanceof Date) {
+    if (!isNaN(val.getTime())) {
+      const y = val.getUTCFullYear();
+      const m = String(val.getUTCMonth() + 1).padStart(2, "0");
+      const d = String(val.getUTCDate()).padStart(2, "0");
+      return `${y}-${m}-${d}`;
+    }
+    return null;
+  }
   const str = String(val).trim();
-  if (!str) return null;
+  if (
+    !str ||
+    str === "-" ||
+    str === "—" ||
+    str === "N/A" ||
+    str === "null" ||
+    str === "undefined"
+  ) {
+    return null;
+  }
 
   // 1. Check Excel serial date number (e.g. 33009 for 1990-05-15, 45869 for 2025, handles floats like 45869.5)
   if (!isNaN(Number(str)) && Number(str) > 1000 && Number(str) < 900000) {
@@ -44,9 +63,9 @@ export function parseDateToISO(val: any): string | null {
     }
   }
 
-  // 2. Check Brazilian date format DD/MM/YYYY or DD/MM/YY (supports /, ., -)
+  // 2. Check Brazilian date format DD/MM/YYYY or DD/MM/YY anywhere in string (e.g. "10/09/2026", "Prev. 10/09/2026")
   const brMatch = str.match(
-    /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})(?:[\sT]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/,
+    /(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})(?:[\sT]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/,
   );
   if (brMatch) {
     const p1 = Number(brMatch[1]);
@@ -78,9 +97,49 @@ export function parseDateToISO(val: any): string | null {
     return `${yearStr}-${monthStr}-${dayStr}`;
   }
 
-  // 3. Check ISO format YYYY-MM-DD or YYYY/MM/DD or YYYY.MM.DD
+  // 3. Check Brazilian short date DD/MM without year (e.g. 10/09, 15/09) -> infer current year
+  const shortBrMatch = str.match(/(?:^|[^\d])(\d{1,2})[/.-](\d{1,2})(?:$|[^\d])/);
+  if (shortBrMatch) {
+    const d = Number(shortBrMatch[1]);
+    const m = Number(shortBrMatch[2]);
+    if (d >= 1 && d <= 31 && m >= 1 && m <= 12) {
+      const currentYear = new Date().getFullYear();
+      return `${currentYear}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    }
+  }
+
+  // 4. Check Portuguese month names (e.g. "10/set/2026", "10 de setembro", "10-out-26")
+  const ptMonths: Record<string, string> = {
+    jan: "01",
+    fev: "02",
+    mar: "03",
+    abr: "04",
+    mai: "05",
+    jun: "06",
+    jul: "07",
+    ago: "08",
+    set: "09",
+    out: "10",
+    nov: "11",
+    dez: "12",
+  };
+  const monthWordMatch = str
+    .toLowerCase()
+    .match(/(\d{1,2})\s*(?:de|\/|-|\.)\s*([a-z]{3,9})(?:\s*(?:de|\/|-|\.)\s*(\d{2,4}))?/);
+  if (monthWordMatch) {
+    const d = String(Number(monthWordMatch[1])).padStart(2, "0");
+    const monStr = monthWordMatch[2].substring(0, 3);
+    const m = ptMonths[monStr];
+    if (m) {
+      let y = monthWordMatch[3] ? String(monthWordMatch[3]) : String(new Date().getFullYear());
+      if (y.length === 2) y = `20${y}`;
+      return `${y}-${m}-${d}`;
+    }
+  }
+
+  // 5. Check ISO format YYYY-MM-DD or YYYY/MM/DD or YYYY.MM.DD
   const isoMatch = str.match(
-    /^(\d{4})[/.-](\d{1,2})[/.-](\d{1,2})(?:[\sT]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/,
+    /(\d{4})[/.-](\d{1,2})[/.-](\d{1,2})(?:[\sT]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/,
   );
   if (isoMatch) {
     const year = isoMatch[1];
@@ -96,7 +155,7 @@ export function parseDateToISO(val: any): string | null {
     return `${year}-${month}-${day}`;
   }
 
-  // 4. Fallback to standard JS Date constructor
+  // 6. Fallback to standard JS Date constructor
   const d = new Date(str);
   if (!isNaN(d.getTime())) {
     const y = d.getUTCFullYear();
@@ -110,10 +169,27 @@ export function parseDateToISO(val: any): string | null {
 
 export function formatTimeVal(val: any): string | null {
   if (val === null || val === undefined) return null;
+  if (val instanceof Date) {
+    if (!isNaN(val.getTime())) {
+      const h = String(val.getHours()).padStart(2, "0");
+      const m = String(val.getMinutes()).padStart(2, "0");
+      return `${h}:${m}`;
+    }
+    return null;
+  }
   const str = String(val).trim();
-  if (!str) return null;
+  if (
+    !str ||
+    str === "-" ||
+    str === "—" ||
+    str === "N/A" ||
+    str === "null" ||
+    str === "undefined"
+  ) {
+    return null;
+  }
 
-  // If decimal between 0 and 1 (Excel time serial, e.g. 0.5694 for 13:40, 0.7083 for 17:00)
+  // 1. If decimal between 0 and 1 (Excel time serial, e.g. 0.5694 for 13:40, 0.7083 for 17:00)
   if (!isNaN(Number(str)) && Number(str) >= 0 && Number(str) < 1) {
     const totalMinutes = Math.round(Number(str) * 24 * 60);
     const h = Math.floor(totalMinutes / 60) % 24;
@@ -121,16 +197,34 @@ export function formatTimeVal(val: any): string | null {
     return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
   }
 
-  // Convert 8h, 8h00, 08h30 to 08:00, 08:30
-  const hMatch = str.match(/^(\d{1,2})h(?:(\d{2}))?$/i);
+  // 2. If military time or 3-4 digit number (e.g. 1700 -> 17:00, 800 -> 08:00, 1340 -> 13:40)
+  if (/^\d{3,4}$/.test(str)) {
+    const padded = str.padStart(4, "0");
+    const h = Number(padded.slice(0, 2));
+    const m = Number(padded.slice(2, 4));
+    if (h >= 0 && h < 24 && m >= 0 && m < 60) {
+      return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+    }
+  }
+
+  // 3. If embedded in a datetime or ISO string (e.g. "1899-12-30T17:00:00.000Z", "10/09/2026 17:00:00")
+  const dtMatch = str.match(/(?:T|\s+)(\d{1,2}):(\d{2})(?::\d{2})?/);
+  if (dtMatch) {
+    const h = dtMatch[1].padStart(2, "0");
+    const m = dtMatch[2];
+    return `${h}:${m}`;
+  }
+
+  // 4. Convert 8h, 8h00, 08h30, 17h00min to 08:00, 08:30, 17:00
+  const hMatch = str.match(/(\d{1,2})\s*h(?:(\d{2}))?/i);
   if (hMatch) {
     const h = hMatch[1].padStart(2, "0");
     const m = hMatch[2] ? hMatch[2].padStart(2, "0") : "00";
     return `${h}:${m}`;
   }
 
-  // Standard time format 8:00 or 08:00:00 -> 08:00
-  const timeMatch = str.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  // 5. Standard time format 8:00, 08:00:00, 17.00, 17,00 -> 08:00, 17:00
+  const timeMatch = str.match(/(\d{1,2})[:.,](\d{2})(?::\d{2})?/);
   if (timeMatch) {
     const h = timeMatch[1].padStart(2, "0");
     const m = timeMatch[2];
@@ -717,6 +811,53 @@ function ImportCard({
     setBusy(true);
     setResult(null);
     try {
+      const fileName = file.name.toLowerCase();
+      const isExcel =
+        fileName.endsWith(".xlsx") ||
+        fileName.endsWith(".xls") ||
+        file.type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+        file.type === "application/vnd.ms-excel";
+
+      if (isExcel) {
+        const buffer = await file.arrayBuffer();
+        const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+        const jsonData: any[] = XLSX.utils.sheet_to_json(worksheet, {
+          defval: "",
+          raw: false,
+          dateNF: "yyyy-mm-dd",
+        });
+
+        const rows = jsonData
+          .map((r: any) => {
+            const newR: Record<string, string> = {};
+            for (const [k, v] of Object.entries(r)) {
+              if (k) newR[k.trim()] = String(v ?? "").substring(0, 250);
+            }
+            return newR;
+          })
+          .filter((r) => Object.values(r).some((v) => v && String(v).trim()));
+
+        if (rows.length === 0) {
+          toast.warning("Arquivo Excel está vazio ou sem linhas de dados");
+          setBusy(false);
+          return;
+        }
+        const out = await importRows(kind, rows, selectedOperacaoId);
+        setResult(out);
+        if (out.ok > 0) {
+          qc.invalidateQueries();
+        }
+        if (out.fail === 0) {
+          toast.success(`${out.ok} registros importados com sucesso!`);
+        } else {
+          toast.warning(`${out.ok} importados, ${out.fail} falhas encontradas.`);
+        }
+        setBusy(false);
+        return;
+      }
+
       let text = await file.text();
       // Remove UTF-8 BOM if present
       if (text.charCodeAt(0) === 0xfeff) {
@@ -729,14 +870,14 @@ function ImportCard({
         header: true,
         skipEmptyLines: true,
         transformHeader: (header) => header.trim(),
-        delimitersToGuess: [";", ",", "\t"],
+        delimitersToGuess: [";", ",", "\t", "|"],
         complete: async (res) => {
           try {
             const rows = res.data
               .map((r) => {
                 const newR: Record<string, string> = {};
                 for (const [k, v] of Object.entries(r)) {
-                  newR[k] = String(v ?? "").substring(0, 200);
+                  if (k) newR[k.trim()] = String(v ?? "").substring(0, 250);
                 }
                 return newR;
               })
@@ -898,7 +1039,7 @@ function ImportCard({
           <label className="inline-flex cursor-pointer">
             <Input
               type="file"
-              accept=".csv,text/csv"
+              accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
               className="hidden"
               onChange={(e) => {
                 const f = e.target.files?.[0];
@@ -908,7 +1049,8 @@ function ImportCard({
             />
             <Button asChild disabled={busy} className="gap-2">
               <span>
-                <Upload className="h-4 w-4" /> {busy ? "Importando..." : "Selecionar e Enviar CSV"}
+                <Upload className="h-4 w-4" />{" "}
+                {busy ? "Importando..." : "Selecionar e Enviar Arquivo"}
               </span>
             </Button>
           </label>
@@ -1782,6 +1924,9 @@ export async function importRows(
     };
 
     const isInicioOperacaoCol = (lk: string, ck: string) => {
+      if (isDataInativacaoCol(lk, ck)) return false;
+      if (isDataNascimentoCol(lk, ck)) return false;
+
       const exact = [
         "início na operação",
         "inicio na operacao",
@@ -1795,6 +1940,12 @@ export async function importRows(
         "inicio operacao",
         "início operacao",
         "inicio operação",
+        "inicio na op",
+        "início na op",
+        "inicio op",
+        "início op",
+        "inicio na op.",
+        "início na op.",
         "data início operação",
         "data inicio operacao",
         "data início na operação",
@@ -1811,6 +1962,10 @@ export async function importRows(
         "dt inicio na operacao",
         "dt_inicio_operacao",
         "dt_inicio_na_operacao",
+        "dt inicio op",
+        "dt início op",
+        "dt. inicio op",
+        "dt. início op",
         "inicio producao",
         "início produção",
         "inicio em producao",
@@ -1835,10 +1990,6 @@ export async function importRows(
         "início oper.",
         "inicio oper",
         "início oper",
-        "inicio op",
-        "início op",
-        "dt inicio op",
-        "dt início op",
         "operacao inicio",
         "operação início",
         "operacao_inicio",
@@ -1846,21 +1997,55 @@ export async function importRows(
         "previsão início",
         "previsao_inicio",
         "previsão_início",
+        "previsao de inicio",
+        "previsão de início",
+        "data prevista",
+        "data prevista de inicio",
+        "data prevista inicio",
+        "prev inicio",
+        "prev. inicio",
+        "prev início",
+        "prev. início",
+        "previsao",
+        "previsão",
         "inicio treinamento",
         "início treinamento",
         "fim treinamento",
         "fim de treinamento",
         "início estágio",
         "inicio estagio",
+        "data início",
+        "data inicio",
+        "data de início",
+        "data de inicio",
+        "dt início",
+        "dt inicio",
+        "dt. início",
+        "dt. inicio",
+        "dt_inicio",
+        "dt_inicio_op",
+        "inicio",
+        "início",
       ];
       if (exact.includes(lk) || exact.map(cleanKey).includes(ck)) return true;
       return (
-        (ck.includes("inicio") || ck.includes("ini") || ck.includes("previs")) &&
+        (ck.includes("inicio") ||
+          ck.includes("ini") ||
+          ck.includes("previs") ||
+          ck.includes("prev")) &&
         (ck.includes("operac") ||
+          ck.includes("oper") ||
           ck.includes("op") ||
           ck.includes("prod") ||
           ck.includes("atend") ||
-          ck.includes("trein"))
+          ck.includes("trein") ||
+          ck.includes("estag") ||
+          ck.includes("data") ||
+          ck.includes("dt") ||
+          ck === "inicio" ||
+          ck === "inicionaop" ||
+          ck === "inicionaaoperacao" ||
+          ck === "iniciodaoperacao")
       );
     };
 
@@ -2035,6 +2220,7 @@ export async function importRows(
         "horário fim",
         "hora fim",
         "hr fim",
+        "hr. fim",
         "saida (horário)",
         "saída (horário)",
         "saida (horario)",
@@ -2049,6 +2235,15 @@ export async function importRows(
         "desconexão",
         "horario desconexao",
         "horario desconexão",
+        "saida operacao",
+        "saída operação",
+        "saida oper",
+        "saída oper",
+        "hr saida operacao",
+        "saida (h)",
+        "saída (h)",
+        "saida/fim",
+        "saída/fim",
       ];
       if (exact.includes(lk) || exact.map(cleanKey).includes(ck)) return true;
       return (
@@ -2056,7 +2251,8 @@ export async function importRows(
         ck.includes("termin") ||
         ck.includes("desconex") ||
         (ck.includes("horario") && ck.includes("fim")) ||
-        (ck.includes("hora") && ck.includes("fim"))
+        (ck.includes("hora") && ck.includes("fim")) ||
+        (ck.includes("hr") && ck.includes("fim"))
       );
     };
 
@@ -2326,6 +2522,48 @@ export async function importRows(
         }
       }
 
+      // Intelligent positional fallback for Pré-Atendimento template when headers were slightly altered
+      if ((!horarioSaida || !inicioOperacao || !horarioEntrada) && rowEntries.length >= 6) {
+        for (let colIdx = 0; colIdx < rowEntries.length; colIdx++) {
+          const [rk, rv] = rowEntries[colIdx];
+          const valStr = String(rv ?? "").trim();
+          if (!valStr) continue;
+
+          const lk = rk.toLowerCase().trim();
+          const ck = cleanKey(lk);
+
+          // If Saída wasn't matched yet
+          if (
+            !horarioSaida &&
+            (ck.includes("said") || ck.includes("fim") || ck.includes("termin") || colIdx === 6)
+          ) {
+            const timeCheck = formatTimeVal(valStr);
+            if (timeCheck) {
+              horarioSaida = valStr;
+            }
+          }
+
+          // If Início Operação wasn't matched yet
+          if (
+            !inicioOperacao &&
+            (ck.includes("inic") || ck.includes("oper") || ck.includes("prev") || colIdx === 7)
+          ) {
+            const dateCheck = parseDateToISO(valStr);
+            if (dateCheck && valStr !== admissao && valStr !== dataNascimento) {
+              inicioOperacao = valStr;
+            }
+          }
+
+          // If Entrada wasn't matched yet
+          if (!horarioEntrada && (ck.includes("entr") || colIdx === 5)) {
+            const timeCheck = formatTimeVal(valStr);
+            if (timeCheck && valStr !== horarioSaida) {
+              horarioEntrada = valStr;
+            }
+          }
+        }
+      }
+
       const cpfKey = rawCpf.replace(/\D/g, "");
       const nomeKey = nome.toLowerCase();
 
@@ -2420,6 +2658,10 @@ export async function importRows(
           ? selectedOperacaoId
           : colabExistente?.operacao_id || null);
 
+      const parsedInicioOp = parseDateToISO(inicioOperacao);
+      const formattedSaida = formatTimeVal(horarioSaida);
+      const formattedEntrada = formatTimeVal(horarioEntrada);
+
       const colabPayload: any = {
         nome: nome || colabExistente?.nome || "",
         cpf: rawCpf || null,
@@ -2435,13 +2677,14 @@ export async function importRows(
         jornada: jornada !== "" ? jornada : colabExistente?.jornada || null,
         produto: produto !== "" ? produto : colabExistente?.produto || null,
         horario_entrada:
-          horarioEntrada !== ""
-            ? formatTimeVal(horarioEntrada)
-            : colabExistente?.horario_entrada || null,
+          formattedEntrada ||
+          (horarioEntrada ? horarioEntrada.trim() : colabExistente?.horario_entrada || null),
         horario_saida:
-          horarioSaida !== "" ? formatTimeVal(horarioSaida) : colabExistente?.horario_saida || null,
+          formattedSaida ||
+          (horarioSaida ? horarioSaida.trim() : colabExistente?.horario_saida || null),
         inicio_na_operacao:
-          parseDateToISO(inicioOperacao) || colabExistente?.inicio_na_operacao || null,
+          parsedInicioOp ||
+          (inicioOperacao ? inicioOperacao.trim() : colabExistente?.inicio_na_operacao || null),
         apelido_intergrall:
           apelidoIntergrall !== "" ? apelidoIntergrall : colabExistente?.apelido_intergrall || null,
       };

@@ -175,51 +175,25 @@ const getPendenciaStatusLabel = (status: string | null | undefined) => {
 };
 
 const getPendenciaGridLabel = (p: any) => {
-  const statusNorm = p.status ? p.status.toUpperCase().trim() : "";
+  // Substituir o status pelo título da solicitação
+  const titulo = p.titulo ? String(p.titulo).trim() : "";
+  if (titulo) {
+    return titulo.toUpperCase();
+  }
 
+  const tipo = p.tipo ?? "";
+  if (tipo === "solicitacao_acesso") return "CRIAÇÃO";
+  if (tipo === "exclusao_acesso") return "EXCLUSÃO";
+  if (tipo === "revisao") return "DESBLOQUEIO";
+  if (tipo === "alteracao") return "ALTERAÇÃO";
+
+  const statusNorm = p.status ? String(p.status).toUpperCase().trim() : "";
   if (statusNorm === "COM ERRO" || statusNorm === "ERRO") {
     return "ERRO";
   }
   if (statusNorm === "REDEFINIR SENHA") {
     return "REDEFINIR SENHA";
   }
-
-  const tipo = p.tipo ?? "";
-  const titulo = (p.titulo ?? "").toUpperCase();
-
-  if (
-    tipo === "solicitacao_acesso" ||
-    titulo.includes("CRIAÇÃO") ||
-    titulo.includes("CRIACAO") ||
-    titulo === "CRIAÇÃO"
-  ) {
-    return "CRIAÇÃO";
-  }
-  if (
-    tipo === "exclusao_acesso" ||
-    titulo.includes("EXCLUSÃO") ||
-    titulo.includes("EXCLUSAO") ||
-    titulo.includes("INATIVAÇÃO") ||
-    titulo.includes("INATIVACAO")
-  ) {
-    return "EXCLUSÃO";
-  }
-  if (
-    tipo === "revisao" ||
-    titulo.includes("DESBLOQUEIO") ||
-    titulo.includes("REVISÃO") ||
-    titulo.includes("REVISAO")
-  ) {
-    return "DESBLOQUEIO";
-  }
-  if (tipo === "alteracao" || titulo.includes("ALTERAÇÃO") || titulo.includes("ALTERACAO")) {
-    return "ALTERAÇÃO";
-  }
-
-  if (tipo === "solicitacao_acesso") return "CRIAÇÃO";
-  if (tipo === "exclusao_acesso") return "EXCLUSÃO";
-  if (tipo === "revisao") return "DESBLOQUEIO";
-  if (tipo === "alteracao") return "ALTERAÇÃO";
 
   return statusNorm || "SOLICITADO";
 };

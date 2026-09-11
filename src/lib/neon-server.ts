@@ -645,6 +645,10 @@ async function ensurePreAtendimentoSchema(client: any) {
       ALTER TABLE public.colaboradores ADD COLUMN IF NOT EXISTS apelido_intergrall TEXT;
       ALTER TABLE public.colaboradores ADD COLUMN IF NOT EXISTS inicio_na_operacao TIMESTAMP WITH TIME ZONE;
 
+      -- Campos de rastreamento de atividade por usuário
+      ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS ultimo_acesso TIMESTAMP WITH TIME ZONE DEFAULT NOW();
+      ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS status_sessao TEXT DEFAULT 'ativo';
+
       -- Garantir função aprimorada de auditoria no histórico
       CREATE OR REPLACE FUNCTION public.tg_log_historico() RETURNS TRIGGER
       LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
@@ -748,6 +752,25 @@ async function ensurePreAtendimentoSchema(client: any) {
   }
 }
 
+const userLastTouchMap = new Map<string, number>();
+
+async function touchUserInDb(client: any, userId: string) {
+  const now = Date.now();
+  const last = userLastTouchMap.get(userId) || 0;
+  // Throttle updates to at most once every 30 seconds per user
+  if (now - last > 30_000) {
+    userLastTouchMap.set(userId, now);
+    try {
+      await client.query(
+        `UPDATE public.profiles SET ultimo_acesso = NOW(), status_sessao = 'ativo' WHERE id::text = $1`,
+        [userId],
+      );
+    } catch (_e) {
+      // ignore
+    }
+  }
+}
+
 // 2. Query Server Function
 export const neonQueryServerFn = createServerFn({ method: "POST" })
   .inputValidator(
@@ -793,6 +816,7 @@ export const neonQueryServerFn = createServerFn({ method: "POST" })
         } catch (_e) {
           // ignore
         }
+        await touchUserInDb(client, currentUser.id);
       }
 
       // Role-based Access Controls
@@ -1170,6 +1194,63 @@ export const neonRpcServerFn = createServerFn({ method: "POST" })
         const role = data.args?._role;
         const res = await client.query("SELECT public.has_role($1, $2) as res", [uid, role]);
         return { data: res.rows[0]?.res ?? false, error: null };
+      }
+
+      if (data.fnName === "touch_user_activity" || data.fnName === "touchUserActivity") {
+        if (currentUser?.id) {
+          userLastTouchMap.set(currentUser.id, Date.now());
+          try {
+            await client.query(
+              `UPDATE public.profiles SET ultimo_acesso = NOW(), status_sessao = 'ativo' WHERE id::text = $1`,
+              [currentUser.id],
+            );
+          } catch (_e) {
+            // ignore
+          }
+          return {
+            data: { success: true, status: "ativo", timestamp: new Date().toISOString() },
+            error: null,
+          };
+        }
+        return { data: { success: false }, error: null };
+      }
+
+      if (data.fnName === "set_user_inactive" || data.fnName === "setUserInactive") {
+        if (currentUser?.id) {
+          try {
+            await client.query(
+              `UPDATE public.profiles SET status_sessao = 'inativo' WHERE id::text = $1`,
+              [currentUser.id],
+            );
+          } catch (_e) {
+            // ignore
+          }
+          return {
+            data: { success: true, status: "inativo", timestamp: new Date().toISOString() },
+            error: null,
+          };
+        }
+        return { data: { success: false }, error: null };
+      }
+
+      if (data.fnName === "get_user_session_status") {
+        const uid = data.args?._user_id || currentUser?.id;
+        if (!uid) return { data: null, error: null };
+        try {
+          const res = await client.query(
+            `SELECT id, nome, email, ultimo_acesso, status_sessao,
+                    CASE 
+                      WHEN ultimo_acesso IS NULL THEN 'inativo'
+                      WHEN ultimo_acesso >= NOW() - INTERVAL '15 minutes' THEN 'ativo'
+                      ELSE 'inativo'
+                    END as status_calculado
+             FROM public.profiles WHERE id::text = $1 LIMIT 1`,
+            [uid],
+          );
+          return { data: res.rows[0] || null, error: null };
+        } catch (_e) {
+          return { data: null, error: null };
+        }
       }
 
       return { data: null, error: { message: "Função não encontrada" } };

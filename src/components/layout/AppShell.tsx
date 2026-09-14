@@ -1,4 +1,5 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useState } from "react";
 import {
   LayoutDashboard,
@@ -35,6 +36,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { db } from "@/integrations/database/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { checkAndEnsureDailyBackup } from "@/lib/backups.functions";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -117,6 +119,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         .maybeSingle();
       const { data: roles } = await db.from("user_roles").select("role").eq("user_id", u.user.id);
       return { user: u.user, profile: prof, roles: roles?.map((r) => r.role) ?? [] };
+    },
+  });
+
+  // Background Automatic Daily Backup Check
+  const checkDailyBackupFn = useServerFn(checkAndEnsureDailyBackup);
+  useQuery({
+    queryKey: ["global-daily-backup-auto-check", me?.user?.id],
+    enabled: !!me?.user,
+    staleTime: 1000 * 60 * 60, // 1 hour
+    refetchInterval: 1000 * 60 * 60 * 2, // 2 hours
+    queryFn: async () => {
+      try {
+        return await checkDailyBackupFn();
+      } catch (_err) {
+        return null;
+      }
     },
   });
 

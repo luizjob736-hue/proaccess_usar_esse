@@ -5,6 +5,8 @@ import { useServerFn } from "@tanstack/react-start";
 import {
   generateSistemaBackup,
   getSistemaBackup,
+  getSistemaBackupById,
+  getBackupsSistemaList,
   deleteSistemaBackup,
 } from "@/lib/backups.functions";
 import { Card, CardContent } from "@/components/ui/card";
@@ -39,6 +41,7 @@ import {
   Key,
   FolderGit2,
   Ticket,
+  History,
 } from "lucide-react";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
@@ -54,8 +57,11 @@ type GuiaTab =
 function BackupsPage() {
   const qc = useQueryClient();
   const [activeGuia, setActiveGuia] = useState<GuiaTab>("matriz");
+  const [selectedBackupId, setSelectedBackupId] = useState<string | null>(null);
 
   const getBackupFn = useServerFn(getSistemaBackup);
+  const getBackupByIdFn = useServerFn(getSistemaBackupById);
+  const getBackupsListFn = useServerFn(getBackupsSistemaList);
   const generateFn = useServerFn(generateSistemaBackup);
   const deleteFn = useServerFn(deleteSistemaBackup);
 
@@ -82,40 +88,43 @@ function BackupsPage() {
     (me?.roles ?? []).includes("admin") ||
     me?.user?.role === "admin_master";
 
-  // Active Daily Backup from Database
+  // List of all recent backups
+  const { data: backupsList = [] } = useQuery({
+    queryKey: ["sistema-backups-list"],
+    queryFn: async () => {
+      return await getBackupsListFn();
+    },
+  });
+
+  // Active Daily Backup from Database (selected from history or latest)
   const {
     data: backup,
     isLoading,
     refetch,
   } = useQuery({
-    queryKey: ["sistema-backup-diario"],
+    queryKey: ["sistema-backup-diario", selectedBackupId],
     queryFn: async () => {
-      let b = await getBackupFn();
-      // Auto-generate if no backup exists yet
-      if (!b) {
-        try {
-          b = await generateFn({ data: { tipo: "diario" } });
-        } catch (_e) {
-          // ignore
-        }
+      if (selectedBackupId) {
+        return await getBackupByIdFn({ data: { id: selectedBackupId } });
       }
-      return b;
+      return await getBackupFn();
     },
   });
 
-  // Mutation to manually regenerate / replace backup in DB
+  // Mutation to manually regenerate / create fresh backup in DB
   const generateMutation = useMutation({
     mutationFn: async () => {
       return await generateFn({
         data: {
           tipo: "diario",
-          substituirAnterior: true,
         },
       });
     },
     onSuccess: () => {
-      toast.success("Backup do Sistema atualizado com sucesso no banco de dados!");
+      toast.success("Backup do Sistema gerado e atualizado com sucesso!");
+      setSelectedBackupId(null);
       qc.invalidateQueries({ queryKey: ["sistema-backup-diario"] });
+      qc.invalidateQueries({ queryKey: ["sistema-backups-list"] });
     },
     onError: (err: any) => toast.error(err.message || "Erro ao gerar backup"),
   });
@@ -127,7 +136,9 @@ function BackupsPage() {
     },
     onSuccess: () => {
       toast.success("Backup removido do banco de dados");
+      setSelectedBackupId(null);
       qc.invalidateQueries({ queryKey: ["sistema-backup-diario"] });
+      qc.invalidateQueries({ queryKey: ["sistema-backups-list"] });
     },
     onError: (err: any) => toast.error(err.message || "Erro ao excluir backup"),
   });
@@ -398,35 +409,63 @@ function BackupsPage() {
       {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <Database className="h-7 w-7 text-primary" />
             <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
-              Backup Diário do Sistema (Em Banco)
+              Backup Automático do Sistema
             </h1>
             <Badge
               variant="outline"
               className="bg-emerald-500/10 text-emerald-700 border-emerald-300 font-medium"
             >
-              <Sparkles className="h-3 w-3 mr-1" /> Substituição Ativa
+              <Sparkles className="h-3 w-3 mr-1" /> Execução Diária Automática
             </Badge>
+            {backupsList.length > 0 && (
+              <Badge variant="secondary" className="text-xs font-normal">
+                {backupsList.length} snapshot{backupsList.length > 1 ? "s" : ""} salvo
+                {backupsList.length > 1 ? "s" : ""}
+              </Badge>
+            )}
           </div>
           <p className="text-muted-foreground mt-1 text-sm md:text-base">
-            Backup consolidado de todas as guias e tabelas em banco de dados. O backup mais recente
-            substitui o anterior diariamente para manter o banco leve.
+            Backup consolidado de todas as guias e tabelas em banco de dados. O sistema realiza o
+            backup diário automaticamente a cada novo dia de uso, com retenção dos últimos 30 dias.
           </p>
         </div>
 
         {/* Action Buttons */}
         <div className="flex items-center gap-2 flex-wrap">
+          {backupsList.length > 1 && (
+            <div className="flex items-center gap-2">
+              <History className="h-4 w-4 text-muted-foreground" />
+              <Select
+                value={selectedBackupId || "latest"}
+                onValueChange={(val) => setSelectedBackupId(val === "latest" ? null : val)}
+              >
+                <SelectTrigger className="w-[210px] h-9 text-xs">
+                  <SelectValue placeholder="Selecione o snapshot" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="latest" className="text-xs font-medium">
+                    📌 Mais recente (Hoje)
+                  </SelectItem>
+                  {backupsList.map((bk: any) => (
+                    <SelectItem key={bk.id} value={bk.id} className="text-xs">
+                      {bk.data_layout || bk.descricao || "Snapshot"}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
           <Button
             onClick={() => generateMutation.mutate()}
             disabled={generateMutation.isPending}
             className="gap-2 shadow-sm bg-primary hover:bg-primary/90 text-white"
           >
             <RefreshCw className={`h-4 w-4 ${generateMutation.isPending ? "animate-spin" : ""}`} />
-            {generateMutation.isPending
-              ? "Substituindo Backup..."
-              : "Gerar / Substituir Backup Agora"}
+            {generateMutation.isPending ? "Gerando Backup..." : "Gerar / Atualizar Agora"}
           </Button>
 
           {backup && (
@@ -459,9 +498,9 @@ function BackupsPage() {
             <Button
               variant="destructive"
               size="icon"
-              title="Limpar Backup do Banco"
+              title="Excluir Snapshot do Banco"
               onClick={() => {
-                if (confirm("Deseja realmente limpar o snapshot de backup do banco?")) {
+                if (confirm("Deseja realmente excluir este snapshot de backup do banco?")) {
                   deleteMutation.mutate(backup.id);
                 }
               }}
@@ -481,19 +520,24 @@ function BackupsPage() {
               <Archive className="h-5 w-5" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span className="font-semibold text-foreground">
                   {backup?.descricao || "Backup Diário em Banco"}
                 </span>
                 <Badge variant="secondary" className="text-[11px]">
                   {backup?.data_layout
-                    ? `Atualizado em ${backup.data_layout}`
+                    ? `Data: ${backup.data_layout}`
                     : "Aguardando geração"}
                 </Badge>
+                {selectedBackupId && (
+                  <Badge variant="outline" className="text-[10px] text-amber-600 border-amber-300">
+                    Visualizando Histórico
+                  </Badge>
+                )}
               </div>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Política de Retenção: <strong>1 Snapshot Ativo</strong> (substituição contínua sem
-                inchar tabelas).
+                Política de Retenção: <strong>Histórico dos últimos 30 dias</strong> mantido
+                automaticamente em banco com atualização diária.
               </p>
             </div>
           </div>

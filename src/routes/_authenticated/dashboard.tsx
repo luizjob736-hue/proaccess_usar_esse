@@ -24,7 +24,6 @@ import {
   Cell,
   Legend,
 } from "recharts";
-import { Badge } from "@/components/ui/badge";
 import { matchesColumnStatus } from "@/routes/_authenticated/pendencias";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
@@ -404,17 +403,6 @@ function Dashboard() {
           </CardContent>
         </Card>
       </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Painel de saúde do ambiente</CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-3 md:grid-cols-3">
-          <HealthItem label="Acessos órfãos" value={data?.orfaos ?? 0} good={0} />
-          <HealthItem label="Sistemas sem responsável" value={data?.semResp ?? 0} good={0} />
-          <HealthItem label="Pendências abertas" value={data?.pendTotal ?? 0} good={0} />
-        </CardContent>
-      </Card>
     </div>
   );
 }
@@ -453,20 +441,5 @@ function Kpi({
         </div>
       </CardContent>
     </Card>
-  );
-}
-
-function HealthItem({ label, value, good }: { label: string; value: number; good: number }) {
-  const ok = value <= good;
-  return (
-    <div className="flex items-center justify-between rounded-lg border p-3">
-      <span className="text-sm">{label}</span>
-      <Badge
-        variant={ok ? "default" : "destructive"}
-        className={ok ? "bg-emerald-600 text-white" : ""}
-      >
-        {value}
-      </Badge>
-    </div>
   );
 }

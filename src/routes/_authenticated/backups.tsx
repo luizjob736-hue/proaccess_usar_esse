@@ -525,9 +525,7 @@ function BackupsPage() {
                   {backup?.descricao || "Backup Diário em Banco"}
                 </span>
                 <Badge variant="secondary" className="text-[11px]">
-                  {backup?.data_layout
-                    ? `Data: ${backup.data_layout}`
-                    : "Aguardando geração"}
+                  {backup?.data_layout ? `Data: ${backup.data_layout}` : "Aguardando geração"}
                 </Badge>
                 {selectedBackupId && (
                   <Badge variant="outline" className="text-[10px] text-amber-600 border-amber-300">

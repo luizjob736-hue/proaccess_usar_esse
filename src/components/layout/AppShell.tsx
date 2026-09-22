@@ -29,6 +29,7 @@ import {
   Archive,
   UserCheck,
   UserPlus,
+  CheckSquare,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -67,6 +68,7 @@ const NAV_FULL = [
   { to: "/importar", icon: Upload, label: "Importar CSV" },
   { to: "/usuarios-a-solicitar", icon: UserCheck, label: "Usuários a solicitar" },
   { to: "/pendencias", icon: Kanban, label: "Pendências" },
+  { to: "/pendencias-historico", icon: CheckSquare, label: "Histórico de Pendências" },
   { to: "/chamados", icon: LifeBuoy, label: "Chamados" },
   { to: "/historico", icon: History, label: "Histórico" },
   { to: "/relatorios", icon: FileBarChart, label: "Relatórios" },

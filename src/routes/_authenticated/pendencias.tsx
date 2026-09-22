@@ -40,6 +40,7 @@ import {
   Trash2,
   ChevronDown,
   FileSpreadsheet,
+  CheckSquare,
 } from "lucide-react";
 import { toast } from "sonner";
 import Papa from "papaparse";
@@ -909,13 +910,12 @@ function Pendencias() {
             </DropdownMenuContent>
           </DropdownMenu>
 
-          {isAdmin && (
-            <Button variant="outline" asChild className="gap-2">
-              <Link to="/pendencias-historico">
-                <MessageSquare className="h-4 w-4" /> Histórico
-              </Link>
-            </Button>
-          )}
+          <Button variant="outline" asChild className="gap-2 border-primary/30 hover:bg-primary/5">
+            <Link to="/pendencias-historico">
+              <CheckSquare className="h-4 w-4 text-primary" />
+              <span>Histórico de Pendências</span>
+            </Link>
+          </Button>
           <Dialog
             open={open}
             onOpenChange={(o) => {

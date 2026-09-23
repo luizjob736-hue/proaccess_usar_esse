@@ -66,39 +66,50 @@ export const Route = createFileRoute("/_authenticated/pendencias-pine")({
 });
 
 // Formatters
-function formatCpf(cpf: string | null | undefined): string {
+function formatCpf(cpf: any): string {
   if (!cpf) return "—";
-  const clean = cpf.replace(/\D/g, "");
+  const str = String(cpf);
+  const clean = str.replace(/\D/g, "");
   if (clean.length === 11) {
     return clean.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
   }
-  return cpf;
+  return str;
 }
 
-function formatDate(dateStr: string | null | undefined): string {
-  if (!dateStr) return "—";
-  try {
-    const raw = dateStr.split("T")[0];
-    const parts = raw.split("-");
-    if (parts.length === 3) {
-      return `${parts[2]}/${parts[1]}/${parts[0]}`;
-    }
-  } catch {
-    // fallback
+function formatDate(val: any): string {
+  if (!val) return "—";
+  if (val instanceof Date) {
+    if (isNaN(val.getTime())) return "—";
+    return val.toLocaleDateString("pt-BR", { timeZone: "UTC" });
   }
-  return dateStr;
+  const str = String(val).trim();
+  if (!str) return "—";
+  const match = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (match) {
+    const [, y, m, d] = match;
+    return `${d}/${m}/${y}`;
+  }
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(str)) {
+    return str;
+  }
+  const d = new Date(str);
+  if (!isNaN(d.getTime())) {
+    return d.toLocaleDateString("pt-BR", { timeZone: "UTC" });
+  }
+  return str;
 }
 
-function formatPhone(phone: string | null | undefined): string {
+function formatPhone(phone: any): string {
   if (!phone) return "—";
-  const clean = phone.replace(/\D/g, "");
+  const str = String(phone);
+  const clean = str.replace(/\D/g, "");
   if (clean.length === 11) {
     return `(${clean.slice(0, 2)}) ${clean.slice(2, 7)}-${clean.slice(7)}`;
   }
   if (clean.length === 10) {
     return `(${clean.slice(0, 2)}) ${clean.slice(2, 6)}-${clean.slice(6)}`;
   }
-  return phone;
+  return str;
 }
 
 const PRESET_FUNCOES = [
@@ -474,9 +485,11 @@ export function PendenciasPinePage() {
           colaborador_id: payload.colaborador_id,
           sistemas_valores: payload.sistemas_valores,
           funcao: "-",
-          numero_chamado: payload.numero_chamado.slice(0, 200),
-          observacao: payload.observacao.slice(0, 200),
+          numero_chamado: (payload.numero_chamado || "").slice(0, 200),
+          observacao: (payload.observacao || "").slice(0, 200),
           ordem: maxOrdem + 1,
+          arquivado: false,
+          status: "pendente",
         })
         .select()
         .single();
@@ -1862,7 +1875,7 @@ function PineUnifiedRow({
             </Badge>
             {row.concluido_em && (
               <span className="text-[10px] text-muted-foreground">
-                em {new Date(row.concluido_em).toLocaleDateString("pt-BR")}
+                em {formatDate(row.concluido_em)}
               </span>
             )}
           </div>

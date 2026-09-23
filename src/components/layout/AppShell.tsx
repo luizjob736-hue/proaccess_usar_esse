@@ -83,9 +83,7 @@ const NAV_OPERADOR = [
   { to: "/perfil", icon: User, label: "Perfil" },
 ] as const;
 
-const NAV_CLIENTE = [
-  { to: "/pendencias-pine", icon: Table2, label: "Pendências Pine" },
-] as const;
+const NAV_CLIENTE = [{ to: "/pendencias-pine", icon: Table2, label: "Pendências Pine" }] as const;
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -124,7 +122,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         .eq("id", u.user.id)
         .maybeSingle();
       const { data: roles } = await db.from("user_roles").select("role").eq("user_id", u.user.id);
-      return { user: u.user, profile: prof, roles: roles?.map((r) => r.role) ?? [] };
+      const roleList = (roles ?? []).map((r: any) => r.role);
+      if (u.user.role && !roleList.includes(u.user.role)) {
+        roleList.push(u.user.role);
+      }
+      return { user: u.user, profile: prof, roles: roleList };
     },
   });
 
@@ -271,12 +273,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       .join("")
       .toUpperCase() || "?";
   const userRoles = (me?.roles ?? []) as string[];
-  const isAdmin = userRoles.some((r) => r === "admin" || r === "admin_master");
-  const isCliente = userRoles.includes("cliente") && !isAdmin;
+  const directRole = me?.user?.role;
+  const isAdmin =
+    userRoles.some((r) => r === "admin" || r === "admin_master") ||
+    directRole === "admin" ||
+    directRole === "admin_master";
+  const isCliente = (userRoles.includes("cliente") || directRole === "cliente") && !isAdmin;
   const isOperador =
-    userRoles.includes("operador") &&
+    (userRoles.includes("operador") || directRole === "operador") &&
+    !isAdmin &&
+    !isCliente &&
     !userRoles.some((r) =>
-      ["admin", "admin_master", "analista", "supervisor", "consulta", "cliente"].includes(r),
+      ["admin", "admin_master", "analista", "supervisor", "consulta"].includes(r),
     );
 
   let calculatedNav: ReadonlyArray<{ to: string; icon: any; label: string }> = NAV_FULL;
@@ -334,14 +342,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {/* Main */}
         <div className="flex flex-1 flex-col">
           <header className="flex h-16 items-center gap-3 border-b bg-card px-4 md:px-6">
-            <button
-              onClick={() => setCmdOpen(true)}
-              className="flex flex-1 items-center gap-2 rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground hover:bg-muted"
-            >
-              <Search className="h-4 w-4" />
-              <span>Buscar... </span>
-              <kbd className="ml-auto rounded bg-muted px-1.5 py-0.5 text-xs">⌘K</kbd>
-            </button>
+            {!isCliente ? (
+              <button
+                onClick={() => setCmdOpen(true)}
+                className="flex flex-1 items-center gap-2 rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground hover:bg-muted"
+              >
+                <Search className="h-4 w-4" />
+                <span>Buscar... </span>
+                <kbd className="ml-auto rounded bg-muted px-1.5 py-0.5 text-xs">⌘K</kbd>
+              </button>
+            ) : (
+              <div className="flex-1" />
+            )}
             <Button size="icon" variant="ghost" onClick={toggleTheme} title="Tema">
               {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </Button>
@@ -356,15 +368,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   <div className="hidden text-left md:block">
                     <div className="text-xs font-medium">{displayName}</div>
                     <div className="text-[10px] text-muted-foreground">
-                      {me?.roles?.[0] === "operador"
-                        ? "Colaborador"
-                        : me?.roles?.[0] === "admin_master"
-                          ? "Admin Master"
-                          : me?.roles?.[0] === "admin"
-                            ? "Administrador"
-                            : me?.roles?.[0] === "cliente"
-                              ? "Cliente"
-                              : me?.roles?.[0] || "Usuário"}
+                      {isCliente
+                        ? "Cliente"
+                        : isAdmin
+                          ? "Administrador"
+                          : isOperador
+                            ? "Colaborador"
+                            : me?.roles?.[0] || directRole || "Usuário"}
                     </div>
                   </div>
                 </Button>

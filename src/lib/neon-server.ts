@@ -879,13 +879,14 @@ export const neonQueryServerFn = createServerFn({ method: "POST" })
           data.whereClauses.push({ col: "user_id", op: "eq", val: currentUser.id });
         }
       } else if (currentUser && currentUser.role === "cliente") {
-        // Cliente can only access pendencias_pine, pendencias_pine_sistemas, colaboradores, sistemas, profiles
+        // Cliente can only access pendencias_pine, pendencias_pine_sistemas, colaboradores, sistemas, profiles, user_roles
         if (
           table !== "pendencias_pine" &&
           table !== "pendencias_pine_sistemas" &&
           table !== "colaboradores" &&
           table !== "sistemas" &&
-          table !== "profiles"
+          table !== "profiles" &&
+          table !== "user_roles"
         ) {
           throw new Error(
             "Não autorizado: O perfil Cliente possui acesso restrito ao módulo de Pendências Pine.",

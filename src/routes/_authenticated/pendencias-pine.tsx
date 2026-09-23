@@ -139,26 +139,40 @@ export function PendenciasPinePage() {
     queryFn: async () => {
       const { data } = await db.auth.getUser();
       if (!data?.user) return null;
-      const { data: roles } = await db
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", data.user.id);
+      let roles: any = [];
+      try {
+        const { data: fetchedRoles } = await db
+          .from("user_roles")
+          .select("role")
+          .eq("user_id", data.user.id);
+        roles = fetchedRoles || [];
+      } catch (_e) {
+        // ignore
+      }
       const { data: profile } = await db
         .from("profiles")
         .select("*")
         .eq("id", data.user.id)
         .maybeSingle();
+      const roleList = (roles ?? []).map((r: any) => r.role);
+      if (data.user.role && !roleList.includes(data.user.role)) {
+        roleList.push(data.user.role);
+      }
       return {
         user: data.user,
-        roles: (roles ?? []).map((r: any) => r.role),
+        roles: roleList,
         profile,
       };
     },
   });
 
   const roles = (me?.roles ?? []) as string[];
-  const isAdmin = roles.some((r) => r === "admin" || r === "admin_master");
-  const isCliente = roles.includes("cliente") && !isAdmin;
+  const userRole = me?.user?.role;
+  const isAdmin =
+    roles.some((r) => r === "admin" || r === "admin_master") ||
+    userRole === "admin" ||
+    userRole === "admin_master";
+  const isCliente = (roles.includes("cliente") || userRole === "cliente") && !isAdmin;
   const hasAccess = isAdmin || isCliente;
 
   // 2. Systems selected as columns in Pine table

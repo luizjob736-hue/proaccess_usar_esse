@@ -33,6 +33,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import {
   Table2,
   Plus,
@@ -60,6 +61,9 @@ import {
   CheckCheck,
   ChevronDown,
   FileDown,
+  Eye,
+  EyeOff,
+  CalendarCheck,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -248,10 +252,27 @@ export function PendenciasPinePage() {
     enabled: isAdmin,
   });
 
-  // Filters, Search & View Mode
+  // Filters, Search, View Mode & Flag Ocultar Finalizadas
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("todos");
   const [viewMode, setViewMode] = useState<"ativas" | "historico">("ativas");
+  const [ocultarFinalizadas, setOcultarFinalizadas] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem("pine_ocultar_finalizadas");
+      return saved !== null ? JSON.parse(saved) : false;
+    } catch {
+      return false;
+    }
+  });
+
+  const handleToggleOcultarFinalizadas = (val: boolean) => {
+    setOcultarFinalizadas(val);
+    try {
+      localStorage.setItem("pine_ocultar_finalizadas", JSON.stringify(val));
+    } catch (e) {
+      console.warn("Falha ao salvar preferência de visualização:", e);
+    }
+  };
 
   // Solucionar Dialog State
   const [rowToSolucionar, setRowToSolucionar] = useState<any>(null);
@@ -260,11 +281,17 @@ export function PendenciasPinePage() {
   const filteredRows = useMemo(() => {
     let result = [...pendencias];
 
-    // Filter by view mode (ativas vs historico)
-    if (viewMode === "ativas") {
-      result = result.filter((item: any) => !item.arquivado && item.status !== "concluido");
-    } else {
+    // Filter by view mode:
+    if (viewMode === "historico") {
+      // Aba dedicada exclusivamente a solucionadas
       result = result.filter((item: any) => item.arquivado === true || item.status === "concluido");
+    } else {
+      // Guia principal de Pendências Pine:
+      // Se a flag "ocultarFinalizadas" estiver ativa, oculta as finalizadas.
+      // Se estiver desativada (padrão), as finalizadas permanecem visíveis na guia com a "Data de finalização" preenchida!
+      if (ocultarFinalizadas) {
+        result = result.filter((item: any) => !item.arquivado && item.status !== "concluido");
+      }
     }
 
     const s = search.trim().toLowerCase();
@@ -304,7 +331,7 @@ export function PendenciasPinePage() {
     }
 
     return result;
-  }, [pendencias, viewMode, search, filterStatus]);
+  }, [pendencias, viewMode, ocultarFinalizadas, search, filterStatus]);
 
   // Modals state
   const [modalManageSistemasOpen, setModalManageSistemasOpen] = useState(false);
@@ -801,10 +828,8 @@ export function PendenciasPinePage() {
       // Details
       rowObj["Nº DO CHAMADO"] = p.numero_chamado || "";
       rowObj["OBSERVAÇÃO"] = p.observacao || "";
+      rowObj["DATA DE FINALIZAÇÃO"] = p.concluido_em ? formatDate(p.concluido_em) : "—";
       rowObj["SITUAÇÃO"] = isResolved ? "SOLUCIONADO" : "PENDENTE";
-      if (isResolved && p.concluido_em) {
-        rowObj["DATA DA SOLUÇÃO"] = formatDate(p.concluido_em);
-      }
 
       return rowObj;
     });
@@ -827,8 +852,8 @@ export function PendenciasPinePage() {
 
     cols.push({ wch: 20 }); // Nº CHAMADO
     cols.push({ wch: 35 }); // OBSERVAÇÃO
+    cols.push({ wch: 22 }); // DATA DE FINALIZAÇÃO
     cols.push({ wch: 16 }); // SITUAÇÃO
-    cols.push({ wch: 18 }); // DATA DA SOLUÇÃO
 
     ws["!cols"] = cols;
 
@@ -1087,42 +1112,73 @@ export function PendenciasPinePage() {
         </Card>
       </div>
 
-      {/* View Mode Tabs (Ativas vs Histórico) */}
+      {/* View Mode Tabs (Guia de Pendências vs Histórico) + Flag Switch */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-1.5 p-1 bg-muted/80 rounded-lg border">
-          <button
-            type="button"
-            onClick={() => setViewMode("ativas")}
-            className={`px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-2 transition-all ${
-              viewMode === "ativas"
-                ? "bg-background text-foreground shadow-sm font-semibold"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <Clock className="h-3.5 w-3.5 text-amber-500" />
-            <span>Pendências Ativas</span>
-            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
-              {stats.ativas}
-            </Badge>
-          </button>
-          <button
-            type="button"
-            onClick={() => setViewMode("historico")}
-            className={`px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-2 transition-all ${
-              viewMode === "historico"
-                ? "bg-background text-emerald-600 dark:text-emerald-400 shadow-sm font-semibold"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-            <span>Histórico de Solucionadas</span>
-            <Badge
-              variant="outline"
-              className="text-[10px] px-1.5 py-0 h-4 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-300 dark:border-emerald-700"
+        <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex items-center gap-1.5 p-1 bg-muted/80 rounded-lg border">
+            <button
+              type="button"
+              onClick={() => setViewMode("ativas")}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-2 transition-all ${
+                viewMode === "ativas"
+                  ? "bg-background text-foreground shadow-sm font-semibold"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
             >
-              {stats.historico}
-            </Badge>
-          </button>
+              <Clock className="h-3.5 w-3.5 text-amber-500" />
+              <span>Guia de Pendências</span>
+              <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
+                {ocultarFinalizadas ? stats.ativas : stats.total}
+              </Badge>
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("historico")}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-2 transition-all ${
+                viewMode === "historico"
+                  ? "bg-background text-emerald-600 dark:text-emerald-400 shadow-sm font-semibold"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+              <span>Histórico de Solucionadas</span>
+              <Badge
+                variant="outline"
+                className="text-[10px] px-1.5 py-0 h-4 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-300 dark:border-emerald-700"
+              >
+                {stats.historico}
+              </Badge>
+            </button>
+          </div>
+
+          {/* Flag para ocultar e desocultar dados finalizados na guia */}
+          {viewMode === "ativas" && (
+            <div className="flex items-center gap-2.5 px-3 py-1.5 rounded-lg border bg-card shadow-sm text-xs transition-colors">
+              <Switch
+                id="flag-ocultar-finalizadas"
+                checked={ocultarFinalizadas}
+                onCheckedChange={handleToggleOcultarFinalizadas}
+              />
+              <Label
+                htmlFor="flag-ocultar-finalizadas"
+                className="cursor-pointer select-none flex items-center gap-1.5 text-xs"
+              >
+                {ocultarFinalizadas ? (
+                  <>
+                    <EyeOff className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="text-muted-foreground">Finalizadas ocultas</span>
+                  </>
+                ) : (
+                  <>
+                    <Eye className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                    <span className="text-foreground font-medium">
+                      Exibindo finalizadas na guia ({stats.historico})
+                    </span>
+                  </>
+                )}
+              </Label>
+            </div>
+          )}
         </div>
 
         {!isCliente && (
@@ -1287,6 +1343,14 @@ export function PendenciasPinePage() {
                   </div>
                 </th>
 
+                {/* 4.1. Coluna Fixa: Data de finalização */}
+                <th className="py-3 px-3 min-w-[170px] bg-emerald-500/5 text-foreground font-bold border-r border-border/50">
+                  <div className="flex items-center gap-1.5">
+                    <CalendarCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                    <span>Data de finalização</span>
+                  </div>
+                </th>
+
                 {/* 5. Actions Column (Admin only) */}
                 {isAdmin && <th className="py-3 px-3 text-center w-28">Ações</th>}
               </tr>
@@ -1295,7 +1359,7 @@ export function PendenciasPinePage() {
               {filteredRows.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={6 + pineSistemas.length + 2 + (isAdmin ? 1 : 0)}
+                    colSpan={6 + pineSistemas.length + 3 + (isAdmin ? 1 : 0)}
                     className="py-12 text-center text-muted-foreground text-sm"
                   >
                     {search || filterStatus !== "todos" ? (
@@ -1319,9 +1383,22 @@ export function PendenciasPinePage() {
                         <p className="font-medium text-foreground">
                           {viewMode === "historico"
                             ? "Nenhuma pendência solucionada no histórico ainda."
-                            : "Nenhum colaborador com pendência ativa no momento."}
+                            : ocultarFinalizadas && stats.historico > 0
+                              ? `Nenhuma pendência ativa em aberto (há ${stats.historico} pendência(s) finalizada(s) oculta(s) pelo filtro).`
+                              : "Nenhum colaborador com pendência ativa no momento."}
                         </p>
-                        {isAdmin && viewMode === "ativas" && (
+                        {viewMode === "ativas" && ocultarFinalizadas && stats.historico > 0 && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleToggleOcultarFinalizadas(false)}
+                            className="mt-2 text-xs gap-1.5 border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-300"
+                          >
+                            <Eye className="h-3.5 w-3.5 text-emerald-600" />
+                            <span>Desocultar pendências finalizadas na guia</span>
+                          </Button>
+                        )}
+                        {isAdmin && viewMode === "ativas" && !ocultarFinalizadas && (
                           <Button
                             size="sm"
                             onClick={() => setModalNewColabOpen(true)}
@@ -1948,7 +2025,11 @@ function PineUnifiedRow({
   const isSolucionado = Boolean(row.arquivado || row.status === "concluido");
 
   return (
-    <tr className="hover:bg-muted/30 transition-colors border-b border-border/60">
+    <tr
+      className={`transition-colors border-b border-border/60 ${
+        isSolucionado ? "bg-emerald-500/[0.03] hover:bg-emerald-500/[0.07]" : "hover:bg-muted/30"
+      }`}
+    >
       {/* 1. Sequential Index */}
       <td className="py-2.5 px-3 text-center text-xs text-muted-foreground font-mono border-r border-border/40">
         {index}
@@ -2193,6 +2274,21 @@ function PineUnifiedRow({
             </span>
           )}
         </div>
+      </td>
+
+      {/* 9.1. Coluna Fixa: Data de finalização */}
+      <td className="py-2.5 px-3 text-xs font-mono text-center border-r border-border/40 whitespace-nowrap bg-emerald-500/[0.02]">
+        {row.concluido_em ? (
+          <div
+            className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-emerald-100/70 text-emerald-800 border border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800 font-medium text-xs shadow-none"
+            title={`Finalizado em: ${formatDate(row.concluido_em)}`}
+          >
+            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <span>{formatDate(row.concluido_em)}</span>
+          </div>
+        ) : (
+          <span className="text-muted-foreground/60 text-xs">—</span>
+        )}
       </td>
 
       {/* 10. Actions (Admin only) */}

@@ -17,8 +17,21 @@ export const Route = createFileRoute("/_authenticated")({
     }
 
     const user = data.user;
-    const isOperador = user.role === "operador";
-    const isCliente = user.role === "cliente";
+    let userRoles: string[] = [];
+    if (user?.id) {
+      try {
+        const { data: rolesData } = await db
+          .from("user_roles")
+          .select("role")
+          .eq("user_id", user.id);
+        userRoles = rolesData?.map((r: any) => r.role) ?? [];
+      } catch (_e) {
+        // ignore
+      }
+    }
+
+    const isOperador = userRoles.includes("operador") || user.role === "operador";
+    const isCliente = userRoles.includes("cliente") || user.role === "cliente";
     const senhaAlterada = user.user_metadata?.senha_alterada;
 
     if (senhaAlterada === false) {
@@ -28,7 +41,16 @@ export const Route = createFileRoute("/_authenticated")({
       }
     }
 
-    if (isOperador) {
+    if (isCliente) {
+      const pathname = typeof window !== "undefined" ? window.location.pathname : "";
+      if (
+        pathname &&
+        !pathname.startsWith("/pendencias-pine") &&
+        !pathname.includes("/primeiro-acesso")
+      ) {
+        throw redirect({ to: "/pendencias-pine" });
+      }
+    } else if (isOperador) {
       const pathname = typeof window !== "undefined" ? window.location.pathname : "";
       if (
         pathname === "/dashboard" ||
@@ -37,19 +59,6 @@ export const Route = createFileRoute("/_authenticated")({
         pathname === "/chamados/"
       ) {
         throw redirect({ to: "/minha-matriz" });
-      }
-    }
-
-    if (isCliente) {
-      const pathname = typeof window !== "undefined" ? window.location.pathname : "";
-      if (
-        pathname === "/dashboard" ||
-        pathname === "/dashboard/" ||
-        pathname === "/minha-matriz" ||
-        pathname === "/minha-matriz/" ||
-        pathname === "/"
-      ) {
-        throw redirect({ to: "/pendencias-pine" });
       }
     }
 

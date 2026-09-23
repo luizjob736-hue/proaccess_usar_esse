@@ -85,7 +85,6 @@ const NAV_OPERADOR = [
 
 const NAV_CLIENTE = [
   { to: "/pendencias-pine", icon: Table2, label: "Pendências Pine" },
-  { to: "/perfil", icon: User, label: "Perfil" },
 ] as const;
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -281,10 +280,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     );
 
   let calculatedNav: ReadonlyArray<{ to: string; icon: any; label: string }> = NAV_FULL;
-  if (isOperador) {
-    calculatedNav = NAV_OPERADOR;
-  } else if (isCliente) {
+  if (isCliente) {
     calculatedNav = NAV_CLIENTE;
+  } else if (isOperador) {
+    calculatedNav = NAV_OPERADOR;
   } else if (isAdmin) {
     const pendIdx = NAV_FULL.findIndex((i) => i.to === "/pendencias-historico");
     const fullWithPine = [...NAV_FULL];
@@ -373,13 +372,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <DropdownMenuContent align="end">
                 <DropdownMenuLabel>{me?.profile?.email ?? me?.user?.email}</DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => navigate({ to: "/perfil" })}>
-                  <User className="mr-2 h-4 w-4" /> Perfil
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => navigate({ to: "/configuracoes" })}>
-                  <Settings className="mr-2 h-4 w-4" /> Configurações
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
+                {!isCliente && (
+                  <>
+                    <DropdownMenuItem onClick={() => navigate({ to: "/perfil" })}>
+                      <User className="mr-2 h-4 w-4" /> Perfil
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => navigate({ to: "/configuracoes" })}>
+                      <Settings className="mr-2 h-4 w-4" /> Configurações
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                  </>
+                )}
                 <DropdownMenuItem onClick={signOut} className="text-destructive">
                   <LogOut className="mr-2 h-4 w-4" /> Sair
                 </DropdownMenuItem>

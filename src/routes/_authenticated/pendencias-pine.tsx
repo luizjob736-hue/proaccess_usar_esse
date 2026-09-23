@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, useMemo, useEffect } from "react";
 import * as XLSX from "xlsx";
@@ -54,6 +54,10 @@ import {
   Settings2,
   Filter,
   UserPlus,
+  Clock,
+  RotateCcw,
+  History,
+  CheckCheck,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -231,12 +235,25 @@ export function PendenciasPinePage() {
     enabled: isAdmin,
   });
 
-  // Filters & Search
+  // Filters, Search & View Mode
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("todos");
+  const [viewMode, setViewMode] = useState<"ativas" | "historico">("ativas");
+
+  // Solucionar Dialog State
+  const [rowToSolucionar, setRowToSolucionar] = useState<any>(null);
+  const [observacaoSolucao, setObservacaoSolucao] = useState("");
 
   const filteredRows = useMemo(() => {
     let result = [...pendencias];
+
+    // Filter by view mode (ativas vs historico)
+    if (viewMode === "ativas") {
+      result = result.filter((item: any) => !item.arquivado && item.status !== "concluido");
+    } else {
+      result = result.filter((item: any) => item.arquivado === true || item.status === "concluido");
+    }
+
     const s = search.trim().toLowerCase();
 
     if (s) {
@@ -274,7 +291,7 @@ export function PendenciasPinePage() {
     }
 
     return result;
-  }, [pendencias, search, filterStatus]);
+  }, [pendencias, viewMode, search, filterStatus]);
 
   // Modals state
   const [modalManageSistemasOpen, setModalManageSistemasOpen] = useState(false);
@@ -592,6 +609,126 @@ export function PendenciasPinePage() {
     },
   });
 
+  // 7. Solucionar pendência (Admin only) -> Move para o Histórico de Pendências
+  const solucionarMutation = useMutation({
+    mutationFn: async ({ row, observacaoFinal }: { row: any; observacaoFinal?: string }) => {
+      const now = new Date().toISOString();
+      const colab = row.colaborador || {};
+
+      // 1. Marca como arquivado e concluído na tabela pendencias_pine
+      const { error: pineErr } = await db
+        .from("pendencias_pine")
+        .update({
+          arquivado: true,
+          status: "concluido",
+          concluido_em: now,
+          resolvido_por: me?.user?.id || null,
+          atualizado_em: now,
+        })
+        .eq("id", row.id);
+      if (pineErr) throw pineErr;
+
+      // 2. Monta resumo detalhado de sistemas e resolução
+      const sistemasResumo = pineSistemas
+        .map((sis: any) => {
+          const val = row.sistemas_valores?.[sis.id] || row.sistemas_valores?.[sis.nome] || "-";
+          return `${sis.nome}: ${val}`;
+        })
+        .join(" | ");
+
+      const descPartes = [
+        "Pendência Pine finalizada e enviada ao Histórico de Pendências.",
+        row.numero_chamado ? `Nº Chamado: ${row.numero_chamado}` : null,
+        `Sistemas: ${sistemasResumo}`,
+        row.observacao ? `Observação original: ${row.observacao}` : null,
+        observacaoFinal ? `Observação da Solução: ${observacaoFinal}` : null,
+      ].filter(Boolean);
+
+      // 3. Registra na tabela global 'pendencias' para constar no Histórico de Pendências (/pendencias-historico)
+      try {
+        await db.from("pendencias").insert({
+          titulo: colab.nome || "Colaborador Pine",
+          descricao: descPartes.join("\n"),
+          tipo: "solicitacao_acesso",
+          status: "concluido",
+          prioridade: "media",
+          colaborador_id: row.colaborador_id || null,
+          operacao_id: colab.operacao_id || null,
+          criado_em: row.criado_em || now,
+          concluido_em: now,
+          data_resolucao: now,
+          arquivado: true,
+          solicitado: true,
+          criado_por: me?.user?.id || null,
+          etiquetas: ["Pine", "Solucionado"],
+        });
+      } catch (pendErr) {
+        console.warn("Aviso ao replicar pendência para histórico global:", pendErr);
+      }
+
+      // 4. Registra no log de auditoria 'historico'
+      try {
+        await db.from("historico").insert({
+          entidade: "pendencias_pine",
+          entidade_id: row.id,
+          acao: "SOLUCIONADO",
+          ator_id: me?.user?.id || "00000000-0000-0000-0000-000000000000",
+          descricao: `Pendência Pine do colaborador "${colab.nome || "Colaborador"}" foi marcada como SOLUCIONADA e enviada para o Histórico.`,
+          dados_antes: row,
+          dados_depois: {
+            ...row,
+            arquivado: true,
+            status: "concluido",
+            concluido_em: now,
+          },
+          criado_em: now,
+        });
+      } catch (histErr) {
+        console.warn("Aviso ao gravar histórico de auditoria:", histErr);
+      }
+    },
+    onSuccess: (_, variables) => {
+      const nome = variables.row.colaborador?.nome || "Colaborador";
+      toast.success(`Pendência de "${nome}" solucionada com sucesso e enviada para o histórico!`);
+      setRowToSolucionar(null);
+      setObservacaoSolucao("");
+      qc.invalidateQueries({ queryKey: ["pendencias_pine"] });
+      qc.invalidateQueries({ queryKey: ["historico_pendencias_all"] });
+      qc.invalidateQueries({ queryKey: ["pendencias"] });
+      qc.invalidateQueries({ queryKey: ["historico"] });
+    },
+    onError: (err: any) => {
+      toast.error(`Erro ao solucionar pendência: ${err.message}`);
+    },
+  });
+
+  // 8. Reabrir pendência (Admin only)
+  const reabrirMutation = useMutation({
+    mutationFn: async (row: any) => {
+      const { error } = await db
+        .from("pendencias_pine")
+        .update({
+          arquivado: false,
+          status: "pendente",
+          concluido_em: null,
+          resolvido_por: null,
+          atualizado_em: new Date().toISOString(),
+        })
+        .eq("id", row.id);
+      if (error) throw error;
+    },
+    onSuccess: (_, row) => {
+      const nome = row.colaborador?.nome || "Colaborador";
+      toast.success(`Pendência de "${nome}" reaberta e retornada para as pendências ativas.`);
+      qc.invalidateQueries({ queryKey: ["pendencias_pine"] });
+      qc.invalidateQueries({ queryKey: ["historico_pendencias_all"] });
+      qc.invalidateQueries({ queryKey: ["pendencias"] });
+    },
+    onError: (err: any) => {
+      toast.error(`Erro ao reabrir pendência: ${err.message}`);
+    },
+  });
+
   // Copy helper
   function copyText(val: string, label: string) {
     if (!val) return;
@@ -663,12 +800,18 @@ export function PendenciasPinePage() {
   // Quick stats
   const stats = useMemo(() => {
     const total = pendencias.length;
+    const ativas = pendencias.filter((p: any) => !p.arquivado && p.status !== "concluido").length;
+    const historico = total - ativas;
     const withChamado = pendencias.filter(
-      (p: any) => p.numero_chamado && p.numero_chamado.trim() !== "",
+      (p: any) =>
+        !p.arquivado &&
+        p.status !== "concluido" &&
+        p.numero_chamado &&
+        p.numero_chamado.trim() !== "",
     ).length;
-    const withoutChamado = total - withChamado;
+    const withoutChamado = ativas - withChamado;
     const totalSistemas = pineSistemas.length;
-    return { total, withChamado, withoutChamado, totalSistemas };
+    return { total, ativas, historico, withChamado, withoutChamado, totalSistemas };
   }, [pendencias, pineSistemas]);
 
   // Loading screen
@@ -787,11 +930,11 @@ export function PendenciasPinePage() {
         <Card className="bg-card/50 shadow-none border">
           <CardContent className="p-3.5 flex items-center justify-between">
             <div>
-              <p className="text-xs text-muted-foreground font-medium">Colaboradores</p>
-              <p className="text-2xl font-bold tracking-tight text-foreground">{stats.total}</p>
+              <p className="text-xs text-muted-foreground font-medium">Pendências Ativas</p>
+              <p className="text-2xl font-bold tracking-tight text-foreground">{stats.ativas}</p>
             </div>
             <div className="p-2.5 bg-primary/10 text-primary rounded-lg">
-              <Layers className="h-5 w-5" />
+              <Clock className="h-5 w-5" />
             </div>
           </CardContent>
         </Card>
@@ -799,13 +942,13 @@ export function PendenciasPinePage() {
         <Card className="bg-card/50 shadow-none border">
           <CardContent className="p-3.5 flex items-center justify-between">
             <div>
-              <p className="text-xs text-muted-foreground font-medium">Colunas de Sistemas</p>
-              <p className="text-2xl font-bold tracking-tight text-indigo-600 dark:text-indigo-400">
-                {stats.totalSistemas}
+              <p className="text-xs text-muted-foreground font-medium">Solucionadas (Histórico)</p>
+              <p className="text-2xl font-bold tracking-tight text-emerald-600 dark:text-emerald-400">
+                {stats.historico}
               </p>
             </div>
-            <div className="p-2.5 bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-400 rounded-lg">
-              <Server className="h-5 w-5" />
+            <div className="p-2.5 bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400 rounded-lg">
+              <CheckCircle2 className="h-5 w-5" />
             </div>
           </CardContent>
         </Card>
@@ -814,12 +957,12 @@ export function PendenciasPinePage() {
           <CardContent className="p-3.5 flex items-center justify-between">
             <div>
               <p className="text-xs text-muted-foreground font-medium">Com Nº de Chamado</p>
-              <p className="text-2xl font-bold tracking-tight text-emerald-600 dark:text-emerald-400">
+              <p className="text-2xl font-bold tracking-tight text-blue-600 dark:text-blue-400">
                 {stats.withChamado}
               </p>
             </div>
-            <div className="p-2.5 bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400 rounded-lg">
-              <CheckCircle2 className="h-5 w-5" />
+            <div className="p-2.5 bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400 rounded-lg">
+              <CheckCheck className="h-5 w-5" />
             </div>
           </CardContent>
         </Card>
@@ -837,6 +980,54 @@ export function PendenciasPinePage() {
             </div>
           </CardContent>
         </Card>
+      </div>
+
+      {/* View Mode Tabs (Ativas vs Histórico) */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-1.5 p-1 bg-muted/80 rounded-lg border">
+          <button
+            type="button"
+            onClick={() => setViewMode("ativas")}
+            className={`px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-2 transition-all ${
+              viewMode === "ativas"
+                ? "bg-background text-foreground shadow-sm font-semibold"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Clock className="h-3.5 w-3.5 text-amber-500" />
+            <span>Pendências Ativas</span>
+            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
+              {stats.ativas}
+            </Badge>
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode("historico")}
+            className={`px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-2 transition-all ${
+              viewMode === "historico"
+                ? "bg-background text-emerald-600 dark:text-emerald-400 shadow-sm font-semibold"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+            <span>Histórico de Solucionadas</span>
+            <Badge
+              variant="outline"
+              className="text-[10px] px-1.5 py-0 h-4 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-300 dark:border-emerald-700"
+            >
+              {stats.historico}
+            </Badge>
+          </button>
+        </div>
+
+        <Link
+          to="/pendencias-historico"
+          className="text-xs text-muted-foreground hover:text-primary flex items-center gap-1 transition-colors"
+          title="Acessar o histórico geral de todas as pendências da empresa"
+        >
+          <History className="h-3.5 w-3.5" />
+          <span>Histórico Geral de Pendências &rarr;</span>
+        </Link>
       </div>
 
       {/* Filter and Search Bar */}
@@ -978,7 +1169,7 @@ export function PendenciasPinePage() {
                 </th>
 
                 {/* 5. Actions Column (Admin only) */}
-                {isAdmin && <th className="py-3 px-3 text-center w-20">Ações</th>}
+                {isAdmin && <th className="py-3 px-3 text-center w-28">Ações</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -1007,9 +1198,11 @@ export function PendenciasPinePage() {
                       <div className="flex flex-col items-center gap-2">
                         <Table2 className="h-8 w-8 text-muted-foreground/50" />
                         <p className="font-medium text-foreground">
-                          Nenhum colaborador cadastrado na tabela de Pendências Pine.
+                          {viewMode === "historico"
+                            ? "Nenhuma pendência solucionada no histórico ainda."
+                            : "Nenhum colaborador com pendência ativa no momento."}
                         </p>
-                        {isAdmin && (
+                        {isAdmin && viewMode === "ativas" && (
                           <Button
                             size="sm"
                             onClick={() => setModalNewColabOpen(true)}
@@ -1049,6 +1242,19 @@ export function PendenciasPinePage() {
                         )
                       ) {
                         deleteRow.mutate(row.id);
+                      }
+                    }}
+                    onSolucionar={() => {
+                      setRowToSolucionar(row);
+                      setObservacaoSolucao("");
+                    }}
+                    onReabrir={() => {
+                      if (
+                        confirm(
+                          `Deseja reabrir a pendência de "${row.colaborador?.nome || "Colaborador"}" e retorná-la para as Pendências Ativas?`,
+                        )
+                      ) {
+                        reabrirMutation.mutate(row);
                       }
                     }}
                     copyText={copyText}
@@ -1418,6 +1624,139 @@ export function PendenciasPinePage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Modal: Solucionar Pendência e Enviar ao Histórico */}
+      <Dialog
+        open={!!rowToSolucionar}
+        onOpenChange={(open) => {
+          if (!open) {
+            setRowToSolucionar(null);
+            setObservacaoSolucao("");
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
+              <CheckCircle2 className="h-5 w-5" />
+              <span>Solucionar Pendência Pine</span>
+            </DialogTitle>
+            <DialogDescription>
+              A pendência deste colaborador será marcada como solucionada/concluída e movida para a
+              aba de <strong>Histórico de Solucionadas</strong> e para o{" "}
+              <strong>Histórico Geral de Pendências</strong>.
+            </DialogDescription>
+          </DialogHeader>
+
+          {rowToSolucionar && (
+            <div className="space-y-4 py-2">
+              <div className="rounded-lg border bg-muted/40 p-3.5 space-y-2 text-xs">
+                <div className="flex justify-between items-center border-b pb-2">
+                  <span className="text-muted-foreground font-medium">Colaborador:</span>
+                  <span className="font-bold text-foreground text-sm uppercase">
+                    {rowToSolucionar.colaborador?.nome || "SEM NOME"}
+                  </span>
+                </div>
+
+                {rowToSolucionar.colaborador?.cpf && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground">CPF:</span>
+                    <span className="font-mono font-medium text-foreground">
+                      {formatCpf(rowToSolucionar.colaborador.cpf)}
+                    </span>
+                  </div>
+                )}
+
+                {rowToSolucionar.numero_chamado && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground">Nº Chamado:</span>
+                    <span className="font-mono font-semibold text-foreground bg-primary/10 text-primary px-2 py-0.5 rounded">
+                      {rowToSolucionar.numero_chamado}
+                    </span>
+                  </div>
+                )}
+
+                <div className="pt-2 border-t space-y-1">
+                  <span className="text-muted-foreground font-medium block">
+                    Sistemas e Status Definidos:
+                  </span>
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {pineSistemas.map((s: any) => {
+                      const st =
+                        rowToSolucionar.sistemas_valores?.[s.id] ||
+                        rowToSolucionar.sistemas_valores?.[s.nome] ||
+                        "-";
+                      return (
+                        <div
+                          key={s.id}
+                          className="bg-background px-2 py-1 rounded border text-[11px] flex items-center gap-1.5"
+                        >
+                          <span className="text-muted-foreground">{s.nome}:</span>
+                          <strong className="text-foreground uppercase">{st}</strong>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {rowToSolucionar.observacao && (
+                  <div className="pt-2 border-t">
+                    <span className="text-muted-foreground font-medium block">
+                      Observação Atual:
+                    </span>
+                    <p className="text-foreground italic mt-0.5 text-[11px]">
+                      &quot;{rowToSolucionar.observacao}&quot;
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="obs-solucao" className="text-xs font-semibold">
+                  Observação ou Motivo da Solução (Opcional)
+                </Label>
+                <Textarea
+                  id="obs-solucao"
+                  placeholder="Ex: Acessos concedidos com sucesso conforme chamado informado..."
+                  value={observacaoSolucao}
+                  onChange={(e) => setObservacaoSolucao(e.target.value)}
+                  rows={3}
+                  className="text-xs resize-none"
+                />
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setRowToSolucionar(null);
+                setObservacaoSolucao("");
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
+              disabled={solucionarMutation.isPending}
+              onClick={() => {
+                if (rowToSolucionar) {
+                  solucionarMutation.mutate({
+                    row: rowToSolucionar,
+                    observacaoFinal: observacaoSolucao,
+                  });
+                }
+              }}
+            >
+              <CheckCircle2 className="h-4 w-4" />
+              {solucionarMutation.isPending
+                ? "Solucionando..."
+                : "Confirmar e Enviar para o Histórico"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -1432,6 +1771,8 @@ function PineUnifiedRow({
   onUpdateSystemStatus,
   onSaveField,
   onDelete,
+  onSolucionar,
+  onReabrir,
   copyText,
 }: {
   index: number;
@@ -1442,6 +1783,8 @@ function PineUnifiedRow({
   onUpdateSystemStatus: (sistemaId: string, newStatus: string) => void;
   onSaveField: (field: "numero_chamado" | "observacao", val: string) => void;
   onDelete: () => void;
+  onSolucionar?: () => void;
+  onReabrir?: () => void;
   copyText: (val: string, label: string) => void;
 }) {
   const colab = row.colaborador || {};
@@ -1483,6 +1826,8 @@ function PineUnifiedRow({
     }
   };
 
+  const isSolucionado = Boolean(row.arquivado || row.status === "concluido");
+
   return (
     <tr className="hover:bg-muted/30 transition-colors border-b border-border/60">
       {/* 1. Sequential Index */}
@@ -1506,6 +1851,22 @@ function PineUnifiedRow({
             </button>
           )}
         </div>
+        {isSolucionado && (
+          <div className="flex items-center gap-1.5 mt-0.5">
+            <Badge
+              variant="outline"
+              className="text-[10px] bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-300 dark:border-emerald-700 font-semibold px-1.5 py-0 gap-1"
+            >
+              <CheckCircle2 className="h-2.5 w-2.5 text-emerald-600 dark:text-emerald-400" />{" "}
+              Solucionado
+            </Badge>
+            {row.concluido_em && (
+              <span className="text-[10px] text-muted-foreground">
+                em {new Date(row.concluido_em).toLocaleDateString("pt-BR")}
+              </span>
+            )}
+          </div>
+        )}
       </td>
 
       {/* 3. CPF */}
@@ -1718,15 +2079,39 @@ function PineUnifiedRow({
       {/* 10. Actions (Admin only) */}
       {isAdmin && (
         <td className="py-2.5 px-3 text-center">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 text-muted-foreground hover:text-destructive"
-            onClick={onDelete}
-            title="Excluir Colaborador da Tabela"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
+          <div className="flex items-center justify-center gap-1">
+            {!isSolucionado ? (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
+                onClick={onSolucionar}
+                title="Solucionar Pendência e Enviar para o Histórico"
+              >
+                <CheckCircle2 className="h-4 w-4" />
+              </Button>
+            ) : (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-950/40"
+                onClick={onReabrir}
+                title="Reabrir Pendência (Retornar para Pendências Ativas)"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+              </Button>
+            )}
+
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+              onClick={onDelete}
+              title="Excluir Colaborador da Tabela"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          </div>
         </td>
       )}
     </tr>

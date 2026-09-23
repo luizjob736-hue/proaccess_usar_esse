@@ -34,6 +34,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table2,
   Plus,
@@ -45,6 +46,7 @@ import {
   Copy,
   Shield,
   UserCheck,
+  Users,
   Layers,
   Sparkles,
   MoreVertical,
@@ -340,10 +342,25 @@ export function PendenciasPinePage() {
 
   const [modalNewColabOpen, setModalNewColabOpen] = useState(false);
   const [colabSearchQuery, setColabSearchQuery] = useState("");
-  const [selectedColabId, setSelectedColabId] = useState<string>("");
+  const [selectedColabIds, setSelectedColabIds] = useState<string[]>([]);
   const [newColabSistemasStatus, setNewColabSistemasStatus] = useState<Record<string, string>>({});
   const [newColabChamado, setNewColabChamado] = useState("");
   const [newColabObs, setNewColabObs] = useState("");
+
+  const handleToggleColabSelection = (colabId: string) => {
+    setSelectedColabIds((prev) =>
+      prev.includes(colabId) ? prev.filter((id) => id !== colabId) : [...prev, colabId],
+    );
+  };
+
+  const handleSelectAllFilteredColabs = () => {
+    const idsToAdd = filteredColabsForModal.map((c: any) => c.id);
+    setSelectedColabIds((prev) => Array.from(new Set([...prev, ...idsToAdd])));
+  };
+
+  const handleClearSelectedColabs = () => {
+    setSelectedColabIds([]);
+  };
 
   const [editRowModal, setEditRowModal] = useState<any>(null);
 
@@ -363,10 +380,10 @@ export function PendenciasPinePage() {
     );
   }, [catalogSistemas, pineSistemas]);
 
-  // Selected collaborator details preview
-  const selectedColaborador = useMemo(() => {
-    return allColaboradores.find((c: any) => c.id === selectedColabId) || null;
-  }, [allColaboradores, selectedColabId]);
+  // Selected collaborators details preview
+  const selectedColaboradores = useMemo(() => {
+    return allColaboradores.filter((c: any) => selectedColabIds.includes(c.id));
+  }, [allColaboradores, selectedColabIds]);
 
   // Filtered collaborators for the modal selection
   const filteredColabsForModal = useMemo(() => {
@@ -499,29 +516,27 @@ export function PendenciasPinePage() {
     }
   };
 
-  // 3. Create new Collaborator row
-  const createColaboradorRow = useMutation({
+  // 3. Create new Collaborator rows (Batch or Single)
+  const createColaboradoresRows = useMutation({
     mutationFn: async (payload: {
-      colaborador_id: string;
+      colaborador_ids: string[];
       sistemas_valores: Record<string, string>;
       numero_chamado: string;
       observacao: string;
     }) => {
       const maxOrdem = pendencias.reduce((max: number, p: any) => Math.max(max, p.ordem || 0), 0);
-      const { data, error } = await db
-        .from("pendencias_pine")
-        .insert({
-          colaborador_id: payload.colaborador_id,
-          sistemas_valores: payload.sistemas_valores,
-          funcao: "-",
-          numero_chamado: (payload.numero_chamado || "").slice(0, 200),
-          observacao: (payload.observacao || "").slice(0, 200),
-          ordem: maxOrdem + 1,
-          arquivado: false,
-          status: "pendente",
-        })
-        .select()
-        .single();
+      const rowsToInsert = payload.colaborador_ids.map((cId, idx) => ({
+        colaborador_id: cId,
+        sistemas_valores: payload.sistemas_valores,
+        funcao: "-",
+        numero_chamado: (payload.numero_chamado || "").slice(0, 200),
+        observacao: (payload.observacao || "").slice(0, 200),
+        ordem: maxOrdem + idx + 1,
+        arquivado: false,
+        status: "pendente",
+      }));
+
+      const { data, error } = await db.from("pendencias_pine").insert(rowsToInsert).select();
       if (error) throw error;
 
       // Sync any systems marked with CRIAÇÃO to the Matriz Principal (acessos table)
@@ -529,7 +544,9 @@ export function PendenciasPinePage() {
         if (statusVal === "CRIAÇÃO") {
           const sisPine = pineSistemas.find((s: any) => s.id === sisId);
           if (sisPine) {
-            await syncCriacaoToMatriz(payload.colaborador_id, sisPine);
+            for (const cId of payload.colaborador_ids) {
+              await syncCriacaoToMatriz(cId, sisPine);
+            }
           }
         }
       }
@@ -537,16 +554,23 @@ export function PendenciasPinePage() {
       return data;
     },
     onSuccess: (data, variables) => {
+      const count = variables.colaborador_ids.length;
       const hasCriacao = Object.values(variables.sistemas_valores || {}).includes("CRIAÇÃO");
-      if (hasCriacao) {
+      if (count > 1) {
         toast.success(
-          "Colaborador adicionado à tabela e acessos em CRIAÇÃO marcados como 'Solicitado' na Matriz Principal!",
+          `${count} colaboradores adicionados à Tabela Pine com sucesso!${
+            hasCriacao ? " (Acessos em CRIAÇÃO sincronizados na Matriz Principal)" : ""
+          }`,
         );
       } else {
-        toast.success("Colaborador adicionado à tabela com sucesso!");
+        toast.success(
+          `Colaborador adicionado à Tabela Pine com sucesso!${
+            hasCriacao ? " (Acessos em CRIAÇÃO sincronizados na Matriz Principal)" : ""
+          }`,
+        );
       }
       setModalNewColabOpen(false);
-      setSelectedColabId("");
+      setSelectedColabIds([]);
       setColabSearchQuery("");
       setNewColabSistemasStatus({});
       setNewColabChamado("");
@@ -556,7 +580,7 @@ export function PendenciasPinePage() {
       qc.invalidateQueries({ queryKey: ["matriz-acessos"] });
     },
     onError: (err: any) => {
-      toast.error(`Erro ao adicionar colaborador: ${err.message}`);
+      toast.error(`Erro ao adicionar colaborador(es): ${err.message}`);
     },
   });
 
@@ -1618,60 +1642,118 @@ export function PendenciasPinePage() {
         </DialogContent>
       </Dialog>
 
-      {/* Modal: Adicionar Colaborador na Tabela Unificada */}
-      <Dialog open={modalNewColabOpen} onOpenChange={setModalNewColabOpen}>
+      {/* Modal: Adicionar Colaborador(es) na Tabela Pine */}
+      <Dialog
+        open={modalNewColabOpen}
+        onOpenChange={(open) => {
+          setModalNewColabOpen(open);
+          if (!open) {
+            setSelectedColabIds([]);
+            setColabSearchQuery("");
+            setNewColabSistemasStatus({});
+            setNewColabChamado("");
+            setNewColabObs("");
+          }
+        }}
+      >
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <UserPlus className="h-5 w-5 text-primary" />
-              <span>Adicionar Colaborador à Tabela Pine</span>
+              <span>Adicionar Colaborador(es) à Tabela Pine</span>
             </DialogTitle>
             <DialogDescription>
-              Selecione o colaborador da Matriz Principal. Seus dados (CPF, nascimento, e-mail e
-              telefone) serão preenchidos automaticamente.
+              Selecione um ou mais colaboradores da Matriz Principal marcando as caixas de seleção.
+              Os dados e status definidos serão aplicados em lote.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-2">
-            {/* Search Colaborador */}
+            {/* Search and Checkbox Selection Controls */}
             <div>
-              <Label className="text-xs font-semibold">1. Buscar Colaborador *</Label>
-              <div className="mt-1 space-y-2">
+              <div className="flex items-center justify-between mb-1.5">
+                <Label className="text-xs font-semibold flex items-center gap-1.5">
+                  <span>1. Buscar e Selecionar Colaborador(es) *</span>
+                  {selectedColabIds.length > 0 && (
+                    <Badge variant="default" className="text-[10px] px-1.5 py-0 h-5">
+                      {selectedColabIds.length} selecionado(s)
+                    </Badge>
+                  )}
+                </Label>
+                <div className="flex items-center gap-2 text-xs">
+                  <button
+                    type="button"
+                    onClick={handleSelectAllFilteredColabs}
+                    className="text-primary hover:underline font-medium text-[11px]"
+                  >
+                    Marcar listados ({filteredColabsForModal.length})
+                  </button>
+                  {selectedColabIds.length > 0 && (
+                    <>
+                      <span className="text-muted-foreground">•</span>
+                      <button
+                        type="button"
+                        onClick={handleClearSelectedColabs}
+                        className="text-destructive hover:underline font-medium text-[11px]"
+                      >
+                        Limpar seleção
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-2">
                 <div className="relative">
                   <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                   <Input
-                    placeholder="Digite o nome ou CPF do colaborador..."
+                    placeholder="Digite o nome ou CPF para filtrar colaboradores..."
                     value={colabSearchQuery}
                     onChange={(e) => setColabSearchQuery(e.target.value)}
                     className="pl-9 h-9 text-sm"
                   />
                 </div>
 
-                <div className="border rounded-md max-h-44 overflow-y-auto divide-y divide-border bg-background">
+                <div className="border rounded-md max-h-52 overflow-y-auto divide-y divide-border bg-background">
                   {filteredColabsForModal.length === 0 ? (
                     <div className="p-3 text-center text-xs text-muted-foreground">
                       Nenhum colaborador ativo encontrado.
                     </div>
                   ) : (
                     filteredColabsForModal.map((colab: any) => {
-                      const isSelected = selectedColabId === colab.id;
+                      const isSelected = selectedColabIds.includes(colab.id);
                       return (
                         <div
                           key={colab.id}
-                          onClick={() => setSelectedColabId(colab.id)}
+                          onClick={() => handleToggleColabSelection(colab.id)}
                           className={`p-2.5 text-xs flex items-center justify-between cursor-pointer transition-colors ${
                             isSelected
                               ? "bg-primary/10 font-semibold text-primary"
                               : "hover:bg-muted"
                           }`}
                         >
-                          <div>
-                            <p className="text-foreground">{colab.nome}</p>
-                            <p className="text-[11px] text-muted-foreground">
-                              CPF: {formatCpf(colab.cpf)} {colab.cargo ? `• ${colab.cargo}` : ""}
-                            </p>
+                          <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                            <Checkbox
+                              checked={isSelected}
+                              onCheckedChange={() => handleToggleColabSelection(colab.id)}
+                              onClick={(e) => e.stopPropagation()}
+                              className="shrink-0"
+                            />
+                            <div className="min-w-0">
+                              <p className="text-foreground truncate">{colab.nome}</p>
+                              <p className="text-[11px] text-muted-foreground">
+                                CPF: {formatCpf(colab.cpf)} {colab.cargo ? `• ${colab.cargo}` : ""}
+                              </p>
+                            </div>
                           </div>
-                          {isSelected && <Check className="h-4 w-4 text-primary" />}
+                          {isSelected && (
+                            <Badge
+                              variant="outline"
+                              className="text-[10px] bg-primary/20 text-primary border-primary/30 shrink-0 font-medium"
+                            >
+                              Selecionado
+                            </Badge>
+                          )}
                         </div>
                       );
                     })
@@ -1680,30 +1762,73 @@ export function PendenciasPinePage() {
               </div>
             </div>
 
-            {/* Selected Colaborador Preview */}
-            {selectedColaborador && (
+            {/* Selected Colaboradores Preview */}
+            {selectedColaboradores.length === 1 && (
               <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-3 text-xs dark:bg-emerald-950/20 dark:border-emerald-800 space-y-1.5">
                 <div className="flex items-center gap-1.5 font-semibold text-emerald-800 dark:text-emerald-300">
                   <UserCheck className="h-4 w-4" />
-                  <span>Dados obtidos da Matriz Principal:</span>
+                  <span>Dados do colaborador ({selectedColaboradores[0].nome}):</span>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-foreground/80 mt-1">
                   <div>
                     <span className="text-[10px] text-muted-foreground block">CPF:</span>
-                    <strong>{formatCpf(selectedColaborador.cpf)}</strong>
+                    <strong>{formatCpf(selectedColaboradores[0].cpf)}</strong>
                   </div>
                   <div>
                     <span className="text-[10px] text-muted-foreground block">Nascimento:</span>
-                    <strong>{formatDate(selectedColaborador.data_nascimento)}</strong>
+                    <strong>{formatDate(selectedColaboradores[0].data_nascimento)}</strong>
                   </div>
                   <div className="col-span-2">
                     <span className="text-[10px] text-muted-foreground block">E-mail:</span>
-                    <strong className="truncate block">{selectedColaborador.email || "—"}</strong>
+                    <strong className="truncate block">
+                      {selectedColaboradores[0].email || "—"}
+                    </strong>
                   </div>
                   <div className="col-span-2">
                     <span className="text-[10px] text-muted-foreground block">Telefone:</span>
-                    <strong>{formatPhone(selectedColaborador.telefone)}</strong>
+                    <strong>{formatPhone(selectedColaboradores[0].telefone)}</strong>
                   </div>
+                </div>
+              </div>
+            )}
+
+            {selectedColaboradores.length > 1 && (
+              <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 font-semibold text-primary">
+                    <Users className="h-4 w-4" />
+                    <span>
+                      {selectedColaboradores.length} colaboradores selecionados para inclusão:
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleClearSelectedColabs}
+                    className="text-xs text-muted-foreground hover:text-destructive underline"
+                  >
+                    Desmarcar todos
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-1 bg-background/60 rounded border border-border/40">
+                  {selectedColaboradores.map((c: any) => (
+                    <span
+                      key={c.id}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] bg-secondary text-foreground font-medium border border-border/60"
+                    >
+                      <span className="truncate max-w-[200px]">{c.nome}</span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleToggleColabSelection(c.id);
+                        }}
+                        className="text-muted-foreground hover:text-destructive ml-0.5 text-xs font-bold"
+                        title="Remover da seleção"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
                 </div>
               </div>
             )}
@@ -1802,20 +1927,30 @@ export function PendenciasPinePage() {
             </Button>
             <Button
               onClick={() => {
-                if (!selectedColabId) {
-                  toast.error("Selecione um colaborador da lista.");
+                if (selectedColabIds.length === 0) {
+                  toast.error("Selecione ao menos um colaborador da lista.");
                   return;
                 }
-                createColaboradorRow.mutate({
-                  colaborador_id: selectedColabId,
+                createColaboradoresRows.mutate({
+                  colaborador_ids: selectedColabIds,
                   sistemas_valores: newColabSistemasStatus,
                   numero_chamado: newColabChamado,
                   observacao: newColabObs,
                 });
               }}
-              disabled={createColaboradorRow.isPending || !selectedColabId}
+              disabled={createColaboradoresRows.isPending || selectedColabIds.length === 0}
+              className="gap-1.5"
             >
-              Adicionar à Tabela
+              {createColaboradoresRows.isPending ? (
+                "Adicionando..."
+              ) : selectedColabIds.length > 1 ? (
+                <>
+                  <Users className="h-4 w-4" />
+                  <span>Adicionar {selectedColabIds.length} Colaboradores</span>
+                </>
+              ) : (
+                "Adicionar à Tabela"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

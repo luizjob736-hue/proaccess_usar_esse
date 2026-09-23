@@ -865,6 +865,7 @@ export type Database = {
           criado_por: string | null;
           funcao: string;
           id: string;
+          login_senha?: string | null;
           numero_chamado: string;
           observacao: string;
           ordem: number;
@@ -879,6 +880,7 @@ export type Database = {
           criado_por?: string | null;
           funcao?: string;
           id?: string;
+          login_senha?: string | null;
           numero_chamado?: string;
           observacao?: string;
           ordem?: number;
@@ -893,6 +895,7 @@ export type Database = {
           criado_por?: string | null;
           funcao?: string;
           id?: string;
+          login_senha?: string | null;
           numero_chamado?: string;
           observacao?: string;
           ordem?: number;

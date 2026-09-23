@@ -306,6 +306,7 @@ export function PendenciasPinePage() {
         const email = (item.colaborador?.email || "").toLowerCase();
         const chamado = (item.numero_chamado || "").toLowerCase();
         const obs = (item.observacao || "").toLowerCase();
+        const loginSenha = (item.login_senha || "").toLowerCase();
 
         // Check if search matches any system status in this row
         const sistemasVals = Object.values(item.sistemas_valores || {})
@@ -318,6 +319,7 @@ export function PendenciasPinePage() {
           email.includes(s) ||
           chamado.includes(s) ||
           obs.includes(s) ||
+          loginSenha.includes(s) ||
           sistemasVals.includes(s)
         );
       });
@@ -346,6 +348,7 @@ export function PendenciasPinePage() {
   const [newColabSistemasStatus, setNewColabSistemasStatus] = useState<Record<string, string>>({});
   const [newColabChamado, setNewColabChamado] = useState("");
   const [newColabObs, setNewColabObs] = useState("");
+  const [newColabLoginSenha, setNewColabLoginSenha] = useState("");
 
   const handleToggleColabSelection = (colabId: string) => {
     setSelectedColabIds((prev) =>
@@ -523,6 +526,7 @@ export function PendenciasPinePage() {
       sistemas_valores: Record<string, string>;
       numero_chamado: string;
       observacao: string;
+      login_senha?: string;
     }) => {
       const maxOrdem = pendencias.reduce((max: number, p: any) => Math.max(max, p.ordem || 0), 0);
       const rowsToInsert = payload.colaborador_ids.map((cId, idx) => ({
@@ -531,6 +535,7 @@ export function PendenciasPinePage() {
         funcao: "-",
         numero_chamado: (payload.numero_chamado || "").slice(0, 200),
         observacao: (payload.observacao || "").slice(0, 200),
+        login_senha: (payload.login_senha || "").slice(0, 200),
         ordem: maxOrdem + idx + 1,
         arquivado: false,
         status: "pendente",
@@ -575,6 +580,7 @@ export function PendenciasPinePage() {
       setNewColabSistemasStatus({});
       setNewColabChamado("");
       setNewColabObs("");
+      setNewColabLoginSenha("");
       qc.invalidateQueries({ queryKey: ["pendencias_pine"] });
       qc.invalidateQueries({ queryKey: ["acessos"] });
       qc.invalidateQueries({ queryKey: ["matriz-acessos"] });
@@ -631,7 +637,7 @@ export function PendenciasPinePage() {
     },
   });
 
-  // 5. Update Chamado or Observação (both Admin and Cliente, max 200 chars)
+  // 5. Update Chamado, Observação or Login/Senha (both Admin and Cliente, max 200 chars)
   const updateChamadoOrObs = useMutation({
     mutationFn: async ({
       id,
@@ -639,7 +645,7 @@ export function PendenciasPinePage() {
       value,
     }: {
       id: string;
-      field: "numero_chamado" | "observacao";
+      field: "numero_chamado" | "observacao" | "login_senha";
       value: string;
     }) => {
       const sanitized = value.slice(0, 200);
@@ -852,6 +858,7 @@ export function PendenciasPinePage() {
       // Details
       rowObj["Nº DO CHAMADO"] = p.numero_chamado || "";
       rowObj["OBSERVAÇÃO"] = p.observacao || "";
+      rowObj["LOGIN/ SENHA"] = p.login_senha || "";
       rowObj["DATA DE FINALIZAÇÃO"] = p.concluido_em ? formatDate(p.concluido_em) : "—";
       rowObj["SITUAÇÃO"] = isResolved ? "SOLUCIONADO" : "PENDENTE";
 
@@ -876,6 +883,7 @@ export function PendenciasPinePage() {
 
     cols.push({ wch: 20 }); // Nº CHAMADO
     cols.push({ wch: 35 }); // OBSERVAÇÃO
+    cols.push({ wch: 25 }); // LOGIN/ SENHA
     cols.push({ wch: 22 }); // DATA DE FINALIZAÇÃO
     cols.push({ wch: 16 }); // SITUAÇÃO
 
@@ -1349,7 +1357,7 @@ export function PendenciasPinePage() {
                   </th>
                 ))}
 
-                {/* 4. The Last Two Columns */}
+                {/* 4. The Chamado, Observação & Login/Senha Columns */}
                 <th className="py-3 px-3 min-w-[200px] bg-primary/5 text-foreground font-bold border-r border-border/50">
                   <div className="flex items-center justify-between">
                     <span>Nº do Chamado</span>
@@ -1361,6 +1369,14 @@ export function PendenciasPinePage() {
                 <th className="py-3 px-3 min-w-[230px] bg-primary/5 text-foreground font-bold border-r border-border/50">
                   <div className="flex items-center justify-between">
                     <span>Observação</span>
+                    <span className="text-[10px] text-muted-foreground font-normal">
+                      (200 carac.)
+                    </span>
+                  </div>
+                </th>
+                <th className="py-3 px-3 min-w-[200px] bg-primary/5 text-foreground font-bold border-r border-border/50">
+                  <div className="flex items-center justify-between">
+                    <span>Login/ Senha</span>
                     <span className="text-[10px] text-muted-foreground font-normal">
                       (200 carac.)
                     </span>
@@ -1383,7 +1399,7 @@ export function PendenciasPinePage() {
               {filteredRows.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={6 + pineSistemas.length + 3 + (isAdmin ? 1 : 0)}
+                    colSpan={6 + pineSistemas.length + 4 + (isAdmin ? 1 : 0)}
                     className="py-12 text-center text-muted-foreground text-sm"
                   >
                     {search || filterStatus !== "todos" ? (
@@ -1653,6 +1669,7 @@ export function PendenciasPinePage() {
             setNewColabSistemasStatus({});
             setNewColabChamado("");
             setNewColabObs("");
+            setNewColabLoginSenha("");
           }
         }}
       >
@@ -1873,11 +1890,11 @@ export function PendenciasPinePage() {
               </div>
             )}
 
-            {/* Nº do Chamado and Observação */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 border-t pt-3">
+            {/* Nº do Chamado, Observação & Login/Senha */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 border-t pt-3">
               <div>
                 <div className="flex items-center justify-between">
-                  <Label className="text-xs">Nº do Chamado (máx. 200 caracteres)</Label>
+                  <Label className="text-xs">Nº do Chamado (máx. 200 carac.)</Label>
                   <span
                     className={`text-[10px] ${
                       newColabChamado.length > 190
@@ -1899,7 +1916,7 @@ export function PendenciasPinePage() {
 
               <div>
                 <div className="flex items-center justify-between">
-                  <Label className="text-xs">Observação (máx. 200 caracteres)</Label>
+                  <Label className="text-xs">Observação (máx. 200 carac.)</Label>
                   <span
                     className={`text-[10px] ${
                       newColabObs.length > 190
@@ -1915,6 +1932,28 @@ export function PendenciasPinePage() {
                   maxLength={200}
                   value={newColabObs}
                   onChange={(e) => setNewColabObs(e.target.value)}
+                  className="mt-1 h-9 text-xs"
+                />
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs">Login/ Senha (máx. 200 carac.)</Label>
+                  <span
+                    className={`text-[10px] ${
+                      newColabLoginSenha.length > 190
+                        ? "text-destructive font-bold"
+                        : "text-muted-foreground"
+                    }`}
+                  >
+                    {newColabLoginSenha.length}/200
+                  </span>
+                </div>
+                <Input
+                  placeholder="Login e/ou senha provisória..."
+                  maxLength={200}
+                  value={newColabLoginSenha}
+                  onChange={(e) => setNewColabLoginSenha(e.target.value)}
                   className="mt-1 h-9 text-xs"
                 />
               </div>
@@ -1936,6 +1975,7 @@ export function PendenciasPinePage() {
                   sistemas_valores: newColabSistemasStatus,
                   numero_chamado: newColabChamado,
                   observacao: newColabObs,
+                  login_senha: newColabLoginSenha,
                 });
               }}
               disabled={createColaboradoresRows.isPending || selectedColabIds.length === 0}
@@ -2040,6 +2080,15 @@ export function PendenciasPinePage() {
                     </p>
                   </div>
                 )}
+
+                {rowToSolucionar.login_senha && (
+                  <div className="pt-2 border-t">
+                    <span className="text-muted-foreground font-medium block">Login/ Senha:</span>
+                    <p className="font-mono text-foreground mt-0.5 text-[11px] bg-background p-1.5 rounded border">
+                      {rowToSolucionar.login_senha}
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-1.5">
@@ -2112,7 +2161,7 @@ function PineUnifiedRow({
   isAdmin: boolean;
   isCliente: boolean;
   onUpdateSystemStatus: (sistemaId: string, newStatus: string) => void;
-  onSaveField: (field: "numero_chamado" | "observacao", val: string) => void;
+  onSaveField: (field: "numero_chamado" | "observacao" | "login_senha", val: string) => void;
   onDelete: () => void;
   onSolucionar?: () => void;
   onReabrir?: () => void;
@@ -2120,11 +2169,13 @@ function PineUnifiedRow({
 }) {
   const colab = row.colaborador || {};
 
-  // Free text editable cells: Chamado & Observação
+  // Free text editable cells: Chamado, Observação & Login/Senha
   const [chamadoVal, setChamadoVal] = useState(row.numero_chamado || "");
   const [obsVal, setObsVal] = useState(row.observacao || "");
+  const [loginSenhaVal, setLoginSenhaVal] = useState(row.login_senha || "");
   const [isEditingChamado, setIsEditingChamado] = useState(false);
   const [isEditingObs, setIsEditingObs] = useState(false);
+  const [isEditingLoginSenha, setIsEditingLoginSenha] = useState(false);
   const [savedField, setSavedField] = useState<string | null>(null);
 
   // Popover state for quick system status change
@@ -2138,6 +2189,10 @@ function PineUnifiedRow({
   useEffect(() => {
     setObsVal(row.observacao || "");
   }, [row.observacao]);
+
+  useEffect(() => {
+    setLoginSenhaVal(row.login_senha || "");
+  }, [row.login_senha]);
 
   const handleBlurChamado = () => {
     setIsEditingChamado(false);
@@ -2153,6 +2208,15 @@ function PineUnifiedRow({
     if (obsVal !== (row.observacao || "")) {
       onSaveField("observacao", obsVal);
       setSavedField("obs");
+      setTimeout(() => setSavedField(null), 2000);
+    }
+  };
+
+  const handleBlurLoginSenha = () => {
+    setIsEditingLoginSenha(false);
+    if (loginSenhaVal !== (row.login_senha || "")) {
+      onSaveField("login_senha", loginSenhaVal);
+      setSavedField("login_senha");
       setTimeout(() => setSavedField(null), 2000);
     }
   };
@@ -2411,7 +2475,47 @@ function PineUnifiedRow({
         </div>
       </td>
 
-      {/* 9.1. Coluna Fixa: Data de finalização */}
+      {/* 9.1. Login/ Senha (Free input, 200 chars limit, editable by Admin & Cliente) */}
+      <td className="py-1.5 px-2 bg-primary/[0.02] border-r border-border/40 relative">
+        <div className="relative">
+          <Input
+            value={loginSenhaVal}
+            maxLength={200}
+            placeholder="Login/ senha..."
+            onChange={(e) => setLoginSenhaVal(e.target.value)}
+            onFocus={() => setIsEditingLoginSenha(true)}
+            onBlur={handleBlurLoginSenha}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.currentTarget.blur();
+              }
+            }}
+            className={`h-8 text-xs bg-background/80 transition-all font-mono ${
+              isEditingLoginSenha
+                ? "border-primary ring-1 ring-primary pr-12"
+                : "border-transparent hover:border-input focus:border-primary"
+            }`}
+          />
+          {isEditingLoginSenha && (
+            <span
+              className={`absolute right-1.5 top-2 text-[10px] pointer-events-none ${
+                loginSenhaVal.length > 190
+                  ? "text-destructive font-bold"
+                  : "text-muted-foreground/80"
+              }`}
+            >
+              {loginSenhaVal.length}/200
+            </span>
+          )}
+          {savedField === "login_senha" && (
+            <span className="absolute right-2 top-2 text-[10px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-0.5 pointer-events-none">
+              <Check className="h-3 w-3" /> Salvo
+            </span>
+          )}
+        </div>
+      </td>
+
+      {/* 9.2. Coluna Fixa: Data de finalização */}
       <td className="py-2.5 px-3 text-xs font-mono text-center border-r border-border/40 whitespace-nowrap bg-emerald-500/[0.02]">
         {row.concluido_em ? (
           <div

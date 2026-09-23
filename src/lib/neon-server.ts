@@ -895,18 +895,24 @@ export const neonQueryServerFn = createServerFn({ method: "POST" })
         if (isWrite) {
           if (table !== "pendencias_pine" || data.action !== "update") {
             throw new Error(
-              "Não autorizado: O perfil Cliente possui permissão para editar apenas o Nº do Chamado e Observação.",
+              "Não autorizado: O perfil Cliente possui permissão para editar apenas o Nº do Chamado, Observação e Login/Senha.",
             );
           }
           if (data.payload && typeof data.payload === "object") {
-            const allowedKeys = ["numero_chamado", "observacao", "atualizado_em", "atualizado_por"];
+            const allowedKeys = [
+              "numero_chamado",
+              "observacao",
+              "login_senha",
+              "atualizado_em",
+              "atualizado_por",
+            ];
             const sanitized: any = {};
             for (const k of allowedKeys) {
               if (k in data.payload) {
                 // Ensure character limitation of 200 characters
                 if (
                   typeof data.payload[k] === "string" &&
-                  (k === "numero_chamado" || k === "observacao")
+                  (k === "numero_chamado" || k === "observacao" || k === "login_senha")
                 ) {
                   sanitized[k] = data.payload[k].slice(0, 200);
                 } else {

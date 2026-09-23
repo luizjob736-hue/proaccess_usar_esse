@@ -58,6 +58,8 @@ import {
   RotateCcw,
   History,
   CheckCheck,
+  ChevronDown,
+  FileDown,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -749,14 +751,35 @@ export function PendenciasPinePage() {
     toast.success(`${label} copiado!`);
   }
 
-  // Export to Excel
-  function exportToExcel() {
-    if (!filteredRows.length) {
-      toast.info("Não há dados para exportar no momento.");
+  // Export helper (XLSX and CSV, supporting active, solved, current view or all)
+  function handleExport(
+    scope: "atual" | "ativas" | "historico" | "todas",
+    format: "xlsx" | "csv" = "xlsx",
+  ) {
+    let sourceList: any[] = [];
+    let fileLabel = "";
+
+    if (scope === "atual") {
+      sourceList = filteredRows;
+      fileLabel = viewMode === "historico" ? "Visao_Historico" : "Visao_Ativas";
+    } else if (scope === "ativas") {
+      sourceList = pendencias.filter((p: any) => !p.arquivado && p.status !== "concluido");
+      fileLabel = "Pendencias_Ativas";
+    } else if (scope === "historico") {
+      sourceList = pendencias.filter((p: any) => p.arquivado === true || p.status === "concluido");
+      fileLabel = "Historico_Solucionadas";
+    } else {
+      sourceList = pendencias;
+      fileLabel = "Todas_Pendencias_Pine";
+    }
+
+    if (!sourceList.length) {
+      toast.warning("Nenhum registro encontrado para exportar nesta categoria.");
       return;
     }
 
-    const excelRows = filteredRows.map((p: any, idx: number) => {
+    const excelRows = sourceList.map((p: any, idx: number) => {
+      const isResolved = p.arquivado || p.status === "concluido";
       const rowObj: Record<string, any> = {
         "#": idx + 1,
         NOME: (p.colaborador?.nome || "SEM NOME").toUpperCase(),
@@ -775,9 +798,13 @@ export function PendenciasPinePage() {
         rowObj[sis.nome] = val || "-";
       }
 
-      // Add the last two columns
+      // Details
       rowObj["Nº DO CHAMADO"] = p.numero_chamado || "";
       rowObj["OBSERVAÇÃO"] = p.observacao || "";
+      rowObj["SITUAÇÃO"] = isResolved ? "SOLUCIONADO" : "PENDENTE";
+      if (isResolved && p.concluido_em) {
+        rowObj["DATA DA SOLUÇÃO"] = formatDate(p.concluido_em);
+      }
 
       return rowObj;
     });
@@ -795,19 +822,36 @@ export function PendenciasPinePage() {
     ];
 
     for (let i = 0; i < pineSistemas.length; i++) {
-      cols.push({ wch: 24 });
+      cols.push({ wch: 22 });
     }
 
     cols.push({ wch: 20 }); // Nº CHAMADO
     cols.push({ wch: 35 }); // OBSERVAÇÃO
+    cols.push({ wch: 16 }); // SITUAÇÃO
+    cols.push({ wch: 18 }); // DATA DA SOLUÇÃO
 
     ws["!cols"] = cols;
 
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Pendências Pine");
     const dateStr = new Date().toISOString().split("T")[0];
-    XLSX.writeFile(wb, `Pendencias_Pine_Geral_${dateStr}.xlsx`);
-    toast.success("Planilha unificada exportada com sucesso!");
+    const filename = `Pendencias_Pine_${fileLabel}_${dateStr}`;
+
+    if (format === "csv") {
+      const csvOutput = XLSX.utils.sheet_to_csv(ws);
+      const blob = new Blob(["\uFEFF" + csvOutput], { type: "text/csv;charset=utf-8;" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `${filename}.csv`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } else {
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Pendências Pine");
+      XLSX.writeFile(wb, `${filename}.xlsx`);
+    }
+
+    toast.success(
+      `${excelRows.length} registro(s) exportado(s) com sucesso em .${format.toUpperCase()}!`,
+    );
   }
 
   // Quick stats
@@ -886,16 +930,63 @@ export function PendenciasPinePage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={exportToExcel}
-            disabled={!filteredRows.length}
-            className="gap-2"
-          >
-            <FileSpreadsheet className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-            <span>Exportar Excel</span>
-          </Button>
+          {/* Menu de Exportação - Liberado para Admin e Cliente */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-300 dark:hover:bg-emerald-950/40"
+              >
+                <FileSpreadsheet className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                <span>Exportar Dados</span>
+                <ChevronDown className="h-3.5 w-3.5 opacity-70" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-64">
+              <DropdownMenuLabel className="text-xs">
+                Visão Atual Filtrada ({filteredRows.length})
+              </DropdownMenuLabel>
+              <DropdownMenuItem
+                onClick={() => handleExport("atual", "xlsx")}
+                className="cursor-pointer gap-2"
+              >
+                <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
+                <span>Visão Atual (.xlsx / Excel)</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => handleExport("atual", "csv")}
+                className="cursor-pointer gap-2"
+              >
+                <FileDown className="h-4 w-4 text-blue-600" />
+                <span>Visão Atual (.csv)</span>
+              </DropdownMenuItem>
+
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel className="text-xs">Relatórios por Status</DropdownMenuLabel>
+              <DropdownMenuItem
+                onClick={() => handleExport("ativas", "xlsx")}
+                className="cursor-pointer gap-2"
+              >
+                <Clock className="h-4 w-4 text-amber-500" />
+                <span>Pendências Ativas ({stats.ativas}) (.xlsx)</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => handleExport("historico", "xlsx")}
+                className="cursor-pointer gap-2"
+              >
+                <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                <span>Solucionadas / Histórico ({stats.historico}) (.xlsx)</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => handleExport("todas", "xlsx")}
+                className="cursor-pointer gap-2"
+              >
+                <Layers className="h-4 w-4 text-primary" />
+                <span>Tabela Completa (Geral) ({stats.total}) (.xlsx)</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           {isAdmin && (
             <>
@@ -930,10 +1021,11 @@ export function PendenciasPinePage() {
         <div className="flex items-center gap-3 rounded-lg border border-purple-200 bg-purple-50/70 p-3 text-sm text-purple-900 dark:border-purple-900 dark:bg-purple-950/40 dark:text-purple-200">
           <Sparkles className="h-5 w-5 shrink-0 text-purple-600 dark:text-purple-400" />
           <div className="flex-1">
-            <span className="font-semibold">Modo Cliente ativo:</span> Você tem visão unificada de
-            todos os sistemas da tabela. As duas últimas colunas (<strong>Nº do Chamado</strong> e{" "}
-            <strong>Observação</strong>) são de preenchimento livre diretamente na tabela (com
-            limite de até 200 caracteres cada).
+            <span className="font-semibold">Modo Cliente ativo:</span> Você tem visualização
+            unificada de todos os sistemas, preenchimento livre das colunas{" "}
+            <strong>Nº do Chamado</strong> e <strong>Observação</strong> (até 200 caracteres cada) e{" "}
+            <strong>exportação liberada para planilhas Excel (.xlsx) e CSV</strong> de todas as
+            pendências ativas ou solucionadas.
           </div>
         </div>
       )}
@@ -1033,14 +1125,16 @@ export function PendenciasPinePage() {
           </button>
         </div>
 
-        <Link
-          to="/pendencias-historico"
-          className="text-xs text-muted-foreground hover:text-primary flex items-center gap-1 transition-colors"
-          title="Acessar o histórico geral de todas as pendências da empresa"
-        >
-          <History className="h-3.5 w-3.5" />
-          <span>Histórico Geral de Pendências &rarr;</span>
-        </Link>
+        {!isCliente && (
+          <Link
+            to="/pendencias-historico"
+            className="text-xs text-muted-foreground hover:text-primary flex items-center gap-1 transition-colors"
+            title="Acessar o histórico geral de todas as pendências da empresa"
+          >
+            <History className="h-3.5 w-3.5" />
+            <span>Histórico Geral de Pendências &rarr;</span>
+          </Link>
+        )}
       </div>
 
       {/* Filter and Search Bar */}
@@ -1086,6 +1180,18 @@ export function PendenciasPinePage() {
               Limpar filtros
             </Button>
           )}
+
+          {/* Botão de Exportação Rápida da Visão Atual (disponível para Admin e Cliente) */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => handleExport("atual", "xlsx")}
+            className="text-xs h-9 gap-1.5 border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-300 dark:hover:bg-emerald-950/40"
+            title="Exportar visão atual para planilha Excel"
+          >
+            <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+            <span className="hidden sm:inline">Exportar Excel</span>
+          </Button>
 
           {isAdmin && (
             <Button

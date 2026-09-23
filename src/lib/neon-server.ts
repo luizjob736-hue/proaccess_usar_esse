@@ -878,6 +878,44 @@ export const neonQueryServerFn = createServerFn({ method: "POST" })
           data.whereClauses = (data.whereClauses || []).filter((w) => w.col !== "user_id");
           data.whereClauses.push({ col: "user_id", op: "eq", val: currentUser.id });
         }
+      } else if (currentUser && currentUser.role === "cliente") {
+        // Cliente can only access pendencias_pine, pendencias_pine_sistemas, colaboradores, sistemas, profiles
+        if (
+          table !== "pendencias_pine" &&
+          table !== "pendencias_pine_sistemas" &&
+          table !== "colaboradores" &&
+          table !== "sistemas" &&
+          table !== "profiles"
+        ) {
+          throw new Error(
+            "Não autorizado: O perfil Cliente possui acesso restrito ao módulo de Pendências Pine.",
+          );
+        }
+        if (isWrite) {
+          if (table !== "pendencias_pine" || data.action !== "update") {
+            throw new Error(
+              "Não autorizado: O perfil Cliente possui permissão para editar apenas o Nº do Chamado e Observação.",
+            );
+          }
+          if (data.payload && typeof data.payload === "object") {
+            const allowedKeys = ["numero_chamado", "observacao", "atualizado_em", "atualizado_por"];
+            const sanitized: any = {};
+            for (const k of allowedKeys) {
+              if (k in data.payload) {
+                // Ensure character limitation of 200 characters
+                if (
+                  typeof data.payload[k] === "string" &&
+                  (k === "numero_chamado" || k === "observacao")
+                ) {
+                  sanitized[k] = data.payload[k].slice(0, 200);
+                } else {
+                  sanitized[k] = data.payload[k];
+                }
+              }
+            }
+            data.payload = sanitized;
+          }
+        }
       } else if (currentUser && currentUser.role === "consulta") {
         if (isWrite) {
           throw new Error(
@@ -892,6 +930,14 @@ export const neonQueryServerFn = createServerFn({ method: "POST" })
               `Não autorizado: Apenas administradores podem alterar a tabela ${table}.`,
             );
           }
+        }
+      }
+
+      // Restrict pendencias_pine and pendencias_pine_sistemas to admin_master, admin and cliente only
+      if (table === "pendencias_pine" || table === "pendencias_pine_sistemas") {
+        const allowedRoles = ["admin_master", "admin", "cliente"];
+        if (currentUser && !allowedRoles.includes(currentUser.role)) {
+          throw new Error("Não autorizado: Acesso restrito a Administradores e Clientes.");
         }
       }
 

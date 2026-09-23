@@ -1,7 +1,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireDatabaseAuth } from "@/integrations/database/auth-middleware";
 
-type Role = "admin_master" | "admin" | "analista" | "supervisor" | "consulta" | "operador";
+type Role =
+  "admin_master" | "admin" | "analista" | "supervisor" | "consulta" | "operador" | "cliente";
 
 async function ensureAdmin(context: any) {
   const { data: isAdm } = await context.db.rpc("is_admin", { _user_id: context.userId });

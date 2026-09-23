@@ -47,7 +47,25 @@ import {
 
 export const Route = createFileRoute("/_authenticated/administracao")({ component: Adm });
 
-const ROLES = ["admin_master", "admin", "analista", "supervisor", "consulta", "operador"] as const;
+const ROLES = [
+  "admin_master",
+  "admin",
+  "analista",
+  "supervisor",
+  "consulta",
+  "operador",
+  "cliente",
+] as const;
+
+export const ROLE_LABELS: Record<string, string> = {
+  admin_master: "Administrador Master",
+  admin: "Administrador",
+  analista: "Analista",
+  supervisor: "Supervisor",
+  consulta: "Consulta",
+  operador: "Operador",
+  cliente: "Cliente",
+};
 
 function Adm() {
   return (
@@ -245,15 +263,15 @@ function UsuariosTab() {
                     <SelectContent>
                       {ROLES.map((r) => (
                         <SelectItem key={r} value={r}>
-                          {r}
+                          {ROLE_LABELS[r] || r}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
                 <p className="col-span-2 text-xs text-muted-foreground">
-                  Operador terá senha padrão <code>123456</code> se nada for informado; demais
-                  papéis recebem senha provisória.
+                  Operador terá senha padrão <code>123456</code> se nada for informado; Cliente e
+                  demais papéis recebem senha provisória.
                 </p>
                 <DialogFooter className="col-span-2">
                   <Button type="submit" disabled={create.isPending}>
@@ -303,19 +321,31 @@ function UsuariosTab() {
                 )}
               </div>
               {u.roles.map((r: string) => (
-                <Badge key={r}>{r}</Badge>
+                <Badge
+                  key={r}
+                  variant={
+                    r === "admin_master" ? "default" : r === "cliente" ? "secondary" : "outline"
+                  }
+                  className={
+                    r === "cliente"
+                      ? "bg-purple-100 text-purple-800 border-purple-300 dark:bg-purple-950 dark:text-purple-300"
+                      : ""
+                  }
+                >
+                  {ROLE_LABELS[r] || r}
+                </Badge>
               ))}
               <Select
                 value={u.roles[0] ?? ""}
                 onValueChange={(v) => setRole.mutate({ userId: u.id, role: v })}
               >
-                <SelectTrigger className="w-40">
+                <SelectTrigger className="w-44">
                   <SelectValue placeholder="Papel" />
                 </SelectTrigger>
                 <SelectContent>
                   {ROLES.map((r) => (
                     <SelectItem key={r} value={r}>
-                      {r}
+                      {ROLE_LABELS[r] || r}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -543,28 +573,48 @@ function PermissoesTab() {
               <tr>
                 <th className="p-2 text-left">Módulo / Ação</th>
                 {ROLES.map((r) => (
-                  <th key={r} className="p-2 text-center">
-                    {r}
+                  <th key={r} className="p-2 text-center text-xs whitespace-nowrap">
+                    {ROLE_LABELS[r] || r}
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {[
-                ["Dashboard", "✓", "✓", "✓", "✓", "✓", ""],
-                ["Matriz de Acessos", "✓", "✓", "✓", "✓", "", "(própria)"],
-                ["Sistemas", "✓", "✓", "✓", "", "", ""],
-                ["Pendências", "✓", "✓", "✓", "(próprias)", "", ""],
-                ["Chamados", "✓", "✓", "", "", "", "(próprios)"],
-                ["Relatórios", "✓", "✓", "✓", "✓", "", ""],
-                ["Administração", "✓", "(exceto master)", "", "", "", ""],
-                ["Lixeira", "✓", "✓", "", "", "", ""],
+                ["Dashboard", "✓", "✓", "✓", "✓", "✓", "", ""],
+                ["Matriz de Acessos", "✓", "✓", "✓", "✓", "", "(própria)", ""],
+                ["Sistemas", "✓", "✓", "✓", "", "", "", ""],
+                ["Pendências Padrão", "✓", "✓", "✓", "(próprias)", "", "", ""],
+                [
+                  "Pendências Pine",
+                  "✓ Full",
+                  "✓ Full",
+                  "—",
+                  "—",
+                  "—",
+                  "—",
+                  "✓ (Ver e Editar Chamado/Obs)",
+                ],
+                ["Chamados", "✓", "✓", "", "", "", "(próprios)", ""],
+                ["Relatórios", "✓", "✓", "✓", "✓", "", "", ""],
+                ["Administração", "✓", "(exceto master)", "", "", "", "", ""],
+                ["Lixeira", "✓", "✓", "", "", "", "", ""],
               ].map((row, i) => (
                 <tr key={i} className="border-b">
-                  <td className="p-2">{row[0]}</td>
+                  <td className="p-2 font-medium">{row[0]}</td>
                   {row.slice(1).map((v, j) => (
-                    <td key={j} className="p-2 text-center">
-                      {v}
+                    <td key={j} className="p-2 text-center text-xs">
+                      {v === "✓ Full" ? (
+                        <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                          {v}
+                        </span>
+                      ) : v.startsWith("✓") ? (
+                        <span className="font-medium text-emerald-600 dark:text-emerald-400">
+                          {v}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">{v || "—"}</span>
+                      )}
                     </td>
                   ))}
                 </tr>

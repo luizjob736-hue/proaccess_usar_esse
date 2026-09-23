@@ -83,6 +83,11 @@ const NAV_OPERADOR = [
   { to: "/perfil", icon: User, label: "Perfil" },
 ] as const;
 
+const NAV_CLIENTE = [
+  { to: "/pendencias-pine", icon: Table2, label: "Pendências Pine" },
+  { to: "/perfil", icon: User, label: "Perfil" },
+] as const;
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
@@ -266,16 +271,31 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       .slice(0, 2)
       .join("")
       .toUpperCase() || "?";
+  const userRoles = (me?.roles ?? []) as string[];
+  const isAdmin = userRoles.some((r) => r === "admin" || r === "admin_master");
+  const isCliente = userRoles.includes("cliente") && !isAdmin;
   const isOperador =
-    (me?.roles ?? []).includes("operador") &&
-    !(me?.roles ?? []).some((r: string) =>
-      ["admin", "admin_master", "analista", "supervisor", "consulta"].includes(r),
+    userRoles.includes("operador") &&
+    !userRoles.some((r) =>
+      ["admin", "admin_master", "analista", "supervisor", "consulta", "cliente"].includes(r),
     );
-  const NAV = (isOperador ? NAV_OPERADOR : NAV_FULL) as ReadonlyArray<{
-    to: string;
-    icon: any;
-    label: string;
-  }>;
+
+  let calculatedNav: ReadonlyArray<{ to: string; icon: any; label: string }> = NAV_FULL;
+  if (isOperador) {
+    calculatedNav = NAV_OPERADOR;
+  } else if (isCliente) {
+    calculatedNav = NAV_CLIENTE;
+  } else if (isAdmin) {
+    const pendIdx = NAV_FULL.findIndex((i) => i.to === "/pendencias-historico");
+    const fullWithPine = [...NAV_FULL];
+    fullWithPine.splice(pendIdx >= 0 ? pendIdx + 1 : 11, 0, {
+      to: "/pendencias-pine",
+      icon: Table2,
+      label: "Pendências Pine",
+    });
+    calculatedNav = fullWithPine;
+  }
+  const NAV = calculatedNav;
 
   return (
     <UserInactivityProvider user={me?.user ?? null} profile={me?.profile ?? null}>
@@ -343,7 +363,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                           ? "Admin Master"
                           : me?.roles?.[0] === "admin"
                             ? "Administrador"
-                            : me?.roles?.[0] || "Usuário"}
+                            : me?.roles?.[0] === "cliente"
+                              ? "Cliente"
+                              : me?.roles?.[0] || "Usuário"}
                     </div>
                   </div>
                 </Button>

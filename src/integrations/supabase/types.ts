@@ -818,6 +818,104 @@ export type Database = {
           },
         ];
       };
+      pendencias_pine_sistemas: {
+        Row: {
+          ativo: boolean;
+          atualizado_em: string;
+          criado_em: string;
+          id: string;
+          nome: string;
+          ordem: number;
+          sistema_id: string | null;
+        };
+        Insert: {
+          ativo?: boolean;
+          atualizado_em?: string;
+          criado_em?: string;
+          id?: string;
+          nome: string;
+          ordem?: number;
+          sistema_id?: string | null;
+        };
+        Update: {
+          ativo?: boolean;
+          atualizado_em?: string;
+          criado_em?: string;
+          id?: string;
+          nome?: string;
+          ordem?: number;
+          sistema_id?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "pendencias_pine_sistemas_sistema_id_fkey";
+            columns: ["sistema_id"];
+            isOneToOne: false;
+            referencedRelation: "sistemas";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      pendencias_pine: {
+        Row: {
+          atualizado_em: string;
+          atualizado_por: string | null;
+          colaborador_id: string | null;
+          criado_em: string;
+          criado_por: string | null;
+          funcao: string;
+          id: string;
+          numero_chamado: string;
+          observacao: string;
+          ordem: number;
+          sistema_pine_id: string | null;
+          sistemas_valores: Record<string, any> | null;
+        };
+        Insert: {
+          atualizado_em?: string;
+          atualizado_por?: string | null;
+          colaborador_id?: string | null;
+          criado_em?: string;
+          criado_por?: string | null;
+          funcao?: string;
+          id?: string;
+          numero_chamado?: string;
+          observacao?: string;
+          ordem?: number;
+          sistema_pine_id?: string | null;
+          sistemas_valores?: Record<string, any> | null;
+        };
+        Update: {
+          atualizado_em?: string;
+          atualizado_por?: string | null;
+          colaborador_id?: string | null;
+          criado_em?: string;
+          criado_por?: string | null;
+          funcao?: string;
+          id?: string;
+          numero_chamado?: string;
+          observacao?: string;
+          ordem?: number;
+          sistema_pine_id?: string | null;
+          sistemas_valores?: Record<string, any> | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "pendencias_pine_colaborador_id_fkey";
+            columns: ["colaborador_id"];
+            isOneToOne: false;
+            referencedRelation: "colaboradores";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "pendencias_pine_sistema_pine_id_fkey";
+            columns: ["sistema_pine_id"];
+            isOneToOne: false;
+            referencedRelation: "pendencias_pine_sistemas";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       user_roles: {
         Row: {
           criado_em: string;
@@ -856,7 +954,8 @@ export type Database = {
     };
     Enums: {
       acesso_status: "pendente" | "ativo" | "suspenso" | "exclusao_pendente" | "excluido";
-      app_role: "admin_master" | "admin" | "analista" | "supervisor" | "consulta" | "operador";
+      app_role:
+        "admin_master" | "admin" | "analista" | "supervisor" | "consulta" | "operador" | "cliente";
       colab_status: "ativo" | "ferias" | "afastado" | "inativo" | "desligado";
       pendencia_prioridade: "baixa" | "media" | "alta" | "critica";
       pendencia_status:
@@ -984,7 +1083,15 @@ export const Constants = {
   public: {
     Enums: {
       acesso_status: ["pendente", "ativo", "suspenso", "exclusao_pendente", "excluido"],
-      app_role: ["admin_master", "admin", "analista", "supervisor", "consulta", "operador"],
+      app_role: [
+        "admin_master",
+        "admin",
+        "analista",
+        "supervisor",
+        "consulta",
+        "operador",
+        "cliente",
+      ],
       colab_status: ["ativo", "ferias", "afastado", "inativo", "desligado"],
       pendencia_prioridade: ["baixa", "media", "alta", "critica"],
       pendencia_status: [

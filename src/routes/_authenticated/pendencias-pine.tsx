@@ -355,6 +355,79 @@ export function PendenciasPinePage() {
     },
   });
 
+  // Helper: Sync "CRIAÇÃO" status to Matriz Principal (acessos table) as "Solicitado"
+  const syncCriacaoToMatriz = async (
+    colaboradorId: string,
+    sistemaPine: { id: string; nome: string; sistema_id: string | null },
+  ) => {
+    try {
+      let targetSistemaId = sistemaPine.sistema_id;
+
+      if (!targetSistemaId) {
+        const { data: found } = await db
+          .from("sistemas")
+          .select("id")
+          .ilike("nome", sistemaPine.nome.trim())
+          .maybeSingle();
+
+        if (found?.id) {
+          targetSistemaId = found.id;
+          await db
+            .from("pendencias_pine_sistemas")
+            .update({ sistema_id: targetSistemaId })
+            .eq("id", sistemaPine.id);
+        } else {
+          const { data: created } = await db
+            .from("sistemas")
+            .insert({
+              nome: sistemaPine.nome.trim(),
+              categoria: "Outros",
+            })
+            .select("id")
+            .single();
+          if (created?.id) {
+            targetSistemaId = created.id;
+            await db
+              .from("pendencias_pine_sistemas")
+              .update({ sistema_id: targetSistemaId })
+              .eq("id", sistemaPine.id);
+          }
+        }
+      }
+
+      if (!targetSistemaId) return;
+
+      const { data: existing } = await db
+        .from("acessos")
+        .select("id, login, senha, status")
+        .eq("colaborador_id", colaboradorId)
+        .eq("sistema_id", targetSistemaId)
+        .maybeSingle();
+
+      if (existing) {
+        await db
+          .from("acessos")
+          .update({
+            login: "Solicitado",
+            senha: "Solicitado",
+            status: "pendente",
+            atualizado_em: new Date().toISOString(),
+          })
+          .eq("id", existing.id);
+      } else {
+        await db.from("acessos").insert({
+          colaborador_id: colaboradorId,
+          sistema_id: targetSistemaId,
+          login: "Solicitado",
+          senha: "Solicitado",
+          status: "pendente",
+        });
+      }
+    } catch (err) {
+      console.error("Erro ao sincronizar status de criação na Matriz Principal:", err);
+    }
+  };
+
   // 3. Create new Collaborator row
   const createColaboradorRow = useMutation({
     mutationFn: async (payload: {
@@ -377,10 +450,28 @@ export function PendenciasPinePage() {
         .select()
         .single();
       if (error) throw error;
+
+      // Sync any systems marked with CRIAÇÃO to the Matriz Principal (acessos table)
+      for (const [sisId, statusVal] of Object.entries(payload.sistemas_valores || {})) {
+        if (statusVal === "CRIAÇÃO") {
+          const sisPine = pineSistemas.find((s: any) => s.id === sisId);
+          if (sisPine) {
+            await syncCriacaoToMatriz(payload.colaborador_id, sisPine);
+          }
+        }
+      }
+
       return data;
     },
-    onSuccess: () => {
-      toast.success("Colaborador adicionado à tabela com sucesso!");
+    onSuccess: (data, variables) => {
+      const hasCriacao = Object.values(variables.sistemas_valores || {}).includes("CRIAÇÃO");
+      if (hasCriacao) {
+        toast.success(
+          "Colaborador adicionado à tabela e acessos em CRIAÇÃO marcados como 'Solicitado' na Matriz Principal!",
+        );
+      } else {
+        toast.success("Colaborador adicionado à tabela com sucesso!");
+      }
       setModalNewColabOpen(false);
       setSelectedColabId("");
       setColabSearchQuery("");
@@ -388,6 +479,8 @@ export function PendenciasPinePage() {
       setNewColabChamado("");
       setNewColabObs("");
       qc.invalidateQueries({ queryKey: ["pendencias_pine"] });
+      qc.invalidateQueries({ queryKey: ["acessos"] });
+      qc.invalidateQueries({ queryKey: ["matriz-acessos"] });
     },
     onError: (err: any) => {
       toast.error(`Erro ao adicionar colaborador: ${err.message}`);
@@ -416,9 +509,25 @@ export function PendenciasPinePage() {
         })
         .eq("id", rowId);
       if (error) throw error;
+
+      // When set to "CRIAÇÃO", sync to Matriz Principal (acessos table) as "Solicitado"
+      if (newStatus === "CRIAÇÃO") {
+        const row = pendencias.find((p: any) => p.id === rowId);
+        const sisPine = pineSistemas.find((s: any) => s.id === sistemaId);
+        if (row?.colaborador_id && sisPine) {
+          await syncCriacaoToMatriz(row.colaborador_id, sisPine);
+        }
+      }
     },
-    onSuccess: () => {
+    onSuccess: (data, variables) => {
+      if (variables.newStatus === "CRIAÇÃO") {
+        toast.success(
+          "Status atualizado para CRIAÇÃO e acesso marcado como 'Solicitado' na Matriz Principal!",
+        );
+      }
       qc.invalidateQueries({ queryKey: ["pendencias_pine"] });
+      qc.invalidateQueries({ queryKey: ["acessos"] });
+      qc.invalidateQueries({ queryKey: ["matriz-acessos"] });
     },
     onError: (err: any) => {
       toast.error(`Erro ao atualizar status do sistema: ${err.message}`);

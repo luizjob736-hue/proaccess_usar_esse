@@ -43,25 +43,49 @@ function Dashboard() {
     queryKey: ["dashboard"],
     queryFn: async () => {
       try {
-        const [colabRes, sistRes, accRes, pendRes, quadrosRes] = await Promise.all([
-          db.from("colaboradores").select("id, status", { count: "exact" }),
-          db.from("sistemas").select("id, nome, responsavel_id", { count: "exact" }),
-          db.from("acessos").select("id, status, sistema_id, colaborador_id, login, senha", {
-            count: "exact",
-          }),
-          db.from("pendencias").select("id, status, prioridade, sistema_id, arquivado", {
-            count: "exact",
-          }),
-          db.from("pendencia_quadros").select("*").order("ordem"),
-        ]);
+        const [colabRes, sistRes, accRes, pendRes, quadrosRes, pinePendRes, pineSistRes] =
+          await Promise.all([
+            db.from("colaboradores").select("id, status", { count: "exact" }),
+            db.from("sistemas").select("id, nome, responsavel_id", { count: "exact" }),
+            db.from("acessos").select("id, status, sistema_id, colaborador_id, login, senha", {
+              count: "exact",
+            }),
+            db.from("pendencias").select("id, status, prioridade, sistema_id, arquivado", {
+              count: "exact",
+            }),
+            db.from("pendencia_quadros").select("*").order("ordem"),
+            (async () => {
+              try {
+                return await db
+                  .from("pendencias_pine")
+                  .select("id, status, arquivado, sistemas_valores, funcao, sistema_pine_id");
+              } catch {
+                return { data: [] };
+              }
+            })(),
+            (async () => {
+              try {
+                return await db.from("pendencias_pine_sistemas").select("id, nome, sistema_id");
+              } catch {
+                return { data: [] };
+              }
+            })(),
+          ]);
 
         const colabList = colabRes.data ?? [];
         const sistList = sistRes.data ?? [];
         const rawAccList = accRes.data ?? [];
         const accList = rawAccList.filter(isValidAccess);
         const rawPendList = pendRes.data ?? [];
-        const pendList = rawPendList.filter((p: any) => !p.arquivado);
+        // Only active pendencias (not archived and not concluded)
+        const pendList = rawPendList.filter((p: any) => !p.arquivado && p.status !== "concluido");
+        const rawPinePendList = pinePendRes.data ?? [];
+        // Only active Pine pendencias (not archived and not concluded)
+        const pinePendList = rawPinePendList.filter(
+          (p: any) => !p.arquivado && p.status !== "concluido",
+        );
         const quadrosList = quadrosRes.data ?? [];
+        const pineSistList = pineSistRes.data ?? [];
 
         const colabStatusMap = new Map(colabList.map((c: any) => [c.id, c.status]));
 
@@ -90,6 +114,25 @@ function Dashboard() {
 
         const semRespCount = sistList.filter((s: any) => !s.responsavel_id).length;
 
+        // Combined pendencias data (both standard and Pine)
+        const combinedPendData = [
+          ...pendList.map((p: any) => ({
+            id: p.id,
+            status: p.status || "pendente",
+            prioridade: p.prioridade || "media",
+            sistema_id: p.sistema_id,
+            isPine: false,
+          })),
+          ...pinePendList.map((p: any) => ({
+            id: p.id,
+            status: p.status || "pendente",
+            prioridade: "media",
+            sistema_id: p.sistema_pine_id || null,
+            isPine: true,
+            sistemas_valores: p.sistemas_valores,
+          })),
+        ];
+
         return {
           colabTotal: colabRes.count ?? colabList.length,
           colabAtivos: colabList.filter((c: any) => c.status === "ativo").length,
@@ -99,8 +142,11 @@ function Dashboard() {
           acessosAtivos: acessosAtivosCount,
           acessosData: accList,
           colabStatusMap,
-          pendTotal: pendList.length,
-          pendData: pendList,
+          pendTotal: combinedPendData.length,
+          pendPadraoTotal: pendList.length,
+          pinePendTotal: pinePendList.length,
+          pendData: combinedPendData,
+          pineSistemas: pineSistList,
           orfaos: orfaosCount,
           semResp: semRespCount,
           quadros: quadrosList,
@@ -116,7 +162,10 @@ function Dashboard() {
           acessosAtivos: 0,
           acessosData: [],
           pendTotal: 0,
+          pendPadraoTotal: 0,
+          pinePendTotal: 0,
           pendData: [],
+          pineSistemas: [],
           orfaos: 0,
           semResp: 0,
           quadros: [],
@@ -158,15 +207,36 @@ function Dashboard() {
     pendChart = Object.entries(pendByStatus).map(([name, value]) => ({ name, value }));
   }
 
-  // Pendências por Sistema (Produto)
+  // Pendências por Sistema (Produto) - Integrando sistemas padrão e sistemas Pine
   const sisMap = new Map((data?.sistData ?? []).map((s: any) => [s.id, s.nome]));
+  const pineSistemas = data?.pineSistemas ?? [];
   const pendBySisMap: Record<string, number> = {};
+
   pendData.forEach((p: any) => {
-    const sisNome = p.sistema_id
-      ? sisMap.get(p.sistema_id) || "Sistema Removido"
-      : "Geral / Sem Sistema";
-    pendBySisMap[sisNome] = (pendBySisMap[sisNome] || 0) + 1;
+    if (p.isPine) {
+      let matchedCount = 0;
+      if (pineSistemas.length > 0) {
+        for (const pineSis of pineSistemas) {
+          const val = p.sistemas_valores?.[pineSis.id] || p.sistemas_valores?.[pineSis.nome];
+          if (val && val !== "-" && val !== "—") {
+            const sisCatalogNome = pineSis.sistema_id ? sisMap.get(pineSis.sistema_id) : null;
+            const finalNome = sisCatalogNome || pineSis.nome || "Pine";
+            pendBySisMap[finalNome] = (pendBySisMap[finalNome] || 0) + 1;
+            matchedCount++;
+          }
+        }
+      }
+      if (matchedCount === 0) {
+        pendBySisMap["Pine"] = (pendBySisMap["Pine"] || 0) + 1;
+      }
+    } else {
+      const sisNome = p.sistema_id
+        ? sisMap.get(p.sistema_id) || "Sistema Removido"
+        : "Geral / Sem Sistema";
+      pendBySisMap[sisNome] = (pendBySisMap[sisNome] || 0) + 1;
+    }
   });
+
   const pendBySistemaChart = Object.entries(pendBySisMap)
     .map(([name, value]) => ({ name, value }))
     .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name));
@@ -242,8 +312,16 @@ function Dashboard() {
           icon={AlertTriangle}
           label="Pendências"
           value={data?.pendTotal ?? 0}
-          sub={data?.orfaos ? `${data.orfaos} acessos órfãos` : "Sem órfãos"}
-          tone={data?.orfaos ? "warn" : "ok"}
+          sub={
+            data?.pinePendTotal && data?.pendPadraoTotal
+              ? `${data.pendPadraoTotal} geral • ${data.pinePendTotal} Pine`
+              : data?.pinePendTotal
+                ? `${data.pinePendTotal} na guia Pine`
+                : data?.orfaos
+                  ? `${data.orfaos} acessos órfãos`
+                  : "Sem órfãos"
+          }
+          tone={data?.orfaos || (data?.pendTotal ?? 0) > 0 ? "warn" : "ok"}
         />
       </div>
 

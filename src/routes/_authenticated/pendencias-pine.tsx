@@ -584,6 +584,7 @@ export function PendenciasPinePage() {
       qc.invalidateQueries({ queryKey: ["pendencias_pine"] });
       qc.invalidateQueries({ queryKey: ["acessos"] });
       qc.invalidateQueries({ queryKey: ["matriz-acessos"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
     },
     onError: (err: any) => {
       toast.error(`Erro ao adicionar colaborador(es): ${err.message}`);
@@ -631,6 +632,7 @@ export function PendenciasPinePage() {
       qc.invalidateQueries({ queryKey: ["pendencias_pine"] });
       qc.invalidateQueries({ queryKey: ["acessos"] });
       qc.invalidateQueries({ queryKey: ["matriz-acessos"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
     },
     onError: (err: any) => {
       toast.error(`Erro ao atualizar status do sistema: ${err.message}`);
@@ -660,6 +662,7 @@ export function PendenciasPinePage() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["pendencias_pine"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
     },
     onError: (err: any) => {
       toast.error(`Erro ao salvar: ${err.message}`);
@@ -675,6 +678,7 @@ export function PendenciasPinePage() {
     onSuccess: () => {
       toast.success("Registro removido com sucesso");
       qc.invalidateQueries({ queryKey: ["pendencias_pine"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
     },
     onError: (err: any) => {
       toast.error(`Erro ao excluir: ${err.message}`);
@@ -768,6 +772,7 @@ export function PendenciasPinePage() {
       qc.invalidateQueries({ queryKey: ["historico_pendencias_all"] });
       qc.invalidateQueries({ queryKey: ["pendencias"] });
       qc.invalidateQueries({ queryKey: ["historico"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
     },
     onError: (err: any) => {
       toast.error(`Erro ao solucionar pendência: ${err.message}`);
@@ -795,6 +800,7 @@ export function PendenciasPinePage() {
       qc.invalidateQueries({ queryKey: ["pendencias_pine"] });
       qc.invalidateQueries({ queryKey: ["historico_pendencias_all"] });
       qc.invalidateQueries({ queryKey: ["pendencias"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
     },
     onError: (err: any) => {
       toast.error(`Erro ao reabrir pendência: ${err.message}`);

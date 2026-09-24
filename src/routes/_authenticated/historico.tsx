@@ -197,6 +197,13 @@ function getTargetInfo(h: any) {
   if (h.entidade === "pendencias") {
     return data.titulo || "Pendência";
   }
+  if (h.entidade === "pendencias_pine") {
+    const colab = data.colaborador?.nome || data.nome_colaborador || data.colaborador_nome;
+    const sis = data.sistema?.nome || data.sistema_nome;
+    if (colab && sis) return `${colab} (${sis})`;
+    if (colab) return colab;
+    return "Pendência Pine";
+  }
   if (h.entidade === "importacao") {
     const template = data.template || data.tipo || "Arquivo";
     const total = data.total_linhas ? ` (${data.total_linhas} linhas)` : "";
@@ -250,6 +257,16 @@ function getActionBadge(action: string) {
       </Badge>
     );
   }
+  if (a === "SOLUCIONADO") {
+    return (
+      <Badge
+        variant="outline"
+        className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800 gap-1 font-medium"
+      >
+        <CheckCircle2 className="h-3 w-3" /> Solucionado
+      </Badge>
+    );
+  }
   return (
     <Badge variant="outline" className="font-medium">
       {action}
@@ -267,6 +284,8 @@ function getEntityIcon(entity: string) {
       return <Layers className="h-3.5 w-3.5 text-emerald-500" />;
     case "pendencias":
       return <CheckSquare className="h-3.5 w-3.5 text-violet-500" />;
+    case "pendencias_pine":
+      return <CheckSquare className="h-3.5 w-3.5 text-pink-500" />;
     case "importacao":
       return <FileSpreadsheet className="h-3.5 w-3.5 text-purple-500" />;
     case "operacoes":
@@ -286,6 +305,8 @@ function getEntityLabel(entity: string) {
       return "Sistemas";
     case "pendencias":
       return "Pendências";
+    case "pendencias_pine":
+      return "Pendências Pine";
     case "importacao":
       return "Importação";
     case "operacoes":
@@ -386,10 +407,66 @@ function Historico() {
   // Enriquecer registros com dados do usuário
   const enrichedHistorico = useMemo(() => {
     return rawHistorico.map((h: any) => {
-      const profile = h.ator_id ? profilesMap.get(h.ator_id) : null;
-      const actorName = h.ator?.nome || profile?.nome || (h.ator_id ? "Usuário" : "Sistema");
-      const actorEmail = h.ator?.email || profile?.email || null;
-      const actorRole = profile?.role || (h.ator_id ? null : "sistema");
+      let profile = h.ator_id ? profilesMap.get(h.ator_id) : null;
+      if (!profile && h.ator_id) {
+        profile = profiles.find(
+          (p: any) =>
+            p.id?.toLowerCase() === h.ator_id?.toLowerCase() ||
+            p.email?.toLowerCase() === h.ator_id?.toLowerCase(),
+        );
+      }
+
+      // Check if actor details are in dados_depois / dados_antes (e.g. atualizado_por, criado_por, solucionado_por, concedido_por)
+      const metaActor =
+        h.dados_depois?.atualizado_por ||
+        h.dados_depois?.criado_por ||
+        h.dados_depois?.solucionado_por ||
+        h.dados_depois?.concedido_por ||
+        h.dados_depois?.responsavel_id ||
+        h.dados_antes?.atualizado_por ||
+        h.dados_antes?.criado_por;
+
+      let fallbackProfile = null;
+      if (!profile && metaActor && typeof metaActor === "string") {
+        fallbackProfile =
+          profilesMap.get(metaActor) ||
+          profiles.find(
+            (p: any) =>
+              p.id?.toLowerCase() === metaActor.toLowerCase() ||
+              p.email?.toLowerCase() === metaActor.toLowerCase(),
+          );
+      }
+
+      const effectiveProfile = profile || fallbackProfile;
+      const isSystem =
+        !h.ator_id ||
+        h.ator_id === "00000000-0000-0000-0000-000000000000" ||
+        h.ator_id.toLowerCase() === "sistema";
+
+      let actorName =
+        h.ator?.nome ||
+        effectiveProfile?.nome ||
+        (h.ator?.email ? h.ator.email.split("@")[0] : null) ||
+        (effectiveProfile?.email ? effectiveProfile.email.split("@")[0] : null);
+
+      if (!actorName) {
+        if (!isSystem && h.ator_id) {
+          actorName = h.ator_id.includes("@") ? h.ator_id.split("@")[0] : "Usuário";
+        } else if (metaActor && typeof metaActor === "string" && !metaActor.includes("-")) {
+          actorName = metaActor;
+        } else {
+          actorName = isSystem ? "Sistema" : "Usuário";
+        }
+      }
+
+      const actorEmail =
+        h.ator?.email ||
+        effectiveProfile?.email ||
+        (h.ator_id && h.ator_id.includes("@") ? h.ator_id : null) ||
+        (metaActor && typeof metaActor === "string" && metaActor.includes("@") ? metaActor : null);
+
+      const actorRole = effectiveProfile?.role || (actorName === "Sistema" ? "sistema" : "admin");
+
       const target = getTargetInfo(h);
       const diffs = h.acao === "UPDATE" ? getFieldDiff(h.dados_antes, h.dados_depois) : [];
 
@@ -402,7 +479,7 @@ function Historico() {
         diffs,
       };
     });
-  }, [rawHistorico, profilesMap]);
+  }, [rawHistorico, profilesMap, profiles]);
 
   // Filtragem
   const filteredData = useMemo(() => {
@@ -693,6 +770,7 @@ function Historico() {
                   <SelectItem value="acessos">Acessos & Credenciais</SelectItem>
                   <SelectItem value="sistemas">Sistemas</SelectItem>
                   <SelectItem value="pendencias">Pendências</SelectItem>
+                  <SelectItem value="pendencias_pine">Pendências Pine</SelectItem>
                   <SelectItem value="operacoes">Operações</SelectItem>
                 </SelectContent>
               </Select>

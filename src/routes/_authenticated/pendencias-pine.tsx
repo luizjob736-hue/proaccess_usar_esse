@@ -748,7 +748,7 @@ export function PendenciasPinePage() {
           entidade: "pendencias_pine",
           entidade_id: row.id,
           acao: "SOLUCIONADO",
-          ator_id: me?.user?.id || "00000000-0000-0000-0000-000000000000",
+          ator_id: me?.user?.id || undefined,
           descricao: `Pendência Pine do colaborador "${colab.nome || "Colaborador"}" foi marcada como SOLUCIONADA e enviada para o Histórico.`,
           dados_antes: row,
           dados_depois: {
@@ -756,6 +756,7 @@ export function PendenciasPinePage() {
             arquivado: true,
             status: "concluido",
             concluido_em: now,
+            solucionado_por: me?.user?.id || me?.user?.email,
           },
           criado_em: now,
         });

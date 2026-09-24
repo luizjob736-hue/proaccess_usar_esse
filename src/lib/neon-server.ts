@@ -672,7 +672,11 @@ async function ensurePreAtendimentoSchema(client: any) {
         END IF;
 
         IF v_ator IS NULL THEN
-          v_ator := auth.uid();
+          BEGIN
+            v_ator := auth.uid();
+          EXCEPTION WHEN OTHERS THEN
+            v_ator := NULL;
+          END;
         END IF;
 
         v_id := COALESCE((NEW).id, (OLD).id);
@@ -721,6 +725,14 @@ async function ensurePreAtendimentoSchema(client: any) {
           ELSIF TG_OP = 'DELETE' THEN
             v_desc := 'Pendência "' || COALESCE(OLD.titulo, '') || '" excluída';
           END IF;
+        ELSIF TG_TABLE_NAME = 'pendencias_pine' THEN
+          IF TG_OP = 'INSERT' THEN
+            v_desc := 'Pendência Pine cadastrada';
+          ELSIF TG_OP = 'UPDATE' THEN
+            v_desc := 'Pendência Pine atualizada';
+          ELSIF TG_OP = 'DELETE' THEN
+            v_desc := 'Pendência Pine excluída';
+          END IF;
         ELSIF TG_TABLE_NAME = 'operacoes' THEN
           IF TG_OP = 'INSERT' THEN
             v_desc := 'Operação ' || COALESCE(NEW.nome, '') || ' criada';
@@ -745,6 +757,52 @@ async function ensurePreAtendimentoSchema(client: any) {
         );
         RETURN COALESCE(NEW, OLD);
       END; $$;
+
+      -- Vincular triggers de auditoria nas tabelas principais
+      DO $trg$
+      BEGIN
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'colaboradores') THEN
+          DROP TRIGGER IF EXISTS trg_historico_colaboradores ON public.colaboradores;
+          CREATE TRIGGER trg_historico_colaboradores
+          AFTER INSERT OR UPDATE OR DELETE ON public.colaboradores
+          FOR EACH ROW EXECUTE FUNCTION public.tg_log_historico();
+        END IF;
+
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'acessos') THEN
+          DROP TRIGGER IF EXISTS trg_historico_acessos ON public.acessos;
+          CREATE TRIGGER trg_historico_acessos
+          AFTER INSERT OR UPDATE OR DELETE ON public.acessos
+          FOR EACH ROW EXECUTE FUNCTION public.tg_log_historico();
+        END IF;
+
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'sistemas') THEN
+          DROP TRIGGER IF EXISTS trg_historico_sistemas ON public.sistemas;
+          CREATE TRIGGER trg_historico_sistemas
+          AFTER INSERT OR UPDATE OR DELETE ON public.sistemas
+          FOR EACH ROW EXECUTE FUNCTION public.tg_log_historico();
+        END IF;
+
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'pendencias') THEN
+          DROP TRIGGER IF EXISTS trg_historico_pendencias ON public.pendencias;
+          CREATE TRIGGER trg_historico_pendencias
+          AFTER INSERT OR UPDATE OR DELETE ON public.pendencias
+          FOR EACH ROW EXECUTE FUNCTION public.tg_log_historico();
+        END IF;
+
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'operacoes') THEN
+          DROP TRIGGER IF EXISTS trg_historico_operacoes ON public.operacoes;
+          CREATE TRIGGER trg_historico_operacoes
+          AFTER INSERT OR UPDATE OR DELETE ON public.operacoes
+          FOR EACH ROW EXECUTE FUNCTION public.tg_log_historico();
+        END IF;
+
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'pendencias_pine') THEN
+          DROP TRIGGER IF EXISTS trg_historico_pendencias_pine ON public.pendencias_pine;
+          CREATE TRIGGER trg_historico_pendencias_pine
+          AFTER INSERT OR UPDATE OR DELETE ON public.pendencias_pine
+          FOR EACH ROW EXECUTE FUNCTION public.tg_log_historico();
+        END IF;
+      END $trg$;
     `);
     preAtendimentoSchemaInitialized = true;
   } catch (err) {
@@ -811,8 +869,10 @@ export const neonQueryServerFn = createServerFn({ method: "POST" })
 
       if (currentUser?.id) {
         try {
-          await client.query(`SET LOCAL app.current_user_id = $1`, [currentUser.id]);
-          await client.query(`SET LOCAL "request.jwt.claim.sub" = $1`, [currentUser.id]);
+          await client.query(
+            `SELECT set_config('app.current_user_id', $1, false), set_config('request.jwt.claim.sub', $1, false)`,
+            [String(currentUser.id)],
+          );
         } catch (_e) {
           // ignore
         }
@@ -1123,8 +1183,21 @@ export const neonQueryServerFn = createServerFn({ method: "POST" })
       };
 
       if (data.action === "insert") {
-        const payload = Array.isArray(data.payload) ? data.payload : [data.payload];
-        if (payload.length === 0) return { data: [], error: null };
+        const rawPayload = Array.isArray(data.payload) ? data.payload : [data.payload];
+        if (rawPayload.length === 0) return { data: [], error: null };
+
+        const payload = rawPayload.map((item) => {
+          if (
+            table === "historico" &&
+            (!item.ator_id || item.ator_id === "00000000-0000-0000-0000-000000000000")
+          ) {
+            return {
+              ...item,
+              ator_id: currentUser?.id || item.ator_id || null,
+            };
+          }
+          return item;
+        });
 
         const inserted: any[] = [];
         for (const item of payload) {

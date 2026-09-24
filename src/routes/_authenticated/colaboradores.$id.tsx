@@ -168,13 +168,16 @@ function ColabDetalhe() {
             <CardContent className="p-0">
               <div className="divide-y">
                 {historico.map((h: any) => (
-                  <div key={h.id} className="p-4 text-sm">
+                  <div key={h.id} className="p-4 text-sm space-y-1">
                     <div className="flex items-center gap-2">
                       <Badge variant="outline">{h.acao}</Badge>
                       <span className="text-xs text-muted-foreground">
                         {new Date(h.criado_em).toLocaleString("pt-BR")}
                       </span>
                     </div>
+                    {h.descricao && (
+                      <p className="text-xs font-medium text-foreground">{h.descricao}</p>
+                    )}
                   </div>
                 ))}
                 {historico.length === 0 && (

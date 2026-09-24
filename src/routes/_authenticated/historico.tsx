@@ -466,12 +466,14 @@ function Historico() {
         (metaActor && typeof metaActor === "string" && metaActor.includes("@") ? metaActor : null);
 
       const actorRole = effectiveProfile?.role || (actorName === "Sistema" ? "sistema" : "admin");
+      const actorId = effectiveProfile?.id || (isSystem ? "sistema" : h.ator_id);
 
       const target = getTargetInfo(h);
       const diffs = h.acao === "UPDATE" ? getFieldDiff(h.dados_antes, h.dados_depois) : [];
 
       return {
         ...h,
+        actorId,
         actorName,
         actorEmail,
         actorRole,
@@ -511,8 +513,24 @@ function Historico() {
 
       // Ator
       if (atorFiltro !== "todos") {
-        if (atorFiltro === "sistema" && h.ator_id) return false;
-        if (atorFiltro !== "sistema" && h.ator_id !== atorFiltro) return false;
+        if (atorFiltro === "sistema") {
+          const isSys =
+            h.actorName === "Sistema" ||
+            h.actorRole === "sistema" ||
+            h.actorId === "sistema" ||
+            !h.ator_id ||
+            h.ator_id === "00000000-0000-0000-0000-000000000000";
+          if (!isSys) return false;
+        } else {
+          const matchUser =
+            h.actorId === atorFiltro ||
+            h.ator_id === atorFiltro ||
+            h.dados_depois?.atualizado_por === atorFiltro ||
+            h.dados_depois?.criado_por === atorFiltro ||
+            h.dados_depois?.concedido_por === atorFiltro ||
+            h.dados_depois?.solucionado_por === atorFiltro;
+          if (!matchUser) return false;
+        }
       }
 
       // Período

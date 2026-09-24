@@ -1,26 +1,31 @@
 import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Moon, Play, ShieldAlert, Sparkles, User, Clock } from "lucide-react";
+import { Leaf, Play, ShieldAlert, Sparkles, User, Clock, AlertTriangle, LogOut, ZapOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { db } from "@/integrations/database/client";
 import { toast } from "sonner";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 
-// 15 minutos em milissegundos
-const INACTIVITY_TIMEOUT_MS = 15 * 60 * 1000;
-const HEARTBEAT_THROTTLE_MS = 3 * 60 * 1000; // Heartbeat a cada 3 min quando ativo
+// Constantes de Inatividade
+const INACTIVITY_DATA_SAVER_MS = 7 * 60 * 1000; // 7 minutos (Entra em Modo de Economia de Dados)
+const INACTIVITY_LOGOUT_MS = 15 * 60 * 1000; // 15 minutos (Desconecta automaticamente o usuário)
+const HEARTBEAT_THROTTLE_MS = 2.5 * 60 * 1000; // Heartbeat a cada 2.5 min quando ativo
 
 interface InactivityContextType {
-  isInactive: boolean;
+  isDataSaver: boolean;
+  secondsRemaining: number;
   lastActive: number;
   resumeSession: () => void;
+  logoutNow: () => void;
 }
 
 const InactivityContext = createContext<InactivityContextType>({
-  isInactive: false,
+  isDataSaver: false,
+  secondsRemaining: INACTIVITY_LOGOUT_MS / 1000,
   lastActive: Date.now(),
   resumeSession: () => {},
+  logoutNow: () => {},
 });
 
 export const useUserInactivity = () => useContext(InactivityContext);
@@ -44,16 +49,52 @@ export function UserInactivityProvider({ children, user, profile }: UserInactivi
   const qc = useQueryClient();
   const userId = user?.id;
 
-  const [isInactive, setIsInactive] = useState(false);
-  const [_inactiveSince, setInactiveSince] = useState<Date | null>(null);
+  const [isDataSaver, setIsDataSaver] = useState(false);
+  const [secondsRemaining, setSecondsRemaining] = useState<number>(Math.floor(INACTIVITY_LOGOUT_MS / 1000));
+  
   const lastActiveRef = useRef<number>(Date.now());
   const lastHeartbeatRef = useRef<number>(0);
-  const isInactiveRef = useRef<boolean>(false);
+  const isDataSaverRef = useRef<boolean>(false);
+  const isLoggingOutRef = useRef<boolean>(false);
 
   // Manter ref sincronizada para uso dentro de event listeners sem stale closure
   useEffect(() => {
-    isInactiveRef.current = isInactive;
-  }, [isInactive]);
+    isDataSaverRef.current = isDataSaver;
+  }, [isDataSaver]);
+
+  // Função para efetuar Logout por inatividade
+  const handleInactivityLogout = useCallback(async () => {
+    if (isLoggingOutRef.current || !userId) return;
+    isLoggingOutRef.current = true;
+
+    try {
+      // Notificar backend sobre inatividade final
+      await db.rpc("set_user_inactive").catch(() => {});
+    } catch (_e) {
+      // ignore
+    }
+
+    try {
+      await db.auth.signOut();
+    } catch (_e) {
+      // ignore
+    }
+
+    // Limpar sessões locais e storage
+    localStorage.removeItem("proaccess_neon_session");
+    document.cookie = "proaccess_neon_session=; path=/; max-age=0";
+    if (userId) {
+      localStorage.removeItem(`proaccess_last_activity_${userId}`);
+    }
+
+    // Sinalizar motivo do logout para a página de login
+    sessionStorage.setItem("proaccess_logout_reason", "inactivity_15min");
+
+    qc.clear();
+
+    // Redirecionar para tela de autenticação
+    window.location.href = "/auth";
+  }, [userId, qc]);
 
   // Carregar timestamp anterior do usuário específico
   useEffect(() => {
@@ -66,68 +107,101 @@ export function UserInactivityProvider({ children, user, profile }: UserInactivi
     if (stored) {
       const storedTime = parseInt(stored, 10);
       if (!isNaN(storedTime)) {
-        if (now - storedTime >= INACTIVITY_TIMEOUT_MS) {
-          // Já se passaram 15 min desde a última atividade deste usuário
-          setIsInactive(true);
-          setInactiveSince(new Date(storedTime));
+        const elapsed = now - storedTime;
+        if (elapsed >= INACTIVITY_LOGOUT_MS) {
+          // Já se passaram 15 min ou mais, efetuar logout imediato
+          handleInactivityLogout();
+          return;
+        } else if (elapsed >= INACTIVITY_DATA_SAVER_MS) {
+          // Já está no período de economia de dados (7 a 15 min)
+          setIsDataSaver(true);
           lastActiveRef.current = storedTime;
+          setSecondsRemaining(Math.max(0, Math.floor((INACTIVITY_LOGOUT_MS - elapsed) / 1000)));
           return;
         } else {
           lastActiveRef.current = storedTime;
+          setSecondsRemaining(Math.max(0, Math.floor((INACTIVITY_LOGOUT_MS - elapsed) / 1000)));
         }
       }
     }
 
     lastActiveRef.current = now;
     localStorage.setItem(storageKey, now.toString());
+  }, [userId, handleInactivityLogout]);
+
+  // Sincronizar atividade entre abas do mesmo navegador
+  useEffect(() => {
+    if (!userId) return;
+    const storageKey = `proaccess_last_activity_${userId}`;
+
+    const handleStorageEvent = (e: StorageEvent) => {
+      if (e.key === storageKey && e.newValue) {
+        const newTime = parseInt(e.newValue, 10);
+        if (!isNaN(newTime)) {
+          lastActiveRef.current = newTime;
+          const elapsed = Date.now() - newTime;
+          if (elapsed < INACTIVITY_DATA_SAVER_MS && isDataSaverRef.current) {
+            setIsDataSaver(false);
+          }
+          setSecondsRemaining(Math.max(0, Math.floor((INACTIVITY_LOGOUT_MS - elapsed) / 1000)));
+        }
+      }
+    };
+
+    window.addEventListener("storage", handleStorageEvent);
+    return () => window.removeEventListener("storage", handleStorageEvent);
   }, [userId]);
 
-  // Função para reativar sessão
-  const resumeSession = useCallback(async () => {
-    if (!userId) return;
+  // Função para reativar sessão (sair do modo economia de dados)
+  const resumeSession = useCallback(async (silent = false) => {
+    if (!userId || isLoggingOutRef.current) return;
 
+    const wasDataSaver = isDataSaverRef.current;
     const now = Date.now();
     lastActiveRef.current = now;
     const storageKey = `proaccess_last_activity_${userId}`;
     localStorage.setItem(storageKey, now.toString());
 
-    setIsInactive(false);
-    setInactiveSince(null);
+    setIsDataSaver(false);
+    setSecondsRemaining(Math.floor(INACTIVITY_LOGOUT_MS / 1000));
 
     // Notificar backend que este usuário está ativo novamente
     try {
-      await db.rpc("touch_user_activity");
+      db.rpc("touch_user_activity").catch(() => {});
     } catch (_e) {
       // ignore
     }
 
-    // Invalidar e recarregar consultas no TanStack Query com dados frescos
-    qc.invalidateQueries();
-
-    toast.success("Sessão reativada!", {
-      description: "Você voltou à atividade e as consultas foram sincronizadas.",
-      duration: 3000,
-    });
+    // Se estava em economia de dados, recarregar e sincronizar queries
+    if (wasDataSaver) {
+      qc.invalidateQueries();
+      if (!silent) {
+        toast.success("Conexão ativa restaurada!", {
+          description: "O modo de economia de dados foi desativado e as informações foram sincronizadas.",
+          duration: 3500,
+        });
+      }
+    }
   }, [userId, qc]);
 
-  // Registrar atividade do usuário (throttled)
+  // Registrar atividade do usuário (com throttle inteligente)
   const handleUserActivity = useCallback(() => {
-    if (!userId) return;
+    if (!userId || isLoggingOutRef.current) return;
 
-    // Se estava inativo, qualquer clique/interação acorda o sistema
-    if (isInactiveRef.current) {
-      resumeSession();
+    // Se estava em economia de dados, qualquer interação restaura a sessão
+    if (isDataSaverRef.current) {
+      resumeSession(false);
       return;
     }
 
     const now = Date.now();
     lastActiveRef.current = now;
 
-    // Salvar no localStorage para persistir entre abas do mesmo usuário
     const storageKey = `proaccess_last_activity_${userId}`;
     localStorage.setItem(storageKey, now.toString());
+    setSecondsRemaining(Math.floor(INACTIVITY_LOGOUT_MS / 1000));
 
-    // Enviar heartbeat para o backend de tempos em tempos (a cada 3 min)
+    // Enviar heartbeat para o backend a cada 2.5 min
     if (now - lastHeartbeatRef.current > HEARTBEAT_THROTTLE_MS) {
       lastHeartbeatRef.current = now;
       db.rpc("touch_user_activity").catch(() => {});
@@ -145,15 +219,10 @@ export function UserInactivityProvider({ children, user, profile }: UserInactivi
       throttleTimeout = setTimeout(() => {
         throttleTimeout = null;
         handleUserActivity();
-      }, 2000); // 2 segundos throttle para movimento de mouse
+      }, 2500); // Throttle de 2.5s para movimento de cursor
     };
 
-    const onDirectInteraction = (e: Event) => {
-      // Se estava inativo, interceptar
-      if (isInactiveRef.current) {
-        // Evitar que o clique de acordar dispare ações indesejadas na tela abaixo
-        e.stopPropagation();
-      }
+    const onDirectInteraction = () => {
       handleUserActivity();
     };
 
@@ -178,24 +247,39 @@ export function UserInactivityProvider({ children, user, profile }: UserInactivi
     };
   }, [userId, handleUserActivity]);
 
-  // Intervalo de verificação de inatividade (roda a cada 5 segundos)
+  // Timer de verificação contínua de inatividade e contagem regressiva
   useEffect(() => {
     if (!userId) return;
 
     const interval = setInterval(() => {
+      if (isLoggingOutRef.current) return;
+
       const now = Date.now();
       const elapsed = now - lastActiveRef.current;
+      const left = Math.max(0, Math.floor((INACTIVITY_LOGOUT_MS - elapsed) / 1000));
+      setSecondsRemaining(left);
 
-      if (elapsed >= INACTIVITY_TIMEOUT_MS && !isInactiveRef.current) {
-        setIsInactive(true);
-        setInactiveSince(new Date(lastActiveRef.current));
-        // Notificar backend que este usuário está inativo
+      // 1. Atingiu 15 minutos de inatividade -> DESLOGAR
+      if (elapsed >= INACTIVITY_LOGOUT_MS) {
+        handleInactivityLogout();
+        return;
+      }
+
+      // 2. Atingiu 7 minutos de inatividade (7 a 15 min) -> MODO DE ECONOMIA DE DADOS
+      if (elapsed >= INACTIVITY_DATA_SAVER_MS && !isDataSaverRef.current) {
+        setIsDataSaver(true);
+        // Pausar consultas em background e notificar status inativo ao backend
         db.rpc("set_user_inactive").catch(() => {});
       }
-    }, 5000);
+    }, 1000); // Atualiza a cada 1 segundo para o relógio regressivo
 
     return () => clearInterval(interval);
-  }, [userId]);
+  }, [userId, handleInactivityLogout]);
+
+  // Formatação dos minutos e segundos restantes
+  const minutes = Math.floor(secondsRemaining / 60);
+  const seconds = secondsRemaining % 60;
+  const formattedCountdown = `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
 
   const displayName = profile?.nome ?? user?.user_metadata?.nome ?? user?.email ?? "Usuário";
   const userEmail = profile?.email ?? user?.email ?? "";
@@ -211,90 +295,75 @@ export function UserInactivityProvider({ children, user, profile }: UserInactivi
   return (
     <InactivityContext.Provider
       value={{
-        isInactive,
+        isDataSaver,
+        secondsRemaining,
         lastActive: lastActiveRef.current,
         resumeSession,
+        logoutNow: handleInactivityLogout,
       }}
     >
-      {children}
-
-      {/* Overlay de Inatividade por Usuário */}
-      {isInactive && (
+      {/* Banner Superior / Floating Bar do Modo de Economia de Dados (7min aos 15min) */}
+      {isDataSaver && (
         <div
-          id="user-inactivity-overlay"
-          onClick={resumeSession}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-background/85 backdrop-blur-md transition-all duration-300 animate-in fade-in cursor-pointer select-none p-4"
+          id="data-saver-floating-banner"
+          className="sticky top-0 z-40 w-full bg-amber-500/15 border-b border-amber-500/30 backdrop-blur-md px-4 py-2.5 shadow-sm transition-all duration-300 animate-in slide-in-from-top-2"
         >
-          <div
-            onClick={(e) => {
-              // Permitir clique no card ou no botão acordar normalmente
-              e.stopPropagation();
-              resumeSession();
-            }}
-            className="w-full max-w-md rounded-2xl border border-border/80 bg-card p-6 md:p-8 shadow-2xl text-center space-y-5 animate-in zoom-in-95 duration-200"
-          >
-            {/* Ícone de status */}
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-amber-500/10 text-amber-500 ring-8 ring-amber-500/5">
-              <Moon className="h-8 w-8 animate-pulse" />
-            </div>
-
-            {/* Cabeçalho */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-center gap-2">
-                <Badge
-                  variant="outline"
-                  className="border-amber-500/30 text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2.5 py-0.5 text-xs font-semibold"
-                >
-                  <Clock className="w-3 h-3 mr-1 inline" /> 15 min sem uso
-                </Badge>
-              </div>
-              <h2 className="text-xl font-bold tracking-tight text-foreground">
-                Sessão em Espera por Inatividade
-              </h2>
-              <p className="text-xs md:text-sm text-muted-foreground leading-relaxed">
-                As consultas e atualizações em segundo plano foram suspensas para o seu usuário após
-                15 minutos sem atividade.
-              </p>
-            </div>
-
-            {/* Identificação do Usuário */}
-            <div className="flex items-center gap-3 p-3 rounded-xl bg-muted/60 border text-left">
-              <Avatar className="h-10 w-10 border border-border">
-                <AvatarFallback className="bg-primary/10 text-primary font-semibold text-xs">
-                  {initials}
-                </AvatarFallback>
-              </Avatar>
-              <div className="min-w-0 flex-1">
-                <div className="text-sm font-semibold truncate text-foreground">{displayName}</div>
-                <div className="text-xs text-muted-foreground truncate">{userEmail}</div>
-              </div>
-              <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
-                Inativo
+          <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-500/20 text-amber-600 dark:text-amber-400">
+                <Leaf className="h-4 w-4 animate-pulse" />
               </span>
+              <div className="flex flex-col">
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-amber-900 dark:text-amber-200">
+                    Modo de Economia de Dados Ativo
+                  </span>
+                  <Badge
+                    variant="outline"
+                    className="border-amber-500/40 text-amber-700 dark:text-amber-300 bg-amber-500/10 text-[10px] px-1.5 py-0"
+                  >
+                    7+ min sem uso
+                  </Badge>
+                </div>
+                <span className="text-[11px] text-amber-800/80 dark:text-amber-300/80 hidden sm:inline">
+                  As atualizações em segundo plano foram suspensas. Qualquer movimento ou clique restaura a conexão.
+                </span>
+              </div>
             </div>
 
-            {/* Dica e Botão de Ação */}
-            <div className="space-y-3 pt-2">
+            <div className="flex items-center gap-3 ml-auto shrink-0">
+              <div className="flex items-center gap-1.5 font-mono text-xs font-bold text-amber-900 dark:text-amber-100 bg-amber-500/20 border border-amber-500/30 px-2.5 py-1 rounded-md">
+                <Clock className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                <span>Desconexão em {formattedCountdown}</span>
+              </div>
+
               <Button
-                id="btn-resume-session"
-                size="lg"
-                onClick={resumeSession}
-                className="w-full gap-2 font-semibold shadow-md text-sm transition-transform active:scale-95"
+                id="btn-resume-datasaver"
+                size="sm"
+                variant="default"
+                onClick={() => resumeSession(false)}
+                className="h-7 px-3 text-xs bg-amber-600 hover:bg-amber-700 text-white font-medium shadow-sm transition-transform active:scale-95"
               >
-                <Play className="h-4 w-4 fill-current" />
-                Retomar Sessão Agora
+                <Play className="h-3 w-3 mr-1 fill-current" />
+                Continuar Ativo
               </Button>
-              <p className="text-[11px] text-muted-foreground">
-                💡 Pressione{" "}
-                <kbd className="px-1 py-0.5 rounded bg-muted border text-[10px]">
-                  Qualquer tecla
-                </kbd>{" "}
-                ou clique em qualquer lugar para continuar
-              </p>
+
+              <Button
+                id="btn-logout-datasaver"
+                size="sm"
+                variant="ghost"
+                onClick={handleInactivityLogout}
+                className="h-7 px-2 text-xs text-amber-900 dark:text-amber-300 hover:bg-amber-500/20"
+                title="Sair do sistema agora"
+              >
+                <LogOut className="h-3 w-3" />
+              </Button>
             </div>
           </div>
         </div>
       )}
+
+      {children}
     </InactivityContext.Provider>
   );
 }

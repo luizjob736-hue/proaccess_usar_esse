@@ -23,7 +23,7 @@ import {
   DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Plus, LifeBuoy, Check, X, MessageCircle } from "lucide-react";
+import { Plus, LifeBuoy, Check, X, MessageCircle, Wrench, AlertTriangle, Clock } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/chamados")({ component: Chamados });
@@ -134,6 +134,27 @@ function Chamados() {
 
   return (
     <div className="space-y-6">
+      {/* Alerta de Manutenção */}
+      <div className="flex items-start sm:items-center gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-amber-900 dark:text-amber-200 shadow-xs">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-500/20 text-amber-600 dark:text-amber-400">
+          <Wrench className="h-5 w-5" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-semibold text-sm">Funcionalidade em manutenção.</span>
+            <Badge
+              variant="outline"
+              className="border-amber-500/40 bg-amber-500/15 text-amber-700 dark:text-amber-300 text-[10px] px-1.5 py-0 font-medium"
+            >
+              Em Manutenção
+            </Badge>
+          </div>
+          <p className="text-xs text-amber-800/90 dark:text-amber-300/80 mt-0.5">
+            O módulo de chamados está passando por atualizações técnicas e melhorias operacionais. Em breve novas solicitações estarão totalmente liberadas.
+          </p>
+        </div>
+      </div>
+
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold flex items-center gap-2">

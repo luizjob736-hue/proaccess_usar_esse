@@ -30,6 +30,7 @@ import {
   UserCheck,
   UserPlus,
   CheckSquare,
+  Menu,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -54,36 +55,84 @@ import {
   CommandGroup,
   CommandItem,
 } from "@/components/ui/command";
-import { Badge } from "@/components/ui/badge";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { UserInactivityProvider } from "@/components/UserInactivityProvider";
 
-const NAV_FULL = [
-  { to: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
-  { to: "/matriz-acessos", icon: Grid3x3, label: "Matriz de Acessos" },
-  { to: "/pre-atendimento", icon: UserPlus, label: "Pré-Atendimento" },
-  { to: "/sistemas", icon: Server, label: "Sistemas" },
-  { to: "/inativos", icon: UserX, label: "Usuários Inativos" },
-  { to: "/backups", icon: Archive, label: "Backup da Matriz" },
-  { to: "/lista-acessos", icon: List, label: "Lista de Acessos" },
-  { to: "/importar", icon: Upload, label: "Importar CSV" },
-  { to: "/usuarios-a-solicitar", icon: UserCheck, label: "Usuários a solicitar" },
-  { to: "/pendencias", icon: Kanban, label: "Pendências" },
-  { to: "/pendencias-historico", icon: CheckSquare, label: "Histórico de Pendências" },
-  { to: "/chamados", icon: LifeBuoy, label: "Chamados" },
-  { to: "/historico", icon: History, label: "Histórico" },
-  { to: "/relatorios", icon: FileBarChart, label: "Relatórios" },
-  // { to: "/notificacoes", icon: Bell, label: "Notificações" }, // Temporariamente desativado
-  { to: "/administracao", icon: ShieldCheck, label: "Administração" },
-  { to: "/lixeira", icon: Trash2, label: "Lixeira" },
-  { to: "/configuracoes", icon: Settings, label: "Configurações" },
-] as const;
+export interface NavItem {
+  to: string;
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+}
 
-const NAV_OPERADOR = [
-  { to: "/minha-matriz", icon: Grid3x3, label: "Meus Acessos" },
-  { to: "/perfil", icon: User, label: "Perfil" },
-] as const;
+export interface NavSection {
+  title?: string;
+  items: NavItem[];
+}
 
-const NAV_CLIENTE = [{ to: "/pendencias-pine", icon: Table2, label: "Pendências Pine" }] as const;
+// Estrutura organizada por categorias
+const SECTIONS_FULL: NavSection[] = [
+  {
+    items: [{ to: "/dashboard", icon: LayoutDashboard, label: "Dashboard" }],
+  },
+  {
+    title: "GESTÃO DE ACESSOS",
+    items: [
+      { to: "/matriz-acessos", icon: Grid3x3, label: "Matriz de Acessos" },
+      { to: "/pre-atendimento", icon: UserPlus, label: "Pré-Atendimento" },
+      { to: "/usuarios-a-solicitar", icon: UserCheck, label: "Usuários a Solicitar" },
+      { to: "/lista-acessos", icon: List, label: "Lista de Acessos" },
+    ],
+  },
+  {
+    title: "OPERAÇÃO",
+    items: [
+      { to: "/sistemas", icon: Server, label: "Sistemas" },
+      { to: "/pendencias", icon: Kanban, label: "Pendências" },
+      { to: "/pendencias-pine", icon: Table2, label: "Pendências Pine" },
+      { to: "/chamados", icon: LifeBuoy, label: "Chamados" },
+      { to: "/inativos", icon: UserX, label: "Usuários Inativos" },
+    ],
+  },
+  {
+    title: "CONTROLE",
+    items: [
+      { to: "/historico", icon: History, label: "Histórico" },
+      { to: "/pendencias-historico", icon: CheckSquare, label: "Histórico de Pendências" },
+      { to: "/backups", icon: Archive, label: "Backup da Matriz" },
+    ],
+  },
+  {
+    title: "DADOS",
+    items: [{ to: "/importar", icon: Upload, label: "Importar CSV" }],
+  },
+  {
+    title: "RELATÓRIOS",
+    items: [{ to: "/relatorios", icon: FileBarChart, label: "Relatórios" }],
+  },
+  {
+    title: "ADMINISTRAÇÃO",
+    items: [
+      { to: "/administracao", icon: ShieldCheck, label: "Administração" },
+      { to: "/configuracoes", icon: Settings, label: "Configurações" },
+      { to: "/lixeira", icon: Trash2, label: "Lixeira" },
+    ],
+  },
+];
+
+const SECTIONS_OPERADOR: NavSection[] = [
+  {
+    items: [
+      { to: "/minha-matriz", icon: Grid3x3, label: "Meus Acessos" },
+      { to: "/perfil", icon: User, label: "Perfil" },
+    ],
+  },
+];
+
+const SECTIONS_CLIENTE: NavSection[] = [
+  {
+    items: [{ to: "/pendencias-pine", icon: Table2, label: "Pendências Pine" }],
+  },
+];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -91,6 +140,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const qc = useQueryClient();
   const [dark, setDark] = useState(false);
   const [cmdOpen, setCmdOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     const stored = localStorage.getItem("proacess-theme");
@@ -146,108 +196,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     },
   });
 
-  // Notificações temporariamente desativadas
-  /*
-  const { data: notifCount = 0 } = useQuery({
-    queryKey: ["notif-count", me?.user?.id],
-    enabled: false,
-    queryFn: async () => {
-      try {
-        const res = await db
-          .from("notificacoes")
-          .select("*", { count: "exact", head: true })
-          .eq("lida", false);
-        return res?.count ?? 0;
-      } catch (_err) {
-        return 0;
-      }
-    },
-    refetchInterval: 30_000,
-  });
-  */
-
-  // Background check for scheduled access request dates arriving (temporariamente desativado)
-  /*
-  useEffect(() => {
-    if (!me?.user?.id) return;
-
-    const checkAndGenerateScheduledNotifications = async () => {
-      try {
-        const todayStr = new Date().toISOString().split("T")[0];
-
-        // Fetch all active pendências (not completed, not archived)
-        const { data: pends } = await db
-          .from("pendencias")
-          .select("id, titulo, data_inicio, status")
-          .eq("arquivado", false);
-
-        if (!pends || pends.length === 0) return;
-
-        // Filter those whose start date is today or in the past
-        const activeScheduled = pends.filter((p: any) => {
-          if (!p.data_inicio) return false;
-          const startStr =
-            typeof p.data_inicio === "string"
-              ? p.data_inicio.split("T")[0]
-              : new Date(p.data_inicio).toISOString().split("T")[0];
-
-          const isDateMet = startStr <= todayStr;
-          const isUnconcluded =
-            p.status !== "concluido" && p.status !== "concluida" && p.status !== "cancelado";
-          return isDateMet && isUnconcluded;
-        });
-
-        if (activeScheduled.length === 0) return;
-
-        // Fetch active user profiles so we notify everyone
-        const { data: profiles } = await db.from("profiles").select("id");
-        if (!profiles || profiles.length === 0) return;
-
-        let notificationsCreated = false;
-
-        for (const pend of activeScheduled) {
-          const targetLink = `/pendencias?id=${pend.id}`;
-
-          // Check existing notifications for this link
-          const { data: existing } = await db
-            .from("notificacoes")
-            .select("destinatario_id")
-            .eq("link", targetLink);
-
-          const notifiedUsers = new Set((existing || []).map((n: any) => n.destinatario_id));
-
-          for (const prof of profiles) {
-            if (!notifiedUsers.has(prof.id)) {
-              await db.from("notificacoes").insert({
-                destinatario_id: prof.id,
-                titulo: "📅 Solicitação de Acesso Agendada!",
-                corpo: `A data de início para solicitar o acesso "${pend.titulo}" chegou.`,
-                tipo: "alerta",
-                link: targetLink,
-                lida: false,
-                criado_em: new Date().toISOString(),
-              });
-              notificationsCreated = true;
-            }
-          }
-        }
-
-        if (notificationsCreated) {
-          qc.invalidateQueries({ queryKey: ["notif-count"] });
-          qc.invalidateQueries({ queryKey: ["notif-list"] });
-        }
-      } catch (err) {
-        console.error("Erro ao verificar/gerar notificações agendadas:", err);
-      }
-    };
-
-    // Run immediately and then every 2 minutes
-    checkAndGenerateScheduledNotifications();
-    const interval = setInterval(checkAndGenerateScheduledNotifications, 120_000);
-    return () => clearInterval(interval);
-  }, [me?.user?.id, qc]);
-  */
-
   function toggleTheme() {
     const next = !dark;
     setDark(next);
@@ -287,117 +235,200 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       ["admin", "admin_master", "analista", "supervisor", "consulta"].includes(r),
     );
 
-  let calculatedNav: ReadonlyArray<{ to: string; icon: any; label: string }> = NAV_FULL;
+  let navSections: NavSection[] = SECTIONS_FULL;
   if (isCliente) {
-    calculatedNav = NAV_CLIENTE;
+    navSections = SECTIONS_CLIENTE;
   } else if (isOperador) {
-    calculatedNav = NAV_OPERADOR;
-  } else if (isAdmin) {
-    const pendIdx = NAV_FULL.findIndex((i) => i.to === "/pendencias-historico");
-    const fullWithPine = [...NAV_FULL];
-    fullWithPine.splice(pendIdx >= 0 ? pendIdx + 1 : 11, 0, {
-      to: "/pendencias-pine",
-      icon: Table2,
-      label: "Pendências Pine",
-    });
-    calculatedNav = fullWithPine;
+    navSections = SECTIONS_OPERADOR;
   }
-  const NAV = calculatedNav;
+
+  const allNavItems = navSections.flatMap((s) => s.items);
+
+  const renderNavSection = (section: NavSection, index: number, isMobile = false) => (
+    <div key={section.title || `section-${index}`} className="space-y-1">
+      {section.title && (
+        <div className="px-3 pt-3.5 pb-1 text-[10px] font-bold uppercase tracking-wider text-sidebar-foreground/50 select-none">
+          {section.title}
+        </div>
+      )}
+      <div className="space-y-0.5">
+        {section.items.map((item) => {
+          const active = pathname === item.to || pathname.startsWith(item.to + "/");
+          return (
+            <Link
+              key={item.to}
+              to={item.to}
+              onClick={() => {
+                if (isMobile) setMobileMenuOpen(false);
+              }}
+              className={cn(
+                "group flex items-center gap-2.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                active
+                  ? "bg-accent text-accent-foreground font-semibold shadow-xs"
+                  : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+              )}
+            >
+              <item.icon
+                className={cn(
+                  "h-4 w-4 shrink-0 transition-colors",
+                  active
+                    ? "text-accent-foreground"
+                    : "text-sidebar-foreground/70 group-hover:text-sidebar-foreground",
+                )}
+              />
+              <span className="truncate">{item.label}</span>
+            </Link>
+          );
+        })}
+      </div>
+    </div>
+  );
 
   return (
     <UserInactivityProvider user={me?.user ?? null} profile={me?.profile ?? null}>
       <div className="flex min-h-screen bg-background">
-        {/* Sidebar */}
-        <aside className="hidden w-60 min-w-60 shrink-0 flex-col bg-sidebar text-sidebar-foreground lg:flex">
-          <div className="flex h-16 items-center gap-2 border-b border-sidebar-border px-4">
-            <Shield className="h-6 w-6 text-accent" />
-            <span className="text-lg font-bold">ProAccess</span>
+        {/* Desktop Sidebar */}
+        <aside className="hidden w-60 min-w-60 shrink-0 flex-col bg-sidebar text-sidebar-foreground lg:flex border-r border-sidebar-border">
+          {/* Header do Menu */}
+          <div className="flex h-16 items-center gap-2.5 border-b border-sidebar-border px-4">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/15 text-accent shrink-0">
+              <Shield className="h-5 w-5 text-accent" />
+            </div>
+            <div className="flex flex-col min-w-0">
+              <span className="text-base font-bold tracking-tight text-sidebar-foreground leading-none">
+                ProAccess
+              </span>
+              <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider mt-1">
+                Gestão & Auditoria
+              </span>
+            </div>
           </div>
-          <nav className="flex-1 space-y-1 overflow-y-auto p-3">
-            {NAV.map((item) => {
-              const active = pathname === item.to || pathname.startsWith(item.to + "/");
-              return (
-                <Link
-                  key={item.to}
-                  to={item.to}
-                  className={cn(
-                    "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
-                    active
-                      ? "bg-accent text-accent-foreground font-medium"
-                      : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                  )}
-                >
-                  <item.icon className="h-4 w-4" />
-                  {item.label}
-                </Link>
-              );
-            })}
+
+          {/* Lista de Navegação Agrupada */}
+          <nav className="flex-1 space-y-2 overflow-y-auto p-3 scrollbar-thin scrollbar-thumb-sidebar-border">
+            {navSections.map((section, idx) => renderNavSection(section, idx))}
           </nav>
-          <div className="border-t border-sidebar-border p-3 text-[11px] leading-tight opacity-80">
-            <div>ProAccess v1.0</div>
-            <div className="mt-1 italic">Produzido e desenvolvido pelo Planejamento</div>
+
+          {/* Footer do Menu */}
+          <div className="border-t border-sidebar-border p-3 text-[11px] leading-tight opacity-75">
+            <div className="font-semibold">ProAccess v1.0</div>
+            <div className="mt-0.5 text-[10px] italic text-muted-foreground">
+              Produzido e desenvolvido pelo Planejamento
+            </div>
           </div>
         </aside>
 
-        {/* Main */}
-        <div className="flex flex-1 flex-col">
-          <header className="flex h-16 items-center gap-3 border-b bg-card px-4 md:px-6">
+        {/* Main Content Area */}
+        <div className="flex flex-1 flex-col min-w-0">
+          <header className="flex h-16 items-center gap-3 border-b bg-card px-4 md:px-6 sticky top-0 z-30">
+            {/* Mobile Sidebar Trigger */}
+            <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+              <SheetTrigger asChild>
+                <Button variant="ghost" size="icon" className="lg:hidden shrink-0">
+                  <Menu className="h-5 w-5" />
+                  <span className="sr-only">Abrir menu</span>
+                </Button>
+              </SheetTrigger>
+              <SheetContent
+                side="left"
+                className="w-72 p-0 bg-sidebar text-sidebar-foreground border-sidebar-border flex flex-col"
+              >
+                <SheetHeader className="p-4 border-b border-sidebar-border text-left">
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/15 text-accent shrink-0">
+                      <Shield className="h-5 w-5 text-accent" />
+                    </div>
+                    <div className="flex flex-col">
+                      <SheetTitle className="text-base font-bold text-sidebar-foreground leading-none">
+                        ProAccess
+                      </SheetTitle>
+                      <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider mt-1">
+                        Gestão & Auditoria
+                      </span>
+                    </div>
+                  </div>
+                </SheetHeader>
+                <nav className="flex-1 space-y-2 overflow-y-auto p-3">
+                  {navSections.map((section, idx) => renderNavSection(section, idx, true))}
+                </nav>
+                <div className="border-t border-sidebar-border p-4 text-xs opacity-75">
+                  <div className="font-semibold">ProAccess v1.0</div>
+                  <div className="text-[11px] italic text-muted-foreground">
+                    Produzido e desenvolvido pelo Planejamento
+                  </div>
+                </div>
+              </SheetContent>
+            </Sheet>
+
             {!isCliente ? (
               <button
                 onClick={() => setCmdOpen(true)}
-                className="flex flex-1 items-center gap-2 rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground hover:bg-muted"
+                className="flex flex-1 items-center gap-2 rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground hover:bg-muted max-w-md transition-colors"
               >
-                <Search className="h-4 w-4" />
-                <span>Buscar... </span>
-                <kbd className="ml-auto rounded bg-muted px-1.5 py-0.5 text-xs">⌘K</kbd>
+                <Search className="h-4 w-4 shrink-0" />
+                <span className="truncate">Buscar no sistema... </span>
+                <kbd className="ml-auto hidden sm:inline-block rounded bg-muted px-1.5 py-0.5 text-xs">
+                  ⌘K
+                </kbd>
               </button>
             ) : (
               <div className="flex-1" />
             )}
-            <Button size="icon" variant="ghost" onClick={toggleTheme} title="Tema">
-              {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-            </Button>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="gap-2">
-                  <Avatar className="h-8 w-8">
-                    <AvatarFallback className="bg-accent text-accent-foreground text-xs">
-                      {initials}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="hidden text-left md:block">
-                    <div className="text-xs font-medium">{displayName}</div>
-                    <div className="text-[10px] text-muted-foreground">
-                      {isCliente
-                        ? "Cliente"
-                        : isAdmin
-                          ? "Administrador"
-                          : isOperador
-                            ? "Colaborador"
-                            : me?.roles?.[0] || directRole || "Usuário"}
+
+            <div className="flex items-center gap-2 ml-auto">
+              <Button size="icon" variant="ghost" onClick={toggleTheme} title="Alternar tema">
+                {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              </Button>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" className="gap-2 px-2">
+                    <Avatar className="h-8 w-8">
+                      <AvatarFallback className="bg-accent text-accent-foreground text-xs font-semibold">
+                        {initials}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="hidden text-left md:block max-w-[140px]">
+                      <div className="text-xs font-medium truncate">{displayName}</div>
+                      <div className="text-[10px] text-muted-foreground truncate">
+                        {isCliente
+                          ? "Cliente"
+                          : isAdmin
+                            ? "Administrador"
+                            : isOperador
+                              ? "Colaborador"
+                              : me?.roles?.[0] || directRole || "Usuário"}
+                      </div>
                     </div>
-                  </div>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuLabel>{me?.profile?.email ?? me?.user?.email}</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {!isCliente && (
-                  <>
-                    <DropdownMenuItem onClick={() => navigate({ to: "/perfil" })}>
-                      <User className="mr-2 h-4 w-4" /> Perfil
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => navigate({ to: "/configuracoes" })}>
-                      <Settings className="mr-2 h-4 w-4" /> Configurações
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                  </>
-                )}
-                <DropdownMenuItem onClick={signOut} className="text-destructive">
-                  <LogOut className="mr-2 h-4 w-4" /> Sair
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel className="font-normal">
+                    <div className="flex flex-col space-y-1">
+                      <p className="text-xs font-semibold truncate">{displayName}</p>
+                      <p className="text-[11px] text-muted-foreground truncate">
+                        {me?.profile?.email ?? me?.user?.email}
+                      </p>
+                    </div>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {!isCliente && (
+                    <>
+                      <DropdownMenuItem onClick={() => navigate({ to: "/perfil" })}>
+                        <User className="mr-2 h-4 w-4" /> Perfil
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => navigate({ to: "/configuracoes" })}>
+                        <Settings className="mr-2 h-4 w-4" /> Configurações
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                    </>
+                  )}
+                  <DropdownMenuItem onClick={signOut} className="text-destructive focus:text-destructive">
+                    <LogOut className="mr-2 h-4 w-4" /> Sair do Sistema
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </header>
 
           <main className="flex-1 overflow-auto p-4 md:p-6">{children}</main>
@@ -406,26 +437,33 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </footer>
         </div>
 
+        {/* Global Command Search (⌘K) */}
         <CommandDialog open={cmdOpen} onOpenChange={setCmdOpen}>
-          <CommandInput placeholder="Digite um comando ou busque..." />
+          <CommandInput placeholder="Digite um comando ou busque uma tela..." />
           <CommandList>
-            <CommandEmpty>Nenhum resultado.</CommandEmpty>
-            <CommandGroup heading="Navegação">
-              {NAV.map((item) => (
-                <CommandItem
-                  key={item.to}
-                  onSelect={() => {
-                    setCmdOpen(false);
-                    navigate({ to: item.to });
-                  }}
-                >
-                  <item.icon className="mr-2 h-4 w-4" /> {item.label}
-                </CommandItem>
-              ))}
-            </CommandGroup>
+            <CommandEmpty>Nenhum resultado encontrado.</CommandEmpty>
+            {navSections.map((section, sIdx) => (
+              <CommandGroup
+                key={section.title || `cmd-group-${sIdx}`}
+                heading={section.title || "Geral"}
+              >
+                {section.items.map((item) => (
+                  <CommandItem
+                    key={item.to}
+                    onSelect={() => {
+                      setCmdOpen(false);
+                      navigate({ to: item.to });
+                    }}
+                  >
+                    <item.icon className="mr-2 h-4 w-4" /> {item.label}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            ))}
           </CommandList>
         </CommandDialog>
       </div>
     </UserInactivityProvider>
   );
 }
+

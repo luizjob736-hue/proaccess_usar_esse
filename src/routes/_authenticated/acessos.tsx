@@ -25,9 +25,12 @@ import {
 import { Plus, KeyRound } from "lucide-react";
 import { toast } from "sonner";
 
+import { useUserPermissions } from "@/hooks/useUserPermissions";
+
 export const Route = createFileRoute("/_authenticated/acessos")({ component: Acessos });
 
 function Acessos() {
+  const { canWrite } = useUserPermissions();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState("todos");
@@ -98,87 +101,89 @@ function Acessos() {
           <h1 className="text-3xl font-bold">Acessos</h1>
           <p className="text-muted-foreground">Matriz de acessos concedidos</p>
         </div>
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild>
-            <Button className="gap-2">
-              <Plus className="h-4 w-4" />
-              Conceder acesso
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Novo acesso</DialogTitle>
-            </DialogHeader>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                const fd = new FormData(e.currentTarget);
-                create.mutate({
-                  colaborador_id: fd.get("colaborador_id"),
-                  sistema_id: fd.get("sistema_id"),
-                  login: fd.get("login"),
-                  senha: fd.get("senha"),
-                  status: fd.get("status") || "pendente",
-                });
-              }}
-              className="space-y-3"
-            >
-              <div>
-                <Label>Colaborador</Label>
-                <Select name="colaborador_id" required>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {colabs.map((c: any) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.nome}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>Sistema</Label>
-                <Select name="sistema_id" required>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {sistemas.map((s: any) => (
-                      <SelectItem key={s.id} value={s.id}>
-                        {s.nome}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>Login no sistema</Label>
-                <Input name="login" />
-              </div>
-              <div>
-                <Label>Senha</Label>
-                <Input name="senha" type="text" />
-              </div>
-              <div>
-                <Label>Status inicial</Label>
-                <Select name="status" defaultValue="pendente">
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="pendente">Pendente</SelectItem>
-                    <SelectItem value="ativo">Ativo</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <DialogFooter>
-                <Button type="submit">Salvar</Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
+        {canWrite && (
+          <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild>
+              <Button className="gap-2">
+                <Plus className="h-4 w-4" />
+                Conceder acesso
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Novo acesso</DialogTitle>
+              </DialogHeader>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const fd = new FormData(e.currentTarget);
+                  create.mutate({
+                    colaborador_id: fd.get("colaborador_id"),
+                    sistema_id: fd.get("sistema_id"),
+                    login: fd.get("login"),
+                    senha: fd.get("senha"),
+                    status: fd.get("status") || "pendente",
+                  });
+                }}
+                className="space-y-3"
+              >
+                <div>
+                  <Label>Colaborador</Label>
+                  <Select name="colaborador_id" required>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {colabs.map((c: any) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.nome}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Sistema</Label>
+                  <Select name="sistema_id" required>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {sistemas.map((s: any) => (
+                        <SelectItem key={s.id} value={s.id}>
+                          {s.nome}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Login no sistema</Label>
+                  <Input name="login" />
+                </div>
+                <div>
+                  <Label>Senha</Label>
+                  <Input name="senha" type="text" />
+                </div>
+                <div>
+                  <Label>Status inicial</Label>
+                  <Select name="status" defaultValue="pendente">
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="pendente">Pendente</SelectItem>
+                      <SelectItem value="ativo">Ativo</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <DialogFooter>
+                  <Button type="submit">Salvar</Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
+        )}
       </div>
 
       <Card>

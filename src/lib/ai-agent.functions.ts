@@ -57,8 +57,8 @@ function generateHeuristicAnalysis(metrics: any): AiPendenciasAnalysis {
     nivelRisco = "critico";
     score -= Math.min(45, criticas * 15);
     pontosCruciais.push({
-      titulo: `${criticas} Pendência(s) de Severidade Crítica`,
-      descricao: `Identificadas solicitações críticas sem conclusão que demandam intervenção imediata para evitar paralisação operacional.`,
+      titulo: `${criticas} Crítica(s)`,
+      descricao: `Gargalo crítico em pendências urgentes.`,
       impacto: "alto",
       categoria: "gargalo",
     });
@@ -72,32 +72,40 @@ function generateHeuristicAnalysis(metrics: any): AiPendenciasAnalysis {
 
   if (altas > 0) {
     pontosCruciais.push({
-      titulo: `${altas} Pendência(s) com Alta Prioridade`,
-      descricao: `Volume expressivo de acessos urgentes aguardando concessão ou resolução de credenciais.`,
+      titulo: `${altas} Alta(s) Prioridade(s)`,
+      descricao: `Demanda de atendimento urgente no backlog.`,
       impacto: "alto",
       categoria: "sla",
     });
   }
 
-  // 2. Pine vs Standard distribution
   if (pine > 0) {
     pontosCruciais.push({
-      titulo: `Integração de Pendências Pine (${pine} itens)`,
-      descricao: `As pendências da operação Pine representam ${(total > 0 ? ((pine / total) * 100).toFixed(0) : 0)}% do backlog ativo e requerem validação contínua na esteira de concessão.`,
+      titulo: `Esteira Pine: ${pine} pendência(s)`,
+      descricao: `Operação Pine representa ${(total > 0 ? ((pine / total) * 100).toFixed(0) : 0)}% do backlog.`,
       impacto: pine > 10 ? "alto" : "medio",
       categoria: "operacao",
     });
   }
 
-  // 3. Orphaned Credentials / Security
   if (orfaos > 0) {
     score -= Math.min(25, orfaos * 5);
     pontosCruciais.push({
-      titulo: `${orfaos} Acesso(s) Órfão(s) Detectado(s)`,
-      descricao: `Credenciais ativas vinculadas a colaboradores desligados ou inativos representam risco de conformidade e segurança da informação.`,
+      titulo: `${orfaos} Acesso(s) Órfão(s)`,
+      descricao: `Risco de conformidade com colaboradores inativos.`,
       impacto: "alto",
       categoria: "seguranca",
     });
+  }
+
+  const resumoGeral =
+    criticas > 0
+      ? `Atenção: Identificadas ${criticas} pendências críticas e ${total} solicitações ativas. Recomendada tratativa imediata dos gargalos.`
+      : total > 0
+        ? `Operação estável com ${total} pendências ativas (${urgenteTotal} prioritárias). Sem bloqueios críticos detectados.`
+        : `Excelente! Nenhuma pendência ativa no momento. Operação 100% em conformidade.`;
+
+  if (orfaos > 0) {
     recomendacoes.push("Revogar ou transferir imediatamente as credenciais dos colaboradores inativos.");
   }
 
@@ -218,7 +226,7 @@ Analise o estado atual das pendências e acessos do sistema e produza um diagnó
 ### REQUISITOS DA RESPOSTA:
 Responda ESTRITAMENTE em formato JSON válido, sem texto antes ou depois, seguindo esta estrutura:
 {
-  "resumoGeral": "Texto conciso de 2 a 3 frases com o diagnóstico executivo e estado da operação.",
+  "resumoGeral": "Texto ultra-conciso de no máximo 1 ou 2 frases curtas com o diagnóstico executivo direto ao ponto.",
   "nivelRisco": "baixo" | "medio" | "alto" | "critico",
   "scoreSaude": número inteiro de 0 a 100,
   "pontosCruciais": [

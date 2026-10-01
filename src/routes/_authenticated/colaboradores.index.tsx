@@ -27,6 +27,8 @@ import { Plus, Star, Search, User } from "lucide-react";
 import { toast } from "sonner";
 import { createOperadorFromColaborador } from "@/lib/admin-users.functions";
 
+import { useUserPermissions } from "@/hooks/useUserPermissions";
+
 export const Route = createFileRoute("/_authenticated/colaboradores/")({
   component: Colaboradores,
 });
@@ -34,6 +36,7 @@ export const Route = createFileRoute("/_authenticated/colaboradores/")({
 type Status = "ativo" | "ferias" | "afastado" | "inativo" | "desligado";
 
 function Colaboradores() {
+  const { canWrite, isConsulta } = useUserPermissions();
   const qc = useQueryClient();
   const [q, setQ] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("todos");
@@ -149,76 +152,78 @@ function Colaboradores() {
             (usuário = e-mail, senha = 123456)
           </p>
         </div>
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild>
-            <Button className="gap-2">
-              <Plus className="h-4 w-4" /> Novo
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>Novo colaborador</DialogTitle>
-            </DialogHeader>
-            <form onSubmit={onSubmit} className="grid grid-cols-2 gap-3">
-              <div className="col-span-2">
-                <Label>Nome completo *</Label>
-                <Input name="nome" required />
-              </div>
-              <div>
-                <Label>CPF *</Label>
-                <Input name="cpf" placeholder="Necessário para acesso operador" />
-              </div>
-              <div>
-                <Label>Matrícula</Label>
-                <Input name="matricula" />
-              </div>
-              <div>
-                <Label>E-mail</Label>
-                <Input name="email" type="email" />
-              </div>
-              <div>
-                <Label>Senha do e-mail</Label>
-                <Input name="email_senha" />
-              </div>
-              <div>
-                <Label>Telefone</Label>
-                <Input name="telefone" />
-              </div>
-              <div>
-                <Label>Cargo</Label>
-                <Input name="cargo" />
-              </div>
-              <div>
-                <Label>Operação</Label>
-                <Select name="operacao_id">
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {operacoes.map((o) => (
-                      <SelectItem key={o.id} value={o.id}>
-                        {o.nome}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>Admissão</Label>
-                <Input name="admissao_em" type="date" />
-              </div>
-              <div className="col-span-2">
-                <Label>Observações</Label>
-                <Input name="observacoes" />
-              </div>
-              <DialogFooter className="col-span-2">
-                <Button type="submit" disabled={create.isPending}>
-                  Salvar
-                </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
+        {canWrite && (
+          <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild>
+              <Button className="gap-2">
+                <Plus className="h-4 w-4" /> Novo
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>Novo colaborador</DialogTitle>
+              </DialogHeader>
+              <form onSubmit={onSubmit} className="grid grid-cols-2 gap-3">
+                <div className="col-span-2">
+                  <Label>Nome completo *</Label>
+                  <Input name="nome" required />
+                </div>
+                <div>
+                  <Label>CPF *</Label>
+                  <Input name="cpf" placeholder="Necessário para acesso operador" />
+                </div>
+                <div>
+                  <Label>Matrícula</Label>
+                  <Input name="matricula" />
+                </div>
+                <div>
+                  <Label>E-mail</Label>
+                  <Input name="email" type="email" />
+                </div>
+                <div>
+                  <Label>Senha do e-mail</Label>
+                  <Input name="email_senha" />
+                </div>
+                <div>
+                  <Label>Telefone</Label>
+                  <Input name="telefone" />
+                </div>
+                <div>
+                  <Label>Cargo</Label>
+                  <Input name="cargo" />
+                </div>
+                <div>
+                  <Label>Operação</Label>
+                  <Select name="operacao_id">
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {operacoes.map((o) => (
+                        <SelectItem key={o.id} value={o.id}>
+                          {o.nome}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Admissão</Label>
+                  <Input name="admissao_em" type="date" />
+                </div>
+                <div className="col-span-2">
+                  <Label>Observações</Label>
+                  <Input name="observacoes" />
+                </div>
+                <DialogFooter className="col-span-2">
+                  <Button type="submit" disabled={create.isPending}>
+                    Salvar
+                  </Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
+        )}
       </div>
 
       <Card>

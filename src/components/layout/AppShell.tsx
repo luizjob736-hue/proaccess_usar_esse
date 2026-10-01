@@ -31,6 +31,7 @@ import {
   UserPlus,
   CheckSquare,
   Menu,
+  Eye,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -227,12 +228,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     directRole === "admin" ||
     directRole === "admin_master";
   const isCliente = (userRoles.includes("cliente") || directRole === "cliente") && !isAdmin;
+  const isConsulta = (userRoles.includes("consulta") || directRole === "consulta") && !isAdmin;
   const isOperador =
     (userRoles.includes("operador") || directRole === "operador") &&
     !isAdmin &&
     !isCliente &&
+    !isConsulta &&
     !userRoles.some((r) =>
-      ["admin", "admin_master", "analista", "supervisor", "consulta"].includes(r),
+      ["admin", "admin_master", "analista", "supervisor"].includes(r),
     );
 
   let navSections: NavSection[] = SECTIONS_FULL;
@@ -376,6 +379,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             )}
 
             <div className="flex items-center gap-2 ml-auto">
+              {isConsulta && (
+                <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-300 text-xs font-medium">
+                  <Eye className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                  <span>Modo Consulta (Somente Leitura e Exportação)</span>
+                </div>
+              )}
+
               <Button size="icon" variant="ghost" onClick={toggleTheme} title="Alternar tema">
                 {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
               </Button>
@@ -395,9 +405,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                           ? "Cliente"
                           : isAdmin
                             ? "Administrador"
-                            : isOperador
-                              ? "Colaborador"
-                              : me?.roles?.[0] || directRole || "Usuário"}
+                            : isConsulta
+                              ? "Consulta (Apenas Leitura)"
+                              : isOperador
+                                ? "Colaborador"
+                                : me?.roles?.[0] || directRole || "Usuário"}
                       </div>
                     </div>
                   </Button>

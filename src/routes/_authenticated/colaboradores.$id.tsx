@@ -16,12 +16,15 @@ import { ArrowLeft, Mail, Briefcase, Building2, Calendar } from "lucide-react";
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
+import { useUserPermissions } from "@/hooks/useUserPermissions";
+
 export const Route = createFileRoute("/_authenticated/colaboradores/$id")({
   component: ColabDetalhe,
 });
 
 function ColabDetalhe() {
   const { id } = Route.useParams();
+  const { canWrite } = useUserPermissions();
   const qc = useQueryClient();
 
   const { data: c } = useQuery({
@@ -110,18 +113,20 @@ function ColabDetalhe() {
             </div>
             <div className="flex items-center gap-2">
               <Badge>{c.status}</Badge>
-              <Select onValueChange={(v) => updateStatus.mutate(v)}>
-                <SelectTrigger className="w-48">
-                  <SelectValue placeholder="Alterar status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ativo">Ativo</SelectItem>
-                  <SelectItem value="ferias">Férias</SelectItem>
-                  <SelectItem value="afastado">Afastado</SelectItem>
-                  <SelectItem value="inativo">Inativo</SelectItem>
-                  <SelectItem value="desligado">Desligar</SelectItem>
-                </SelectContent>
-              </Select>
+              {canWrite && (
+                <Select onValueChange={(v) => updateStatus.mutate(v)}>
+                  <SelectTrigger className="w-48">
+                    <SelectValue placeholder="Alterar status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ativo">Ativo</SelectItem>
+                    <SelectItem value="ferias">Férias</SelectItem>
+                    <SelectItem value="afastado">Afastado</SelectItem>
+                    <SelectItem value="inativo">Inativo</SelectItem>
+                    <SelectItem value="desligado">Desligar</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
             </div>
           </CardContent>
         </Card>

@@ -234,6 +234,8 @@ export function formatTimeVal(val: any): string | null {
   return str;
 }
 
+import { useUserPermissions } from "@/hooks/useUserPermissions";
+
 export const Route = createFileRoute("/_authenticated/importar")({ component: Importar });
 
 type TemplateKey =
@@ -612,6 +614,7 @@ function downloadCSV(key: TemplateKey, sistemasAll: any[] = []) {
 }
 
 function Importar() {
+  const { canWrite, isConsulta } = useUserPermissions();
   const [activeTab, setActiveTab] = useState<TabGroup>("cadastro");
   const [selectedOperacaoId, setSelectedOperacaoId] = useState("todas");
 
@@ -627,6 +630,19 @@ function Importar() {
 
   return (
     <div className="space-y-6">
+      {isConsulta && (
+        <div className="flex items-center gap-3 p-4 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-200 text-sm">
+          <AlertCircle className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
+          <div>
+            <p className="font-semibold">Modo Consulta (Somente Leitura)</p>
+            <p className="text-xs text-amber-700/90 dark:text-amber-300/90 mt-0.5">
+              Usuários com perfil de Consulta possuem permissão apenas para visualização e exportação.
+              O envio e processamento de arquivos CSV estão desativados para este perfil.
+            </p>
+          </div>
+        </div>
+      )}
+
       <div>
         <h1 className="text-3xl font-bold tracking-tight text-neutral-900 dark:text-white">
           Importar CSV
@@ -1040,19 +1056,27 @@ function ImportCard({
             <Input
               type="file"
               accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+              disabled={!canWrite || busy}
               className="hidden"
               onChange={(e) => {
+                if (!canWrite) return;
                 const f = e.target.files?.[0];
                 if (f) handleFile(f);
                 e.currentTarget.value = "";
               }}
             />
-            <Button asChild disabled={busy} className="gap-2">
-              <span>
-                <Upload className="h-4 w-4" />{" "}
-                {busy ? "Importando..." : "Selecionar e Enviar Arquivo"}
-              </span>
-            </Button>
+            {canWrite ? (
+              <Button asChild disabled={busy} className="gap-2">
+                <span>
+                  <Upload className="h-4 w-4" />{" "}
+                  {busy ? "Importando..." : "Selecionar e Enviar Arquivo"}
+                </span>
+              </Button>
+            ) : (
+              <Button disabled variant="outline" className="gap-2">
+                <Upload className="h-4 w-4" /> Importação Desativada (Modo Consulta)
+              </Button>
+            )}
           </label>
         </div>
 

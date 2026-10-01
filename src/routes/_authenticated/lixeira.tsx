@@ -6,9 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Trash2, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 
+import { useUserPermissions } from "@/hooks/useUserPermissions";
+
 export const Route = createFileRoute("/_authenticated/lixeira")({ component: Lixeira });
 
 function Lixeira() {
+  const { canWrite } = useUserPermissions();
   const qc = useQueryClient();
   const { data = [] } = useQuery({
     queryKey: ["lix"],
@@ -49,9 +52,11 @@ function Lixeira() {
                 <Button size="sm" variant="outline" disabled className="gap-2">
                   <RotateCcw className="h-4 w-4" /> Restaurar
                 </Button>
-                <Button size="sm" variant="destructive" onClick={() => purge.mutate(l.id)}>
-                  Excluir
-                </Button>
+                {canWrite && (
+                  <Button size="sm" variant="destructive" onClick={() => purge.mutate(l.id)}>
+                    Excluir
+                  </Button>
+                )}
               </div>
             ))}
             {data.length === 0 && (

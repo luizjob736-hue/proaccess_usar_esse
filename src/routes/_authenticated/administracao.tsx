@@ -45,6 +45,8 @@ import {
   getUsersList,
 } from "@/lib/admin-users.functions";
 
+import { useUserPermissions } from "@/hooks/useUserPermissions";
+
 export const Route = createFileRoute("/_authenticated/administracao")({ component: Adm });
 
 const ROLES = [
@@ -104,6 +106,7 @@ function Adm() {
 }
 
 function UsuariosTab() {
+  const { canWrite } = useUserPermissions();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [reveal, setReveal] = useState(false);

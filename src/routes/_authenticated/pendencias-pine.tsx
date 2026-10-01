@@ -68,6 +68,7 @@ import {
   CalendarCheck,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useUserPermissions } from "@/hooks/useUserPermissions";
 
 export const Route = createFileRoute("/_authenticated/pendencias-pine")({
   component: PendenciasPinePage,
@@ -153,6 +154,7 @@ function getFuncaoBadgeStyle(funcao: string) {
 }
 
 export function PendenciasPinePage() {
+  const { canWrite, isConsulta } = useUserPermissions();
   const qc = useQueryClient();
   const navigate = useNavigate();
 

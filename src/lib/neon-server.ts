@@ -983,10 +983,10 @@ export const neonQueryServerFn = createServerFn({ method: "POST" })
             data.payload = sanitized;
           }
         }
-      } else if (currentUser && currentUser.role === "consulta") {
+      } else if (currentUser && (currentUser.role === "consulta" || (currentUser.roles && currentUser.roles.includes("consulta") && !currentUser.roles.includes("admin") && !currentUser.roles.includes("admin_master")))) {
         if (isWrite) {
           throw new Error(
-            "Não autorizado: Usuários com perfil de consulta não possuem permissão para realizar alterações.",
+            "Não autorizado: Usuários com perfil de Consulta possuem permissão apenas para visualização e exportação.",
           );
         }
       } else if (currentUser) {
@@ -1000,11 +1000,14 @@ export const neonQueryServerFn = createServerFn({ method: "POST" })
         }
       }
 
-      // Restrict pendencias_pine and pendencias_pine_sistemas to admin_master, admin and cliente only
+      // Restrict pendencias_pine and pendencias_pine_sistemas writes
       if (table === "pendencias_pine" || table === "pendencias_pine_sistemas") {
-        const allowedRoles = ["admin_master", "admin", "cliente"];
+        const allowedRoles = ["admin_master", "admin", "cliente", "consulta", "analista", "supervisor"];
         if (currentUser && !allowedRoles.includes(currentUser.role)) {
-          throw new Error("Não autorizado: Acesso restrito a Administradores e Clientes.");
+          throw new Error("Não autorizado: Acesso restrito a Administradores, Clientes e Consulta.");
+        }
+        if (currentUser && currentUser.role === "consulta" && isWrite) {
+          throw new Error("Não autorizado: Usuários com perfil de Consulta possuem permissão apenas para visualização e exportação.");
         }
       }
 

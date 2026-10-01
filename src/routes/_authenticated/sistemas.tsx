@@ -27,9 +27,12 @@ import { Plus, Server, AlertTriangle, Pencil, Trash2, Users } from "lucide-react
 import { toast } from "sonner";
 import { OperationFilterBar } from "@/components/OperationFilterBar";
 
+import { useUserPermissions } from "@/hooks/useUserPermissions";
+
 export const Route = createFileRoute("/_authenticated/sistemas")({ component: Sistemas });
 
 function Sistemas() {
+  const { canWrite } = useUserPermissions();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [editSis, setEditSis] = useState<any | null>(null);
@@ -143,84 +146,86 @@ function Sistemas() {
           <h1 className="text-3xl font-bold">Sistemas</h1>
           <p className="text-muted-foreground">{list.length} sistema(s)</p>
         </div>
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild>
-            <Button className="gap-2">
-              <Plus className="h-4 w-4" />
-              Novo
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Novo sistema</DialogTitle>
-            </DialogHeader>
-            <form onSubmit={submit} className="space-y-3">
-              <div>
-                <Label>Nome</Label>
-                <Input name="nome" required />
-              </div>
-              <div>
-                <Label>Descrição</Label>
-                <Textarea name="descricao" />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
+        {canWrite && (
+          <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild>
+              <Button className="gap-2">
+                <Plus className="h-4 w-4" />
+                Novo
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Novo sistema</DialogTitle>
+              </DialogHeader>
+              <form onSubmit={submit} className="space-y-3">
                 <div>
-                  <Label>Categoria</Label>
-                  <Input name="categoria" />
+                  <Label>Nome</Label>
+                  <Input name="nome" required />
                 </div>
                 <div>
-                  <Label>Criticidade</Label>
-                  <Select name="criticidade" defaultValue="media">
+                  <Label>Descrição</Label>
+                  <Textarea name="descricao" />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label>Categoria</Label>
+                    <Input name="categoria" />
+                  </div>
+                  <div>
+                    <Label>Criticidade</Label>
+                    <Select name="criticidade" defaultValue="media">
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="baixa">Baixa</SelectItem>
+                        <SelectItem value="media">Média</SelectItem>
+                        <SelectItem value="alta">Alta</SelectItem>
+                        <SelectItem value="critica">Crítica</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div>
+                  <Label>Responsável</Label>
+                  <Select name="responsavel_id">
                     <SelectTrigger>
-                      <SelectValue />
+                      <SelectValue placeholder="Selecione" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="baixa">Baixa</SelectItem>
-                      <SelectItem value="media">Média</SelectItem>
-                      <SelectItem value="alta">Alta</SelectItem>
-                      <SelectItem value="critica">Crítica</SelectItem>
+                      {profiles.map((p: any) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.nome}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
-              </div>
-              <div>
-                <Label>Responsável</Label>
-                <Select name="responsavel_id">
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {profiles.map((p: any) => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {p.nome}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>URL</Label>
-                <Input name="url" placeholder="https://..." />
-              </div>
-              <div>
-                <Label>SLA de Atendimento / Criação (Dias)</Label>
-                <Input
-                  name="sla_horas"
-                  type="number"
-                  min="1"
-                  defaultValue="1"
-                  placeholder="Ex: 1, 2, 5"
-                />
-                <p className="text-[11px] text-muted-foreground mt-1">
-                  Prazo padrão de atendimento em dias refletido nas pendências deste sistema.
-                </p>
-              </div>
-              <DialogFooter>
-                <Button type="submit">Salvar</Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
+                <div>
+                  <Label>URL</Label>
+                  <Input name="url" placeholder="https://..." />
+                </div>
+                <div>
+                  <Label>SLA de Atendimento / Criação (Dias)</Label>
+                  <Input
+                    name="sla_horas"
+                    type="number"
+                    min="1"
+                    defaultValue="1"
+                    placeholder="Ex: 1, 2, 5"
+                  />
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    Prazo padrão de atendimento em dias refletido nas pendências deste sistema.
+                  </p>
+                </div>
+                <DialogFooter>
+                  <Button type="submit">Salvar</Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
+        )}
       </div>
 
       <OperationFilterBar
@@ -280,23 +285,25 @@ function Sistemas() {
                     <Users className="h-3 w-3" /> {sysAcessosForOp.length} acesso(s)
                   </span>
                 </div>
-                <div className="mt-4 flex justify-end gap-2 border-t pt-2">
-                  <Button size="sm" variant="ghost" onClick={() => setEditSis(s)}>
-                    <Pencil className="h-3.5 w-3.5 mr-1" /> Editar
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                    onClick={() => {
-                      if (window.confirm(`Tem certeza que deseja excluir o sistema ${s.nome}?`)) {
-                        remove.mutate(s.id);
-                      }
-                    }}
-                  >
-                    <Trash2 className="h-3.5 w-3.5 mr-1" /> Excluir
-                  </Button>
-                </div>
+                {canWrite && (
+                  <div className="mt-4 flex justify-end gap-2 border-t pt-2">
+                    <Button size="sm" variant="ghost" onClick={() => setEditSis(s)}>
+                      <Pencil className="h-3.5 w-3.5 mr-1" /> Editar
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                      onClick={() => {
+                        if (window.confirm(`Tem certeza que deseja excluir o sistema ${s.nome}?`)) {
+                          remove.mutate(s.id);
+                        }
+                      }}
+                    >
+                      <Trash2 className="h-3.5 w-3.5 mr-1" /> Excluir
+                    </Button>
+                  </div>
+                )}
               </CardContent>
             </Card>
           );

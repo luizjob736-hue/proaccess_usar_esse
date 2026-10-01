@@ -48,6 +48,7 @@ import {
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
 import { createOperadorFromColaborador } from "@/lib/admin-users.functions";
+import { useUserPermissions } from "@/hooks/useUserPermissions";
 
 export const Route = createFileRoute("/_authenticated/matriz-acessos")({
   component: MatrizAcessos,
@@ -126,6 +127,7 @@ export function MatrizView({
   onlyInativos?: boolean;
   onlyPreAtendimento?: boolean;
 }) {
+  const { canWrite, isConsulta } = useUserPermissions();
   const qc = useQueryClient();
   const [q, setQ] = useState("");
   const [colFilterNome, setColFilterNome] = useState("");
@@ -871,7 +873,7 @@ export function MatrizView({
               <FileDown className="h-4 w-4" /> Exportar Excel
             </Button>
           )}
-          {!onlyInativos && (
+          {!onlyInativos && canWrite && (
             <>
               <Link to="/importar">
                 <Button variant="outline" className="gap-2">
@@ -1597,79 +1599,87 @@ export function MatrizView({
                     )}
                     <td className="p-2 border-r">
                       <div className="flex items-center justify-center gap-1">
-                        {onlyPreAtendimento && (
+                        {!canWrite ? (
+                          <span title="Modo Consulta (Apenas Leitura e Exportação)" className="p-1">
+                            <Eye className="h-3.5 w-3.5 text-muted-foreground/60" />
+                          </span>
+                        ) : (
                           <>
+                            {onlyPreAtendimento && (
+                              <>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-6 w-6 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                                  title="Check: Transferir para Matriz de Acessos"
+                                  onClick={() => transferirParaMatriz.mutate(r.id)}
+                                  disabled={transferirParaMatriz.isPending}
+                                >
+                                  <CheckCircle2 className="h-3.5 w-3.5" />
+                                </Button>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-6 w-6 text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-950/30"
+                                  title="Transferir para Inativos (Data atual)"
+                                  onClick={() => transferirParaInativos.mutate(r.id)}
+                                  disabled={transferirParaInativos.isPending}
+                                >
+                                  <UserX className="h-3.5 w-3.5" />
+                                </Button>
+                              </>
+                            )}
                             <Button
                               size="icon"
                               variant="ghost"
-                              className="h-6 w-6 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
-                              title="Check: Transferir para Matriz de Acessos"
-                              onClick={() => transferirParaMatriz.mutate(r.id)}
-                              disabled={transferirParaMatriz.isPending}
+                              className="h-6 w-6"
+                              title="Editar"
+                              onClick={() => setEditColab(r)}
                             >
-                              <CheckCircle2 className="h-3.5 w-3.5" />
+                              <Pencil className="h-3 w-3" />
                             </Button>
                             <Button
                               size="icon"
                               variant="ghost"
-                              className="h-6 w-6 text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-950/30"
-                              title="Transferir para Inativos (Data atual)"
-                              onClick={() => transferirParaInativos.mutate(r.id)}
-                              disabled={transferirParaInativos.isPending}
+                              className="h-6 w-6"
+                              title="Adicionar acesso"
+                              onClick={() => setAddAcessoFor(r)}
                             >
-                              <UserX className="h-3.5 w-3.5" />
+                              <Plus className="h-3 w-3" />
                             </Button>
+                            {!onlyPreAtendimento && (
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-6 w-6"
+                                title={r.status === "inativo" ? "Reativar" : "Marcar inativo"}
+                                onClick={() =>
+                                  flagInativo.mutate({ id: r.id, inativo: r.status !== "inativo" })
+                                }
+                              >
+                                <UserX
+                                  className={
+                                    "h-3 w-3 " + (r.status === "inativo" ? "text-destructive" : "")
+                                  }
+                                />
+                              </Button>
+                            )}
+                            {isMaster && (
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                title="Excluir colaborador"
+                                className="h-6 w-6 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                onClick={() => {
+                                  if (window.confirm(`Tem certeza que deseja excluir ${r.nome}?`)) {
+                                    excluirColab.mutate(r.id);
+                                  }
+                                }}
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            )}
                           </>
-                        )}
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-6 w-6"
-                          title="Editar"
-                          onClick={() => setEditColab(r)}
-                        >
-                          <Pencil className="h-3 w-3" />
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-6 w-6"
-                          title="Adicionar acesso"
-                          onClick={() => setAddAcessoFor(r)}
-                        >
-                          <Plus className="h-3 w-3" />
-                        </Button>
-                        {!onlyPreAtendimento && (
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-6 w-6"
-                            title={r.status === "inativo" ? "Reativar" : "Marcar inativo"}
-                            onClick={() =>
-                              flagInativo.mutate({ id: r.id, inativo: r.status !== "inativo" })
-                            }
-                          >
-                            <UserX
-                              className={
-                                "h-3 w-3 " + (r.status === "inativo" ? "text-destructive" : "")
-                              }
-                            />
-                          </Button>
-                        )}
-                        {isMaster && (
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            title="Excluir colaborador"
-                            className="h-6 w-6 text-destructive hover:text-destructive hover:bg-destructive/10"
-                            onClick={() => {
-                              if (window.confirm(`Tem certeza que deseja excluir ${r.nome}?`)) {
-                                excluirColab.mutate(r.id);
-                              }
-                            }}
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
                         )}
                       </div>
                     </td>

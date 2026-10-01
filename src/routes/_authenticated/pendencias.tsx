@@ -46,6 +46,7 @@ import { toast } from "sonner";
 import Papa from "papaparse";
 import { parseDateToISO } from "@/routes/_authenticated/importar";
 import { OperationFilterBar } from "@/components/OperationFilterBar";
+import { useUserPermissions } from "@/hooks/useUserPermissions";
 import {
   DndContext,
   DragEndEvent,
@@ -185,6 +186,7 @@ export function matchesColumnStatus(
 }
 
 function Pendencias() {
+  const { canWrite, isConsulta } = useUserPermissions();
   const search = Route.useSearch();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -785,7 +787,7 @@ function Pendencias() {
 
   function onDragEnd(e: DragEndEvent) {
     setActiveId(null);
-    if (!e.over) return;
+    if (!canWrite || !e.over) return;
     const id = String(e.active.id);
     const targetStatus = String(e.over.id);
     const item = list.find((p: any) => p.id === id);
@@ -849,23 +851,25 @@ function Pendencias() {
           <Button variant="outline" onClick={downloadTemplate} className="gap-2">
             <FileDown className="h-4 w-4" /> Modelo CSV
           </Button>
-          <label className="cursor-pointer">
-            <input
-              type="file"
-              accept=".csv"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) importCsv.mutate(f);
-                e.currentTarget.value = "";
-              }}
-            />
-            <Button asChild variant="outline" className="gap-2">
-              <span>
-                <Upload className="h-4 w-4" /> Importar CSV
-              </span>
-            </Button>
-          </label>
+          {canWrite && (
+            <label className="cursor-pointer">
+              <input
+                type="file"
+                accept=".csv"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) importCsv.mutate(f);
+                  e.currentTarget.value = "";
+                }}
+              />
+              <Button asChild variant="outline" className="gap-2">
+                <span>
+                  <Upload className="h-4 w-4" /> Importar CSV
+                </span>
+              </Button>
+            </label>
+          )}
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -916,25 +920,26 @@ function Pendencias() {
               <span>Histórico de Pendências</span>
             </Link>
           </Button>
-          <Dialog
-            open={open}
-            onOpenChange={(o) => {
-              setOpen(o);
-              if (o) {
-                setSelectedSistemas([]);
-                setSelectedColaboradores([]);
-                setModalColabSearch("");
-                setModalSisSearch("");
-                setModalColabOpFilter("todas");
-                setFormDateInicio(new Date().toISOString().slice(0, 10));
-                setFormQuadro(quadros.length > 0 ? quadros[0].nome : "PENDENTE");
-              }
-            }}
-          >
-            <Button onClick={() => setOpen(true)} className="gap-2">
-              <Plus className="h-4 w-4" />
-              Nova pendência
-            </Button>
+          {canWrite && (
+            <Dialog
+              open={open}
+              onOpenChange={(o) => {
+                setOpen(o);
+                if (o) {
+                  setSelectedSistemas([]);
+                  setSelectedColaboradores([]);
+                  setModalColabSearch("");
+                  setModalSisSearch("");
+                  setModalColabOpFilter("todas");
+                  setFormDateInicio(new Date().toISOString().slice(0, 10));
+                  setFormQuadro(quadros.length > 0 ? quadros[0].nome : "PENDENTE");
+                }
+              }}
+            >
+              <Button onClick={() => setOpen(true)} className="gap-2">
+                <Plus className="h-4 w-4" />
+                Nova pendência
+              </Button>
             <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle className="text-xl">Nova Pendência / Solicitação em Lote</DialogTitle>
@@ -1438,11 +1443,13 @@ function Pendencias() {
               </form>
             </DialogContent>
           </Dialog>
+          )}
 
-          <Dialog open={openQuadros} onOpenChange={setOpenQuadros}>
-            <Button onClick={() => setOpenQuadros(true)} variant="outline" className="gap-2">
-              <Settings className="h-4 w-4" /> Quadros
-            </Button>
+          {canWrite && (
+            <Dialog open={openQuadros} onOpenChange={setOpenQuadros}>
+              <Button onClick={() => setOpenQuadros(true)} variant="outline" className="gap-2">
+                <Settings className="h-4 w-4" /> Quadros
+              </Button>
             <DialogContent className="max-w-md">
               <DialogHeader>
                 <DialogTitle>Gerenciar Quadros</DialogTitle>
@@ -1547,6 +1554,7 @@ function Pendencias() {
               </div>
             </DialogContent>
           </Dialog>
+          )}
         </div>
       </div>
 

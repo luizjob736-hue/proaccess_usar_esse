@@ -46,6 +46,7 @@ import {
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
 import { db } from "@/integrations/database/client";
+import { NeonDatabaseBackupCard } from "@/components/backups/NeonDatabaseBackupCard";
 
 export const Route = createFileRoute("/_authenticated/backups")({
   component: BackupsPage,
@@ -511,6 +512,9 @@ function BackupsPage() {
           )}
         </div>
       </div>
+
+      {/* Neon Database Full Dump & Export Card */}
+      <NeonDatabaseBackupCard />
 
       {/* Snapshot Info Card */}
       <Card className="bg-gradient-to-r from-muted/40 via-muted/20 to-background border-border shadow-xs">

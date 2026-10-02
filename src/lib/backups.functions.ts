@@ -492,3 +492,20 @@ export const deleteBackupPendencias = createServerFn({ method: "POST" })
     if (error) throw new Error("Erro ao excluir backup: " + error.message);
     return { success: true };
   });
+
+// 7. GET NEON DATABASE REAL-TIME STATS AND DUMP INFO
+export const getNeonDatabaseStats = createServerFn({ method: "GET" })
+  .middleware([requireDatabaseAuth])
+  .handler(async () => {
+    const { getNeonDatabaseInfo } = await import("@/lib/neon-dump");
+    return await getNeonDatabaseInfo();
+  });
+
+// 8. GENERATE / REGENERATE NEON DATABASE DUMP FILES
+export const generateNeonDumpServerFn = createServerFn({ method: "POST" })
+  .middleware([requireDatabaseAuth])
+  .handler(async ({ context }) => {
+    await ensureAdmin(context);
+    const { generateNeonDatabaseDumpFiles } = await import("@/lib/neon-dump");
+    return await generateNeonDatabaseDumpFiles();
+  });

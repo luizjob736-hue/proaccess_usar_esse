@@ -47,6 +47,72 @@ function isH3SwallowedErrorBody(body: string): boolean {
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
+      const url = new URL(request.url);
+
+      // Dedicated endpoint to download Neon database dump copies
+      if (url.pathname === "/api/download-neon-dump") {
+        const cookie = request.headers.get("cookie") || "";
+        const authHeader = request.headers.get("authorization") || "";
+        const hasSession =
+          cookie.includes("proaccess_neon_session") ||
+          authHeader.startsWith("Bearer neon_token_");
+
+        if (!hasSession) {
+          return new Response(
+            "Não autorizado: É necessário estar autenticado para exportar cópia do banco de dados.",
+            { status: 401, headers: { "content-type": "text/plain; charset=utf-8" } },
+          );
+        }
+
+        const fs = await import("node:fs");
+        const path = await import("node:path");
+        const cwd = process.cwd();
+
+        const format = url.searchParams.get("format") || "sql.gz";
+        let targetFileName = "neon_database_dump.sql.gz";
+        let contentType = "application/gzip";
+        let downloadName = `neon_database_dump_${new Date().toISOString().split("T")[0]}.sql.gz`;
+
+        if (format === "sql") {
+          targetFileName = "neon_database_dump.sql";
+          contentType = "application/sql; charset=utf-8";
+          downloadName = `neon_database_dump_${new Date().toISOString().split("T")[0]}.sql`;
+        } else if (format === "json") {
+          targetFileName = "neon_database_dump.json";
+          contentType = "application/json; charset=utf-8";
+          downloadName = `neon_database_dump_${new Date().toISOString().split("T")[0]}.json`;
+        } else if (format === "json.gz") {
+          targetFileName = "neon_database_dump.json.gz";
+          contentType = "application/gzip";
+          downloadName = `neon_database_dump_${new Date().toISOString().split("T")[0]}.json.gz`;
+        }
+
+        const filePath = path.join(cwd, targetFileName);
+
+        // If file does not exist, generate it now
+        if (!fs.existsSync(filePath)) {
+          const { generateNeonDatabaseDumpFiles } = await import("./lib/neon-dump");
+          await generateNeonDatabaseDumpFiles();
+        }
+
+        if (!fs.existsSync(filePath)) {
+          return new Response("Arquivo de backup não encontrado no servidor.", {
+            status: 404,
+          });
+        }
+
+        const fileBuffer = fs.readFileSync(filePath);
+        return new Response(fileBuffer, {
+          status: 200,
+          headers: {
+            "Content-Type": contentType,
+            "Content-Disposition": `attachment; filename="${downloadName}"`,
+            "Content-Length": String(fileBuffer.length),
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+          },
+        });
+      }
+
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
       return await normalizeCatastrophicSsrResponse(response);

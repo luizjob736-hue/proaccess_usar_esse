@@ -2,6 +2,7 @@ import { getNeonPool } from "@/lib/neon-server";
 import fs from "node:fs";
 import path from "node:path";
 import zlib from "node:zlib";
+import os from "node:os";
 
 function escapeSqlVal(val: any): string {
   if (val === null || val === undefined) return "NULL";
@@ -250,22 +251,46 @@ export async function generateNeonDatabaseDumpFiles(): Promise<{
   sql += `-- =================== FIM DO DUMP NEON ===================\n`;
 
   const cwd = process.cwd();
-  const sqlPath = path.join(cwd, "neon_database_dump.sql");
-  const sqlGzPath = path.join(cwd, "neon_database_dump.sql.gz");
-  const jsonPath = path.join(cwd, "neon_database_dump.json");
-  const jsonGzPath = path.join(cwd, "neon_database_dump.json.gz");
+  const tmpDir = os.tmpdir();
+  
+  try {
+    const sqlPath = path.join(cwd, "neon_database_dump.sql");
+    const sqlGzPath = path.join(cwd, "neon_database_dump.sql.gz");
+    const jsonPath = path.join(cwd, "neon_database_dump.json");
+    const jsonGzPath = path.join(cwd, "neon_database_dump.json.gz");
 
-  fs.writeFileSync(sqlPath, sql, "utf-8");
-  fs.writeFileSync(jsonPath, JSON.stringify(jsonDump, null, 2), "utf-8");
+    fs.writeFileSync(sqlPath, sql, "utf-8");
+    fs.writeFileSync(jsonPath, JSON.stringify(jsonDump, null, 2), "utf-8");
 
-  // Compress gzip
-  const sqlBuffer = Buffer.from(sql, "utf-8");
-  const sqlGz = zlib.gzipSync(sqlBuffer, { level: 9 });
-  fs.writeFileSync(sqlGzPath, sqlGz);
+    const sqlBuffer = Buffer.from(sql, "utf-8");
+    const sqlGz = zlib.gzipSync(sqlBuffer, { level: 6 });
+    fs.writeFileSync(sqlGzPath, sqlGz);
 
-  const jsonBuffer = Buffer.from(JSON.stringify(jsonDump), "utf-8");
-  const jsonGz = zlib.gzipSync(jsonBuffer, { level: 9 });
-  fs.writeFileSync(jsonGzPath, jsonGz);
+    const jsonBuffer = Buffer.from(JSON.stringify(jsonDump), "utf-8");
+    const jsonGz = zlib.gzipSync(jsonBuffer, { level: 6 });
+    fs.writeFileSync(jsonGzPath, jsonGz);
+  } catch {
+    // If process.cwd() is read-only (e.g. Vercel Lambda), write to os.tmpdir()
+    try {
+      const sqlPath = path.join(tmpDir, "neon_database_dump.sql");
+      const sqlGzPath = path.join(tmpDir, "neon_database_dump.sql.gz");
+      const jsonPath = path.join(tmpDir, "neon_database_dump.json");
+      const jsonGzPath = path.join(tmpDir, "neon_database_dump.json.gz");
+
+      fs.writeFileSync(sqlPath, sql, "utf-8");
+      fs.writeFileSync(jsonPath, JSON.stringify(jsonDump, null, 2), "utf-8");
+
+      const sqlBuffer = Buffer.from(sql, "utf-8");
+      const sqlGz = zlib.gzipSync(sqlBuffer, { level: 6 });
+      fs.writeFileSync(sqlGzPath, sqlGz);
+
+      const jsonBuffer = Buffer.from(JSON.stringify(jsonDump), "utf-8");
+      const jsonGz = zlib.gzipSync(jsonBuffer, { level: 6 });
+      fs.writeFileSync(jsonGzPath, jsonGz);
+    } catch {
+      // ignore ephemeral cache write errors
+    }
+  }
 
   return {
     success: true,
@@ -273,5 +298,176 @@ export async function generateNeonDatabaseDumpFiles(): Promise<{
     totalTables: tables.length,
     durationMs: Date.now() - start,
     generatedAt: timestamp,
+  };
+}
+
+export async function exportNeonDumpPayload(
+  format: "sql" | "sql.gz" | "json" | "json.gz" = "sql.gz",
+): Promise<{
+  content: string;
+  filename: string;
+  mimeType: string;
+  isBase64: boolean;
+  sizeMb: string;
+  totalRows: number;
+  totalTables: number;
+}> {
+  const pool = await getNeonPool();
+
+  const tablesRes = await pool.query(
+    "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE' ORDER BY table_name;",
+  );
+  const tables = tablesRes.rows.map((r: any) => r.table_name);
+
+  const timestamp = new Date().toISOString();
+  const dateStr = timestamp.split("T")[0];
+
+  let sql = `-- ==========================================================================\n`;
+  sql += `-- PROACCESS - BACKUP COMPLETO DO BANCO DE DADOS NEON (POSTGRESQL)\n`;
+  sql += `-- Gerado em: ${timestamp} (UTC)\n`;
+  sql += `-- Host: ep-sweet-sea-ayco0rx7-pooler.c-5.us-east-2.aws.neon.tech\n`;
+  sql += `-- Banco: neondb\n`;
+  sql += `-- Total de Tabelas: ${tables.length}\n`;
+  sql += `-- ==========================================================================\n\n`;
+
+  sql += `SET statement_timeout = 0;\n`;
+  sql += `SET client_encoding = 'UTF8';\n`;
+  sql += `SET standard_conforming_strings = on;\n`;
+  sql += `SET check_function_bodies = false;\n`;
+  sql += `SET client_min_messages = warning;\n`;
+  sql += `SET row_security = off;\n\n`;
+  sql += `BEGIN;\n\n`;
+  sql += `-- Desabilita triggers e checagem de chaves temporariamente para restauracao sem conflitos de ordem\n`;
+  sql += `SET session_replication_role = 'replica';\n\n`;
+
+  const jsonDump: any = {
+    metadata: {
+      sistema: "ProAccess",
+      gerado_em: timestamp,
+      banco: "neondb",
+      engine: "PostgreSQL (Neon Serverless)",
+      total_tabelas: tables.length,
+    },
+    tabelas: {},
+    estatisticas: {},
+  };
+
+  let totalRowsAcrossAll = 0;
+
+  for (const t of tables) {
+    const colRes = await pool.query(
+      "SELECT column_name, data_type, udt_name, is_nullable, column_default, character_maximum_length FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1 ORDER BY ordinal_position;",
+      [t],
+    );
+    const cols = colRes.rows;
+
+    const rowRes = await pool.query(`SELECT * FROM "${t}";`);
+    const rows = rowRes.rows;
+    totalRowsAcrossAll += rows.length;
+
+    if (format.startsWith("json")) {
+      jsonDump.tabelas[t] = rows;
+      jsonDump.estatisticas[t] = {
+        colunas: cols.length,
+        registros: rows.length,
+      };
+    }
+
+    if (format.startsWith("sql")) {
+      sql += `-- --------------------------------------------------------------------------\n`;
+      sql += `-- Tabela: "${t}" (${rows.length} registros, ${cols.length} colunas)\n`;
+      sql += `-- --------------------------------------------------------------------------\n`;
+
+      const colDefs = cols.map((c: any) => {
+        let def = `  "${c.column_name}" ${mapDataType(c)}`;
+        if (c.column_default) {
+          def += ` DEFAULT ${c.column_default}`;
+        }
+        if (c.is_nullable === "NO") {
+          def += ` NOT NULL`;
+        }
+        return def;
+      });
+
+      sql += `CREATE TABLE IF NOT EXISTS "${t}" (\n${colDefs.join(",\n")}\n);\n\n`;
+
+      if (rows.length > 0) {
+        const colNames = cols.map((c: any) => `"${c.column_name}"`).join(", ");
+        const BATCH_SIZE = 100;
+        for (let i = 0; i < rows.length; i += BATCH_SIZE) {
+          const batch = rows.slice(i, i + BATCH_SIZE);
+          const valuesList = batch
+            .map((r: any) => {
+              const vals = cols.map((c: any) => escapeSqlVal(r[c.column_name]));
+              return `(${vals.join(", ")})`;
+            })
+            .join(",\n");
+
+          sql += `INSERT INTO "${t}" (${colNames}) VALUES\n${valuesList};\n`;
+        }
+        sql += `\n`;
+      }
+    }
+  }
+
+  if (format.startsWith("sql")) {
+    sql += `-- Restaura verificacao de chaves e conclui transacao\n`;
+    sql += `SET session_replication_role = 'DEFAULT';\n\n`;
+    sql += `COMMIT;\n`;
+    sql += `-- =================== FIM DO DUMP NEON ===================\n`;
+  }
+
+  if (format === "sql") {
+    const buf = Buffer.from(sql, "utf-8");
+    return {
+      content: sql,
+      filename: `neon_database_dump_${dateStr}.sql`,
+      mimeType: "application/sql;charset=utf-8",
+      isBase64: false,
+      sizeMb: (buf.length / 1024 / 1024).toFixed(2),
+      totalRows: totalRowsAcrossAll,
+      totalTables: tables.length,
+    };
+  }
+
+  if (format === "sql.gz") {
+    const sqlBuffer = Buffer.from(sql, "utf-8");
+    const compressed = zlib.gzipSync(sqlBuffer, { level: 6 });
+    return {
+      content: compressed.toString("base64"),
+      filename: `neon_database_dump_${dateStr}.sql.gz`,
+      mimeType: "application/gzip",
+      isBase64: true,
+      sizeMb: (compressed.length / 1024 / 1024).toFixed(2),
+      totalRows: totalRowsAcrossAll,
+      totalTables: tables.length,
+    };
+  }
+
+  if (format === "json") {
+    const jsonStr = JSON.stringify(jsonDump, null, 2);
+    const buf = Buffer.from(jsonStr, "utf-8");
+    return {
+      content: jsonStr,
+      filename: `neon_database_dump_${dateStr}.json`,
+      mimeType: "application/json;charset=utf-8",
+      isBase64: false,
+      sizeMb: (buf.length / 1024 / 1024).toFixed(2),
+      totalRows: totalRowsAcrossAll,
+      totalTables: tables.length,
+    };
+  }
+
+  // json.gz
+  const jsonBuffer = Buffer.from(JSON.stringify(jsonDump), "utf-8");
+  const compressed = zlib.gzipSync(jsonBuffer, { level: 6 });
+  return {
+    content: compressed.toString("base64"),
+    filename: `neon_database_dump_${dateStr}.json.gz`,
+    mimeType: "application/gzip",
+    isBase64: true,
+    sizeMb: (compressed.length / 1024 / 1024).toFixed(2),
+    totalRows: totalRowsAcrossAll,
+    totalTables: tables.length,
   };
 }

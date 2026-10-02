@@ -24,6 +24,7 @@ import { toast } from "sonner";
 import {
   getNeonDatabaseStats,
   generateNeonDumpServerFn,
+  downloadNeonDumpServerFn,
 } from "@/lib/backups.functions";
 import { cn } from "@/lib/utils";
 
@@ -31,9 +32,13 @@ export function NeonDatabaseBackupCard() {
   const qc = useQueryClient();
   const [showTableDetails, setShowTableDetails] = useState(false);
   const [showCliInstructions, setShowCliInstructions] = useState(false);
+  const [downloadingFormat, setDownloadingFormat] = useState<
+    "sql" | "sql.gz" | "json" | "json.gz" | null
+  >(null);
 
   const getStatsFn = useServerFn(getNeonDatabaseStats);
   const generateDumpFn = useServerFn(generateNeonDumpServerFn);
+  const downloadDumpFn = useServerFn(downloadNeonDumpServerFn);
 
   const { data: dbInfo, isLoading, isFetching } = useQuery({
     queryKey: ["neon-database-info"],
@@ -58,19 +63,50 @@ export function NeonDatabaseBackupCard() {
     },
   });
 
-  const handleDownload = (format: "sql" | "sql.gz" | "json" | "json.gz") => {
-    const downloadUrl = `/api/download-neon-dump?format=${format}`;
-    toast.info("Iniciando download da cópia do banco de dados...");
-    const a = document.createElement("a");
-    a.href = downloadUrl;
-    a.target = "_blank";
-    a.download = `neon_database_dump.${format}`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+  const handleDownload = async (format: "sql" | "sql.gz" | "json" | "json.gz") => {
+    if (downloadingFormat) return;
+    setDownloadingFormat(format);
+    const toastId = toast.loading(`Preparando e exportando cópia (${format.toUpperCase()})...`);
+
+    try {
+      const res = await downloadDumpFn({ data: { format } });
+      let blob: Blob;
+
+      if (res.isBase64) {
+        const binaryString = atob(res.content);
+        const len = binaryString.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        blob = new Blob([bytes], { type: res.mimeType });
+      } else {
+        blob = new Blob([res.content], { type: res.mimeType });
+      }
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = res.filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      toast.success(`Download concluído: ${res.filename} (${res.sizeMb} MB)!`, {
+        id: toastId,
+      });
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err?.message || "Erro ao realizar o download da cópia do banco de dados", {
+        id: toastId,
+      });
+    } finally {
+      setDownloadingFormat(null);
+    }
   };
 
-  const isWorking = generateMutation.isPending || isFetching;
+  const isWorking = generateMutation.isPending || isFetching || !!downloadingFormat;
 
   return (
     <Card className="border-primary/30 bg-gradient-to-br from-card via-card to-primary/5 shadow-md overflow-hidden">
@@ -173,11 +209,18 @@ export function NeonDatabaseBackupCard() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
             <Button
               onClick={() => handleDownload("sql")}
+              disabled={isWorking}
               className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs justify-start h-11"
             >
-              <FileCode className="h-4 w-4 shrink-0" />
+              {downloadingFormat === "sql" ? (
+                <RefreshCw className="h-4 w-4 shrink-0 animate-spin" />
+              ) : (
+                <FileCode className="h-4 w-4 shrink-0" />
+              )}
               <div className="text-left min-w-0">
-                <div className="text-xs font-bold leading-tight">Baixar Dump SQL (.sql)</div>
+                <div className="text-xs font-bold leading-tight">
+                  {downloadingFormat === "sql" ? "Baixando..." : "Baixar Dump SQL (.sql)"}
+                </div>
                 <div className="text-[10px] opacity-80 font-normal">
                   {dbInfo?.sqlFileSizeMb || "60.9"} MB — DDL + INSERTS
                 </div>
@@ -186,12 +229,19 @@ export function NeonDatabaseBackupCard() {
 
             <Button
               onClick={() => handleDownload("sql.gz")}
+              disabled={isWorking}
               variant="outline"
               className="gap-2 border-emerald-600/40 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 justify-start h-11 shadow-xs"
             >
-              <Download className="h-4 w-4 text-emerald-600 shrink-0" />
+              {downloadingFormat === "sql.gz" ? (
+                <RefreshCw className="h-4 w-4 shrink-0 animate-spin text-emerald-600" />
+              ) : (
+                <Download className="h-4 w-4 text-emerald-600 shrink-0" />
+              )}
               <div className="text-left min-w-0">
-                <div className="text-xs font-bold leading-tight">SQL Compactado (.sql.gz)</div>
+                <div className="text-xs font-bold leading-tight">
+                  {downloadingFormat === "sql.gz" ? "Compactando e Baixando..." : "SQL Compactado (.sql.gz)"}
+                </div>
                 <div className="text-[10px] text-muted-foreground font-normal">
                   ⚡ Recomendado ({dbInfo?.sqlGzSizeMb || "7.2"} MB)
                 </div>
@@ -200,12 +250,19 @@ export function NeonDatabaseBackupCard() {
 
             <Button
               onClick={() => handleDownload("json")}
+              disabled={isWorking}
               variant="outline"
               className="gap-2 border-blue-500/40 text-blue-800 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/40 justify-start h-11 shadow-xs"
             >
-              <FileJson className="h-4 w-4 text-blue-600 shrink-0" />
+              {downloadingFormat === "json" ? (
+                <RefreshCw className="h-4 w-4 shrink-0 animate-spin text-blue-600" />
+              ) : (
+                <FileJson className="h-4 w-4 text-blue-600 shrink-0" />
+              )}
               <div className="text-left min-w-0">
-                <div className="text-xs font-bold leading-tight">Baixar Dump JSON (.json)</div>
+                <div className="text-xs font-bold leading-tight">
+                  {downloadingFormat === "json" ? "Baixando JSON..." : "Baixar Dump JSON (.json)"}
+                </div>
                 <div className="text-[10px] text-muted-foreground font-normal">
                   {dbInfo?.jsonFileSizeMb || "100.0"} MB — Objeto Estruturado
                 </div>
@@ -214,12 +271,19 @@ export function NeonDatabaseBackupCard() {
 
             <Button
               onClick={() => handleDownload("json.gz")}
+              disabled={isWorking}
               variant="outline"
               className="gap-2 border-border/80 text-muted-foreground hover:text-foreground justify-start h-11 shadow-xs"
             >
-              <Download className="h-4 w-4 shrink-0" />
+              {downloadingFormat === "json.gz" ? (
+                <RefreshCw className="h-4 w-4 shrink-0 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4 shrink-0" />
+              )}
               <div className="text-left min-w-0">
-                <div className="text-xs font-bold leading-tight">JSON Compactado (.json.gz)</div>
+                <div className="text-xs font-bold leading-tight">
+                  {downloadingFormat === "json.gz" ? "Baixando..." : "JSON Compactado (.json.gz)"}
+                </div>
                 <div className="text-[10px] opacity-80 font-normal">
                   Leve ({dbInfo?.jsonGzSizeMb || "7.6"} MB)
                 </div>

@@ -64,50 +64,33 @@ export default {
           );
         }
 
-        const fs = await import("node:fs");
-        const path = await import("node:path");
-        const cwd = process.cwd();
+        const format = (url.searchParams.get("format") || "sql.gz") as
+          | "sql"
+          | "sql.gz"
+          | "json"
+          | "json.gz";
 
-        const format = url.searchParams.get("format") || "sql.gz";
-        let targetFileName = "neon_database_dump.sql.gz";
-        let contentType = "application/gzip";
-        let downloadName = `neon_database_dump_${new Date().toISOString().split("T")[0]}.sql.gz`;
+        const { exportNeonDumpPayload } = await import("./lib/neon-dump");
+        const payload = await exportNeonDumpPayload(format);
 
-        if (format === "sql") {
-          targetFileName = "neon_database_dump.sql";
-          contentType = "application/sql; charset=utf-8";
-          downloadName = `neon_database_dump_${new Date().toISOString().split("T")[0]}.sql`;
-        } else if (format === "json") {
-          targetFileName = "neon_database_dump.json";
-          contentType = "application/json; charset=utf-8";
-          downloadName = `neon_database_dump_${new Date().toISOString().split("T")[0]}.json`;
-        } else if (format === "json.gz") {
-          targetFileName = "neon_database_dump.json.gz";
-          contentType = "application/gzip";
-          downloadName = `neon_database_dump_${new Date().toISOString().split("T")[0]}.json.gz`;
-        }
-
-        const filePath = path.join(cwd, targetFileName);
-
-        // If file does not exist, generate it now
-        if (!fs.existsSync(filePath)) {
-          const { generateNeonDatabaseDumpFiles } = await import("./lib/neon-dump");
-          await generateNeonDatabaseDumpFiles();
-        }
-
-        if (!fs.existsSync(filePath)) {
-          return new Response("Arquivo de backup não encontrado no servidor.", {
-            status: 404,
+        if (payload.isBase64) {
+          const buffer = Buffer.from(payload.content, "base64");
+          return new Response(buffer, {
+            status: 200,
+            headers: {
+              "Content-Type": payload.mimeType,
+              "Content-Disposition": `attachment; filename="${payload.filename}"`,
+              "Content-Length": String(buffer.length),
+              "Cache-Control": "no-cache, no-store, must-revalidate",
+            },
           });
         }
 
-        const fileBuffer = fs.readFileSync(filePath);
-        return new Response(fileBuffer, {
+        return new Response(payload.content, {
           status: 200,
           headers: {
-            "Content-Type": contentType,
-            "Content-Disposition": `attachment; filename="${downloadName}"`,
-            "Content-Length": String(fileBuffer.length),
+            "Content-Type": payload.mimeType,
+            "Content-Disposition": `attachment; filename="${payload.filename}"`,
             "Cache-Control": "no-cache, no-store, must-revalidate",
           },
         });

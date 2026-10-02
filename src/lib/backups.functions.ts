@@ -509,3 +509,12 @@ export const generateNeonDumpServerFn = createServerFn({ method: "POST" })
     const { generateNeonDatabaseDumpFiles } = await import("@/lib/neon-dump");
     return await generateNeonDatabaseDumpFiles();
   });
+
+// 9. EXPORT & DOWNLOAD NEON DATABASE DUMP PAYLOAD
+export const downloadNeonDumpServerFn = createServerFn({ method: "POST" })
+  .middleware([requireDatabaseAuth])
+  .inputValidator((d: { format: "sql" | "sql.gz" | "json" | "json.gz" }) => d)
+  .handler(async ({ data }) => {
+    const { exportNeonDumpPayload } = await import("@/lib/neon-dump");
+    return await exportNeonDumpPayload(data.format);
+  });

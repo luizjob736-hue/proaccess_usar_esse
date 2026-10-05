@@ -29,7 +29,8 @@ function mapDataType(col: any): string {
   if (dt === "real" || udt === "float4") return "REAL";
   if (dt === "double precision" || udt === "float8") return "DOUBLE PRECISION";
   if (dt === "timestamp with time zone" || udt === "timestamptz") return "TIMESTAMP WITH TIME ZONE";
-  if (dt === "timestamp without time zone" || udt === "timestamp") return "TIMESTAMP WITHOUT TIME ZONE";
+  if (dt === "timestamp without time zone" || udt === "timestamp")
+    return "TIMESTAMP WITHOUT TIME ZONE";
   if (dt === "date") return "DATE";
   if (dt === "time without time zone" || dt === "time with time zone") return "TIME";
   if (dt === "jsonb" || udt === "jsonb") return "JSONB";
@@ -252,7 +253,7 @@ export async function generateNeonDatabaseDumpFiles(): Promise<{
 
   const cwd = process.cwd();
   const tmpDir = os.tmpdir();
-  
+
   try {
     const sqlPath = path.join(cwd, "neon_database_dump.sql");
     const sqlGzPath = path.join(cwd, "neon_database_dump.sql.gz");

@@ -38,7 +38,6 @@ import {
   Legend,
 } from "recharts";
 import { matchesColumnStatus } from "@/routes/_authenticated/pendencias";
-import { AiAgentInsightsCard } from "@/components/dashboard/AiAgentInsightsCard";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
@@ -86,15 +85,19 @@ function Dashboard() {
             db.from("acessos").select("id, status, sistema_id, colaborador_id, login, senha", {
               count: "exact",
             }),
-            db.from("pendencias").select("id, titulo, descricao, status, prioridade, sistema_id, arquivado, sla_em", {
-              count: "exact",
-            }),
+            db
+              .from("pendencias")
+              .select("id, titulo, descricao, status, prioridade, sistema_id, arquivado, sla_em", {
+                count: "exact",
+              }),
             db.from("pendencia_quadros").select("*").order("ordem"),
             (async () => {
               try {
                 return await db
                   .from("pendencias_pine")
-                  .select("id, status, arquivado, sistemas_valores, funcao, sistema_pine_id, criado_em, colaborador_nome");
+                  .select(
+                    "id, status, arquivado, sistemas_valores, funcao, sistema_pine_id, criado_em, colaborador_nome",
+                  );
               } catch {
                 return { data: [] };
               }
@@ -114,7 +117,9 @@ function Dashboard() {
         const accList = rawAccList.filter(isValidAccess);
         const rawPendList = pendRes.data ?? [];
         // Only active pendencias (not archived and not concluded)
-        const pendList = rawPendList.filter((p: any) => !p.arquivado && p.status !== "concluido" && p.status !== "concluida");
+        const pendList = rawPendList.filter(
+          (p: any) => !p.arquivado && p.status !== "concluido" && p.status !== "concluida",
+        );
         const rawPinePendList = pinePendRes.data ?? [];
         // Only active Pine pendencias (not archived and not concluded)
         const pinePendList = rawPinePendList.filter(
@@ -233,7 +238,9 @@ function Dashboard() {
       if (accounted < pendData.length) {
         const othersCount = pendData.filter(
           (p: any) =>
-            !quadrosNomes.some((qName: string) => matchesColumnStatus(p.status, qName, quadrosNomes)),
+            !quadrosNomes.some((qName: string) =>
+              matchesColumnStatus(p.status, qName, quadrosNomes),
+            ),
         ).length;
         if (othersCount > 0) {
           items.push({ name: "Outros", value: othersCount, cor: "#64748b" });
@@ -255,9 +262,12 @@ function Dashboard() {
   }, [quadrosList, pendData, quadrosNomes]);
 
   // 2. Pendências por Sistema (Produto) - Integrando sistemas padrão e sistemas Pine
-  const sisMap = useMemo(() => new Map((data?.sistData ?? []).map((s: any) => [s.id, s.nome])), [data?.sistData]);
+  const sisMap = useMemo(
+    () => new Map((data?.sistData ?? []).map((s: any) => [s.id, s.nome])),
+    [data?.sistData],
+  );
   const pineSistemas = data?.pineSistemas ?? [];
-  
+
   const pendBySistemaChart = useMemo(() => {
     const pendBySisMap: Record<string, number> = {};
     pendData.forEach((p: any) => {
@@ -352,40 +362,6 @@ function Dashboard() {
     Pendente: "#f59e0b",
   };
 
-  // Métricas compiladas para o Agente de IA
-  const aiMetrics = useMemo(() => {
-    const sistCountMap: Record<string, number> = {};
-    pendBySistemaChart.forEach((item) => {
-      sistCountMap[item.name] = item.value;
-    });
-
-    const criticas = pendData.filter((p: any) => (p.prioridade || "").toLowerCase() === "critica").length;
-    const altas = pendData.filter((p: any) => (p.prioridade || "").toLowerCase() === "alta").length;
-    const medias = pendData.filter((p: any) => (p.prioridade || "media").toLowerCase() === "media").length;
-    const baixas = pendData.filter((p: any) => (p.prioridade || "").toLowerCase() === "baixa").length;
-
-    return {
-      total: data?.pendTotal ?? 0,
-      padrao: data?.pendPadraoTotal ?? 0,
-      pine: data?.pinePendTotal ?? 0,
-      criticas,
-      altas,
-      medias,
-      baixas,
-      sistemasMap: sistCountMap,
-      orfaos: data?.orfaos ?? 0,
-      semResponsavel: data?.semResp ?? 0,
-      colabAtivos: data?.colabAtivos ?? 0,
-      acessosAtivos: data?.acessosAtivos ?? 0,
-      amostraPendencias: pendData.slice(0, 15).map((p: any) => ({
-        titulo: p.titulo,
-        descricao: p.descricao,
-        status: p.status,
-        prioridade: p.prioridade,
-      })),
-    };
-  }, [data, pendData, pendBySistemaChart]);
-
   return (
     <div className="space-y-6">
       {/* Header com Ações Rápidas */}
@@ -395,7 +371,7 @@ function Dashboard() {
             Dashboard
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Visão analítica, volumetria operacional e diagnósticos de inteligência em tempo real
+            Visão analítica, volumetria operacional e métricas de desempenho em tempo real
           </p>
         </div>
 
@@ -411,7 +387,11 @@ function Dashboard() {
             {isFetching ? "Atualizando..." : "Atualizar Dados"}
           </Button>
 
-          <Button asChild size="sm" className="h-8 text-xs bg-accent hover:bg-accent/90 text-accent-foreground font-semibold shadow-xs">
+          <Button
+            asChild
+            size="sm"
+            className="h-8 text-xs bg-accent hover:bg-accent/90 text-accent-foreground font-semibold shadow-xs"
+          >
             <Link to="/matriz-acessos">
               Matriz de Acessos <ArrowUpRight className="h-3.5 w-3.5 ml-1" />
             </Link>
@@ -433,7 +413,11 @@ function Dashboard() {
           icon={Server}
           label="Sistemas & Aplicações"
           value={data?.sistTotal ?? 0}
-          sub={data?.semResp ? `${data.semResp} sem responsável atribuído` : "Todos com gestor definido"}
+          sub={
+            data?.semResp
+              ? `${data.semResp} sem responsável atribuído`
+              : "Todos com gestor definido"
+          }
           tone={data?.semResp ? "warn" : "ok"}
           linkTo="/sistemas"
         />
@@ -462,9 +446,6 @@ function Dashboard() {
           linkTo="/pendencias"
         />
       </div>
-
-      {/* AGENTE DE INTELIGÊNCIA IA - PONTOS CRUCIAIS & DIAGNÓSTICO */}
-      <AiAgentInsightsCard metrics={aiMetrics} isLoadingData={isLoading} />
 
       {/* SEÇÃO PRINCIPAL DE GRÁFICOS */}
       <div className="grid gap-6 lg:grid-cols-2">
@@ -509,7 +490,9 @@ function Dashboard() {
                 <div className="flex flex-col items-center justify-center text-center p-6 space-y-2">
                   <CheckCircle2 className="h-8 w-8 text-emerald-500" />
                   <p className="text-sm font-medium text-foreground">Fluxo 100% Liberado</p>
-                  <p className="text-xs text-muted-foreground">Nenhuma pendência ativa nos quadros no momento.</p>
+                  <p className="text-xs text-muted-foreground">
+                    Nenhuma pendência ativa nos quadros no momento.
+                  </p>
                 </div>
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
@@ -537,7 +520,11 @@ function Dashboard() {
                       {pendChart.map((entry, index) => (
                         <Cell
                           key={`cell-status-${index}`}
-                          fill={STATUS_COLORS[entry.name] || entry.cor || PALETTE[index % PALETTE.length]}
+                          fill={
+                            STATUS_COLORS[entry.name] ||
+                            entry.cor ||
+                            PALETTE[index % PALETTE.length]
+                          }
                         />
                       ))}
                     </Bar>
@@ -576,7 +563,9 @@ function Dashboard() {
                 <div className="flex flex-col items-center justify-center text-center p-6 space-y-2">
                   <CheckCircle2 className="h-8 w-8 text-emerald-500" />
                   <p className="text-sm font-medium text-foreground">Sem Gargalos em Sistemas</p>
-                  <p className="text-xs text-muted-foreground">Nenhuma pendência vinculada aos sistemas ativos.</p>
+                  <p className="text-xs text-muted-foreground">
+                    Nenhuma pendência vinculada aos sistemas ativos.
+                  </p>
                 </div>
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
@@ -585,7 +574,13 @@ function Dashboard() {
                     layout="vertical"
                     margin={{ top: 10, right: 35, left: 10, bottom: 10 }}
                   >
-                    <XAxis type="number" fontSize={11} allowDecimals={false} tickLine={false} axisLine={false} />
+                    <XAxis
+                      type="number"
+                      fontSize={11}
+                      allowDecimals={false}
+                      tickLine={false}
+                      axisLine={false}
+                    />
                     <YAxis
                       type="category"
                       dataKey="name"
@@ -647,7 +642,9 @@ function Dashboard() {
                 <div className="flex flex-col items-center justify-center text-center p-6 space-y-2">
                   <CheckCircle2 className="h-8 w-8 text-emerald-500" />
                   <p className="text-sm font-medium text-foreground">Nenhuma pendência crítica</p>
-                  <p className="text-xs text-muted-foreground">Tudo em dia com os acordos de nível de serviço.</p>
+                  <p className="text-xs text-muted-foreground">
+                    Tudo em dia com os acordos de nível de serviço.
+                  </p>
                 </div>
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
@@ -677,7 +674,8 @@ function Dashboard() {
                       height={36}
                       formatter={(value, entry: any) => (
                         <span className="text-xs font-medium text-foreground ml-1">
-                          {value}: <strong className="text-accent">{entry.payload?.value ?? 0}</strong>
+                          {value}:{" "}
+                          <strong className="text-accent">{entry.payload?.value ?? 0}</strong>
                         </span>
                       )}
                     />
@@ -739,7 +737,8 @@ function Dashboard() {
                       height={36}
                       formatter={(value, entry: any) => (
                         <span className="text-xs font-medium text-foreground ml-1">
-                          {value}: <strong className="text-accent">{entry.payload?.value ?? 0}</strong>
+                          {value}:{" "}
+                          <strong className="text-accent">{entry.payload?.value ?? 0}</strong>
                         </span>
                       )}
                     />

@@ -1,6 +1,16 @@
 import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Leaf, Play, ShieldAlert, Sparkles, User, Clock, AlertTriangle, LogOut, ZapOff } from "lucide-react";
+import {
+  Leaf,
+  Play,
+  ShieldAlert,
+  Sparkles,
+  User,
+  Clock,
+  AlertTriangle,
+  LogOut,
+  ZapOff,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { db } from "@/integrations/database/client";
 import { toast } from "sonner";
@@ -50,8 +60,10 @@ export function UserInactivityProvider({ children, user, profile }: UserInactivi
   const userId = user?.id;
 
   const [isDataSaver, setIsDataSaver] = useState(false);
-  const [secondsRemaining, setSecondsRemaining] = useState<number>(Math.floor(INACTIVITY_LOGOUT_MS / 1000));
-  
+  const [secondsRemaining, setSecondsRemaining] = useState<number>(
+    Math.floor(INACTIVITY_LOGOUT_MS / 1000),
+  );
+
   const lastActiveRef = useRef<number>(Date.now());
   const lastHeartbeatRef = useRef<number>(0);
   const isDataSaverRef = useRef<boolean>(false);
@@ -153,36 +165,40 @@ export function UserInactivityProvider({ children, user, profile }: UserInactivi
   }, [userId]);
 
   // Função para reativar sessão (sair do modo economia de dados)
-  const resumeSession = useCallback(async (silent = false) => {
-    if (!userId || isLoggingOutRef.current) return;
+  const resumeSession = useCallback(
+    async (silent = false) => {
+      if (!userId || isLoggingOutRef.current) return;
 
-    const wasDataSaver = isDataSaverRef.current;
-    const now = Date.now();
-    lastActiveRef.current = now;
-    const storageKey = `proaccess_last_activity_${userId}`;
-    localStorage.setItem(storageKey, now.toString());
+      const wasDataSaver = isDataSaverRef.current;
+      const now = Date.now();
+      lastActiveRef.current = now;
+      const storageKey = `proaccess_last_activity_${userId}`;
+      localStorage.setItem(storageKey, now.toString());
 
-    setIsDataSaver(false);
-    setSecondsRemaining(Math.floor(INACTIVITY_LOGOUT_MS / 1000));
+      setIsDataSaver(false);
+      setSecondsRemaining(Math.floor(INACTIVITY_LOGOUT_MS / 1000));
 
-    // Notificar backend que este usuário está ativo novamente
-    try {
-      db.rpc("touch_user_activity").catch(() => {});
-    } catch (_e) {
-      // ignore
-    }
-
-    // Se estava em economia de dados, recarregar e sincronizar queries
-    if (wasDataSaver) {
-      qc.invalidateQueries();
-      if (!silent) {
-        toast.success("Conexão ativa restaurada!", {
-          description: "O modo de economia de dados foi desativado e as informações foram sincronizadas.",
-          duration: 3500,
-        });
+      // Notificar backend que este usuário está ativo novamente
+      try {
+        db.rpc("touch_user_activity").catch(() => {});
+      } catch (_e) {
+        // ignore
       }
-    }
-  }, [userId, qc]);
+
+      // Se estava em economia de dados, recarregar e sincronizar queries
+      if (wasDataSaver) {
+        qc.invalidateQueries();
+        if (!silent) {
+          toast.success("Conexão ativa restaurada!", {
+            description:
+              "O modo de economia de dados foi desativado e as informações foram sincronizadas.",
+            duration: 3500,
+          });
+        }
+      }
+    },
+    [userId, qc],
+  );
 
   // Registrar atividade do usuário (com throttle inteligente)
   const handleUserActivity = useCallback(() => {
@@ -326,7 +342,8 @@ export function UserInactivityProvider({ children, user, profile }: UserInactivi
                   </Badge>
                 </div>
                 <span className="text-[11px] text-amber-800/80 dark:text-amber-300/80 hidden sm:inline">
-                  As atualizações em segundo plano foram suspensas. Qualquer movimento ou clique restaura a conexão.
+                  As atualizações em segundo plano foram suspensas. Qualquer movimento ou clique
+                  restaura a conexão.
                 </span>
               </div>
             </div>

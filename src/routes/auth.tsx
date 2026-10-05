@@ -39,7 +39,9 @@ function AuthPage() {
     const reason = sessionStorage.getItem("proaccess_logout_reason");
     if (reason === "inactivity_15min") {
       sessionStorage.removeItem("proaccess_logout_reason");
-      setInactivityMsg("Sua sessão foi encerrada por segurança após 15 minutos sem atividade no sistema.");
+      setInactivityMsg(
+        "Sua sessão foi encerrada por segurança após 15 minutos sem atividade no sistema.",
+      );
       toast.info("Sessão encerrada por inatividade", {
         description: "Você foi desconectado após 15 minutos sem uso. Faça login novamente.",
         duration: 5000,
@@ -121,7 +123,9 @@ function AuthPage() {
               <Clock className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
               <div className="flex-1 text-left">
                 <p className="font-semibold text-amber-800 dark:text-amber-200">Sessão encerrada</p>
-                <p className="text-xs text-amber-700/90 dark:text-amber-300/90 mt-0.5">{inactivityMsg}</p>
+                <p className="text-xs text-amber-700/90 dark:text-amber-300/90 mt-0.5">
+                  {inactivityMsg}
+                </p>
               </div>
             </div>
           )}

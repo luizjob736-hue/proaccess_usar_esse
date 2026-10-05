@@ -40,7 +40,11 @@ export function NeonDatabaseBackupCard() {
   const generateDumpFn = useServerFn(generateNeonDumpServerFn);
   const downloadDumpFn = useServerFn(downloadNeonDumpServerFn);
 
-  const { data: dbInfo, isLoading, isFetching } = useQuery({
+  const {
+    data: dbInfo,
+    isLoading,
+    isFetching,
+  } = useQuery({
     queryKey: ["neon-database-info"],
     queryFn: async () => {
       return await getStatsFn();
@@ -130,7 +134,8 @@ export function NeonDatabaseBackupCard() {
                 </Badge>
               </div>
               <CardDescription className="text-xs mt-0.5">
-                Exportação de dump íntegro contendo estrutura DDL (CREATE TABLE) e dados DML (INSERT INTO) de todas as tabelas.
+                Exportação de dump íntegro contendo estrutura DDL (CREATE TABLE) e dados DML (INSERT
+                INTO) de todas as tabelas.
               </CardDescription>
             </div>
           </div>
@@ -192,9 +197,7 @@ export function NeonDatabaseBackupCard() {
             <span className="text-[11px] font-medium text-muted-foreground flex items-center gap-1.5">
               <Server className="h-3.5 w-3.5 text-amber-600" /> Servidor Neon
             </span>
-            <p className="text-sm font-bold text-foreground truncate">
-              AWS us-east-2
-            </p>
+            <p className="text-sm font-bold text-foreground truncate">AWS us-east-2</p>
             <span className="text-[10px] text-muted-foreground block truncate">
               Banco: {dbInfo?.database || "neondb"}
             </span>
@@ -240,7 +243,9 @@ export function NeonDatabaseBackupCard() {
               )}
               <div className="text-left min-w-0">
                 <div className="text-xs font-bold leading-tight">
-                  {downloadingFormat === "sql.gz" ? "Compactando e Baixando..." : "SQL Compactado (.sql.gz)"}
+                  {downloadingFormat === "sql.gz"
+                    ? "Compactando e Baixando..."
+                    : "SQL Compactado (.sql.gz)"}
                 </div>
                 <div className="text-[10px] text-muted-foreground font-normal">
                   ⚡ Recomendado ({dbInfo?.sqlGzSizeMb || "7.2"} MB)
@@ -301,8 +306,14 @@ export function NeonDatabaseBackupCard() {
             className="text-xs text-muted-foreground hover:text-foreground gap-1.5 h-8 px-2.5"
           >
             <Table className="h-3.5 w-3.5" />
-            <span>{showTableDetails ? "Ocultar Mapeamento de Tabelas" : "Mapeamento das 27 Tabelas"}</span>
-            {showTableDetails ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+            <span>
+              {showTableDetails ? "Ocultar Mapeamento de Tabelas" : "Mapeamento das 27 Tabelas"}
+            </span>
+            {showTableDetails ? (
+              <ChevronUp className="h-3.5 w-3.5" />
+            ) : (
+              <ChevronDown className="h-3.5 w-3.5" />
+            )}
           </Button>
 
           <Button
@@ -312,8 +323,14 @@ export function NeonDatabaseBackupCard() {
             className="text-xs text-muted-foreground hover:text-foreground gap-1.5 h-8 px-2.5"
           >
             <Terminal className="h-3.5 w-3.5" />
-            <span>{showCliInstructions ? "Ocultar Instruções de Restauração" : "Como Restaurar (CLI)"}</span>
-            {showCliInstructions ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+            <span>
+              {showCliInstructions ? "Ocultar Instruções de Restauração" : "Como Restaurar (CLI)"}
+            </span>
+            {showCliInstructions ? (
+              <ChevronUp className="h-3.5 w-3.5" />
+            ) : (
+              <ChevronDown className="h-3.5 w-3.5" />
+            )}
           </Button>
 
           {dbInfo?.lastDumpAt && (
@@ -344,7 +361,10 @@ export function NeonDatabaseBackupCard() {
                   <span className="font-mono text-[11px] truncate text-foreground" title={t.name}>
                     {t.name}
                   </span>
-                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 font-mono shrink-0 ml-1">
+                  <Badge
+                    variant="secondary"
+                    className="text-[10px] px-1.5 py-0 h-4 font-mono shrink-0 ml-1"
+                  >
                     {t.rows.toLocaleString("pt-BR")}
                   </Badge>
                 </div>
@@ -360,14 +380,20 @@ export function NeonDatabaseBackupCard() {
               Instruções para Restaurar este Dump no PostgreSQL / Neon:
             </span>
             <div className="bg-background/90 border rounded-md p-2.5 space-y-1.5 text-[11px] text-muted-foreground overflow-x-auto">
-              <p className="text-foreground font-semibold">1. Restaurar arquivo SQL descompactado:</p>
+              <p className="text-foreground font-semibold">
+                1. Restaurar arquivo SQL descompactado:
+              </p>
               <code>psql "sua_connection_string_aqui" &lt; neon_database_dump.sql</code>
 
-              <p className="text-foreground font-semibold pt-1">2. Restaurar arquivo compactado (.gz) diretamente:</p>
+              <p className="text-foreground font-semibold pt-1">
+                2. Restaurar arquivo compactado (.gz) diretamente:
+              </p>
               <code>gunzip -c neon_database_dump.sql.gz | psql "sua_connection_string_aqui"</code>
             </div>
             <p className="font-sans text-[11px] text-muted-foreground">
-              O arquivo SQL inclui cabeçalhos transacionais e <code>SET session_replication_role = 'replica';</code>, permitindo restauração sem violação de integridade referencial ou dependências circulares.
+              O arquivo SQL inclui cabeçalhos transacionais e{" "}
+              <code>SET session_replication_role = 'replica';</code>, permitindo restauração sem
+              violação de integridade referencial ou dependências circulares.
             </p>
           </div>
         )}

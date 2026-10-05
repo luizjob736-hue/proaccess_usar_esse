@@ -636,8 +636,9 @@ function Importar() {
           <div>
             <p className="font-semibold">Modo Consulta (Somente Leitura)</p>
             <p className="text-xs text-amber-700/90 dark:text-amber-300/90 mt-0.5">
-              Usuários com perfil de Consulta possuem permissão apenas para visualização e exportação.
-              O envio e processamento de arquivos CSV estão desativados para este perfil.
+              Usuários com perfil de Consulta possuem permissão apenas para visualização e
+              exportação. O envio e processamento de arquivos CSV estão desativados para este
+              perfil.
             </p>
           </div>
         </div>

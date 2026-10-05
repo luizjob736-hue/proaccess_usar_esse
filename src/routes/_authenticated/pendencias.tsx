@@ -940,509 +940,515 @@ function Pendencias() {
                 <Plus className="h-4 w-4" />
                 Nova pendência
               </Button>
-            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle className="text-xl">Nova Pendência / Solicitação em Lote</DialogTitle>
-              </DialogHeader>
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  const fd = new FormData(e.currentTarget);
-                  const isAlreadySolicitado = fd.get("solicitado") === "on";
-                  const chosenQuadro =
-                    formQuadro ||
-                    (fd.get("status") as string) ||
-                    (quadros.length > 0 ? quadros[0].nome : "PENDENTE");
+              <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle className="text-xl">
+                    Nova Pendência / Solicitação em Lote
+                  </DialogTitle>
+                </DialogHeader>
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const fd = new FormData(e.currentTarget);
+                    const isAlreadySolicitado = fd.get("solicitado") === "on";
+                    const chosenQuadro =
+                      formQuadro ||
+                      (fd.get("status") as string) ||
+                      (quadros.length > 0 ? quadros[0].nome : "PENDENTE");
 
-                  const explicitOpId = (fd.get("operacao_id") as string) || null;
-                  const rawDateInicio =
-                    (fd.get("data_inicio") as string) ||
-                    formDateInicio ||
-                    new Date().toISOString().slice(0, 10);
-                  const rawSlaEm = (fd.get("sla_em") as string) || null;
+                    const explicitOpId = (fd.get("operacao_id") as string) || null;
+                    const rawDateInicio =
+                      (fd.get("data_inicio") as string) ||
+                      formDateInicio ||
+                      new Date().toISOString().slice(0, 10);
+                    const rawSlaEm = (fd.get("sla_em") as string) || null;
 
-                  const basePayload = {
-                    titulo: (fd.get("titulo") as string)?.trim() || "Nova Solicitação",
-                    descricao: (fd.get("descricao") as string)?.trim() || null,
-                    tipo: (fd.get("tipo") as string) || "solicitacao_acesso",
-                    prioridade: (fd.get("prioridade") as string) || "media",
-                    status: chosenQuadro,
-                    operacao_id:
-                      explicitOpId && explicitOpId !== "todas" && explicitOpId !== "sem_operacao"
-                        ? explicitOpId
-                        : null,
-                    data_inicio: rawDateInicio,
-                    etiquetas: ((fd.get("etiquetas") as string) || "")
-                      .split(",")
-                      .map((s) => s.trim())
-                      .filter(Boolean),
-                    solicitado: isAlreadySolicitado,
-                  };
+                    const basePayload = {
+                      titulo: (fd.get("titulo") as string)?.trim() || "Nova Solicitação",
+                      descricao: (fd.get("descricao") as string)?.trim() || null,
+                      tipo: (fd.get("tipo") as string) || "solicitacao_acesso",
+                      prioridade: (fd.get("prioridade") as string) || "media",
+                      status: chosenQuadro,
+                      operacao_id:
+                        explicitOpId && explicitOpId !== "todas" && explicitOpId !== "sem_operacao"
+                          ? explicitOpId
+                          : null,
+                      data_inicio: rawDateInicio,
+                      etiquetas: ((fd.get("etiquetas") as string) || "")
+                        .split(",")
+                        .map((s) => s.trim())
+                        .filter(Boolean),
+                      solicitado: isAlreadySolicitado,
+                    };
 
-                  const payloads: any[] = [];
-                  const colabsToUse =
-                    selectedColaboradores.length > 0 ? selectedColaboradores : [null];
-                  const sissToUse = selectedSistemas.length > 0 ? selectedSistemas : [null];
+                    const payloads: any[] = [];
+                    const colabsToUse =
+                      selectedColaboradores.length > 0 ? selectedColaboradores : [null];
+                    const sissToUse = selectedSistemas.length > 0 ? selectedSistemas : [null];
 
-                  for (const colId of colabsToUse) {
-                    const colabObj = colabs.find((c: any) => c.id === colId);
-                    for (const sisId of sissToUse) {
-                      const sisObj = sistemas.find((s: any) => s.id === sisId);
-                      let finalSla = rawSlaEm;
-                      if (!finalSla && sisObj) {
-                        const diasSla = sisObj?.sla_horas ?? 1;
-                        const startDate = new Date(rawDateInicio);
-                        const slaDate = new Date(startDate.getTime() + diasSla * 24 * 3600 * 1000);
-                        finalSla = slaDate.toISOString();
+                    for (const colId of colabsToUse) {
+                      const colabObj = colabs.find((c: any) => c.id === colId);
+                      for (const sisId of sissToUse) {
+                        const sisObj = sistemas.find((s: any) => s.id === sisId);
+                        let finalSla = rawSlaEm;
+                        if (!finalSla && sisObj) {
+                          const diasSla = sisObj?.sla_horas ?? 1;
+                          const startDate = new Date(rawDateInicio);
+                          const slaDate = new Date(
+                            startDate.getTime() + diasSla * 24 * 3600 * 1000,
+                          );
+                          finalSla = slaDate.toISOString();
+                        }
+
+                        payloads.push({
+                          ...basePayload,
+                          colaborador_id: colId,
+                          sistema_id: sisId,
+                          operacao_id: basePayload.operacao_id || colabObj?.operacao_id || null,
+                          sla_em: finalSla,
+                        });
                       }
-
-                      payloads.push({
-                        ...basePayload,
-                        colaborador_id: colId,
-                        sistema_id: sisId,
-                        operacao_id: basePayload.operacao_id || colabObj?.operacao_id || null,
-                        sla_em: finalSla,
-                      });
                     }
-                  }
 
-                  create.mutate(payloads);
-                }}
-                className="space-y-4"
-              >
-                <div>
-                  <Label className="font-semibold">Título da Solicitação</Label>
-                  <Input
-                    name="titulo"
-                    placeholder="Ex: Solicitação de Acesso CRM"
-                    required
-                    className="mt-1"
-                  />
-                </div>
-                <div>
-                  <Label className="font-semibold">Descrição / Observações</Label>
-                  <Textarea
-                    name="descricao"
-                    placeholder="Detalhes da pendência ou instruções..."
-                    className="mt-1 min-h-[70px]"
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    create.mutate(payloads);
+                  }}
+                  className="space-y-4"
+                >
                   <div>
-                    <Label className="text-xs font-semibold">Quadro de Destino</Label>
-                    <Select
-                      name="status"
-                      value={formQuadro || (quadros.length > 0 ? quadros[0].nome : "PENDENTE")}
-                      onValueChange={setFormQuadro}
-                    >
-                      <SelectTrigger className="mt-1">
-                        <SelectValue placeholder="Selecione o quadro..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {quadros.map((q: any) => (
-                          <SelectItem key={q.id} value={q.nome}>
-                            <div className="flex items-center gap-2">
-                              <span
-                                className={`inline-block h-2.5 w-2.5 rounded-full ${getQuadroColor(q.cor)}`}
-                              />
-                              <span className="font-medium">{q.nome}</span>
-                            </div>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <Label className="font-semibold">Título da Solicitação</Label>
+                    <Input
+                      name="titulo"
+                      placeholder="Ex: Solicitação de Acesso CRM"
+                      required
+                      className="mt-1"
+                    />
                   </div>
                   <div>
-                    <Label className="text-xs font-semibold">Tipo</Label>
-                    <Select name="tipo" defaultValue="solicitacao_acesso">
-                      <SelectTrigger className="mt-1">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="solicitacao_acesso">Solicitação de acesso</SelectItem>
-                        <SelectItem value="exclusao_acesso">Exclusão de acesso</SelectItem>
-                        <SelectItem value="revisao">Revisão</SelectItem>
-                        <SelectItem value="alteracao">Alteração</SelectItem>
-                        <SelectItem value="outro">Outro</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <Label className="font-semibold">Descrição / Observações</Label>
+                    <Textarea
+                      name="descricao"
+                      placeholder="Detalhes da pendência ou instruções..."
+                      className="mt-1 min-h-[70px]"
+                    />
                   </div>
-                  <div>
-                    <Label className="text-xs font-semibold">Prioridade</Label>
-                    <Select name="prioridade" defaultValue="media">
-                      <SelectTrigger className="mt-1">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="baixa">Baixa</SelectItem>
-                        <SelectItem value="media">Média</SelectItem>
-                        <SelectItem value="alta">Alta</SelectItem>
-                        <SelectItem value="critica">Crítica</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
 
-                {/* MULTI-SELECT COLABORADORES & SISTEMAS */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
-                  {/* COLABORADORES */}
-                  <div className="flex flex-col border rounded-lg p-3 bg-muted/20">
-                    <div className="flex items-center justify-between gap-1 mb-2">
-                      <div className="flex items-center gap-1.5">
-                        <Label className="font-semibold text-xs text-foreground">
-                          Colaboradores
-                        </Label>
-                        <Badge variant="secondary" className="text-[10px] h-5 px-1.5 font-bold">
-                          {selectedColaboradores.length} selecionado(s)
-                        </Badge>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        {filteredModalColabs.length > 0 && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const visibleIds = filteredModalColabs.map((c: any) => c.id);
-                              const allVisibleChecked = visibleIds.every((id: string) =>
-                                selectedColaboradores.includes(id),
-                              );
-                              if (allVisibleChecked) {
-                                setSelectedColaboradores((prev) =>
-                                  prev.filter((id) => !visibleIds.includes(id)),
-                                );
-                              } else {
-                                setSelectedColaboradores((prev) =>
-                                  Array.from(new Set([...prev, ...visibleIds])),
-                                );
-                              }
-                            }}
-                            className="text-[11px] text-primary hover:underline font-medium"
-                          >
-                            {filteredModalColabs.every((c: any) =>
-                              selectedColaboradores.includes(c.id),
-                            )
-                              ? "Desmarcar visíveis"
-                              : "Marcar visíveis"}
-                          </button>
-                        )}
-                        {selectedColaboradores.length > 0 && (
-                          <button
-                            type="button"
-                            onClick={() => setSelectedColaboradores([])}
-                            className="text-[11px] text-muted-foreground hover:text-destructive hover:underline ml-1"
-                          >
-                            Limpar
-                          </button>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="space-y-1.5 mb-2">
-                      <Input
-                        placeholder="Buscar por nome ou CPF..."
-                        value={modalColabSearch}
-                        onChange={(e) => setModalColabSearch(e.target.value)}
-                        className="h-8 text-xs"
-                      />
-                      <Select value={modalColabOpFilter} onValueChange={setModalColabOpFilter}>
-                        <SelectTrigger className="h-7 text-[11px]">
-                          <SelectValue placeholder="Filtrar por Operação" />
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <Label className="text-xs font-semibold">Quadro de Destino</Label>
+                      <Select
+                        name="status"
+                        value={formQuadro || (quadros.length > 0 ? quadros[0].nome : "PENDENTE")}
+                        onValueChange={setFormQuadro}
+                      >
+                        <SelectTrigger className="mt-1">
+                          <SelectValue placeholder="Selecione o quadro..." />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="todas">
-                            Todas as Operações ({colabs.length})
-                          </SelectItem>
-                          <SelectItem value="sem_operacao">Sem Operação</SelectItem>
-                          {operacoes.map((op: any) => (
-                            <SelectItem key={op.id} value={op.id}>
-                              {op.nome}
+                          {quadros.map((q: any) => (
+                            <SelectItem key={q.id} value={q.nome}>
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className={`inline-block h-2.5 w-2.5 rounded-full ${getQuadroColor(q.cor)}`}
+                                />
+                                <span className="font-medium">{q.nome}</span>
+                              </div>
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     </div>
-
-                    <div className="border rounded-md p-1.5 h-44 overflow-y-auto bg-background space-y-0.5 divide-y divide-border/40">
-                      {filteredModalColabs.map((c: any) => {
-                        const isChecked = selectedColaboradores.includes(c.id);
-                        return (
-                          <label
-                            key={c.id}
-                            className={`flex items-center justify-between gap-2 text-xs p-1.5 rounded cursor-pointer transition-colors ${
-                              isChecked
-                                ? "bg-primary/10 font-semibold text-primary"
-                                : "hover:bg-accent/50"
-                            }`}
-                          >
-                            <div className="flex items-center gap-2 min-w-0">
-                              <input
-                                type="checkbox"
-                                checked={isChecked}
-                                onChange={(e) => {
-                                  if (e.target.checked) {
-                                    setSelectedColaboradores((prev) => [...prev, c.id]);
-                                  } else {
-                                    setSelectedColaboradores((prev) =>
-                                      prev.filter((id) => id !== c.id),
-                                    );
-                                  }
-                                }}
-                                className="rounded border-gray-300 text-primary focus:ring-primary h-4 w-4 shrink-0"
-                              />
-                              <span className="truncate">{c.nome}</span>
-                            </div>
-                            {c.operacao?.nome && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground shrink-0">
-                                {c.operacao.nome}
-                              </span>
-                            )}
-                          </label>
-                        );
-                      })}
-                      {filteredModalColabs.length === 0 && (
-                        <p className="text-xs text-muted-foreground text-center py-6">
-                          Nenhum colaborador encontrado
-                        </p>
-                      )}
+                    <div>
+                      <Label className="text-xs font-semibold">Tipo</Label>
+                      <Select name="tipo" defaultValue="solicitacao_acesso">
+                        <SelectTrigger className="mt-1">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="solicitacao_acesso">Solicitação de acesso</SelectItem>
+                          <SelectItem value="exclusao_acesso">Exclusão de acesso</SelectItem>
+                          <SelectItem value="revisao">Revisão</SelectItem>
+                          <SelectItem value="alteracao">Alteração</SelectItem>
+                          <SelectItem value="outro">Outro</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="text-xs font-semibold">Prioridade</Label>
+                      <Select name="prioridade" defaultValue="media">
+                        <SelectTrigger className="mt-1">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="baixa">Baixa</SelectItem>
+                          <SelectItem value="media">Média</SelectItem>
+                          <SelectItem value="alta">Alta</SelectItem>
+                          <SelectItem value="critica">Crítica</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
 
-                  {/* SISTEMAS */}
-                  <div className="flex flex-col border rounded-lg p-3 bg-muted/20">
-                    <div className="flex items-center justify-between gap-1 mb-2">
-                      <div className="flex items-center gap-1.5">
-                        <Label className="font-semibold text-xs text-foreground">Sistemas</Label>
-                        <Badge variant="secondary" className="text-[10px] h-5 px-1.5 font-bold">
-                          {selectedSistemas.length} selecionado(s)
-                        </Badge>
+                  {/* MULTI-SELECT COLABORADORES & SISTEMAS */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+                    {/* COLABORADORES */}
+                    <div className="flex flex-col border rounded-lg p-3 bg-muted/20">
+                      <div className="flex items-center justify-between gap-1 mb-2">
+                        <div className="flex items-center gap-1.5">
+                          <Label className="font-semibold text-xs text-foreground">
+                            Colaboradores
+                          </Label>
+                          <Badge variant="secondary" className="text-[10px] h-5 px-1.5 font-bold">
+                            {selectedColaboradores.length} selecionado(s)
+                          </Badge>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {filteredModalColabs.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const visibleIds = filteredModalColabs.map((c: any) => c.id);
+                                const allVisibleChecked = visibleIds.every((id: string) =>
+                                  selectedColaboradores.includes(id),
+                                );
+                                if (allVisibleChecked) {
+                                  setSelectedColaboradores((prev) =>
+                                    prev.filter((id) => !visibleIds.includes(id)),
+                                  );
+                                } else {
+                                  setSelectedColaboradores((prev) =>
+                                    Array.from(new Set([...prev, ...visibleIds])),
+                                  );
+                                }
+                              }}
+                              className="text-[11px] text-primary hover:underline font-medium"
+                            >
+                              {filteredModalColabs.every((c: any) =>
+                                selectedColaboradores.includes(c.id),
+                              )
+                                ? "Desmarcar visíveis"
+                                : "Marcar visíveis"}
+                            </button>
+                          )}
+                          {selectedColaboradores.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => setSelectedColaboradores([])}
+                              className="text-[11px] text-muted-foreground hover:text-destructive hover:underline ml-1"
+                            >
+                              Limpar
+                            </button>
+                          )}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-1">
-                        {filteredModalSistemas.length > 0 && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const visibleIds = filteredModalSistemas.map((s: any) => s.id);
-                              const allVisibleChecked = visibleIds.every((id: string) =>
-                                selectedSistemas.includes(id),
-                              );
-                              if (allVisibleChecked) {
-                                setSelectedSistemas((prev) =>
-                                  prev.filter((id) => !visibleIds.includes(id)),
-                                );
-                              } else {
-                                setSelectedSistemas((prev) =>
-                                  Array.from(new Set([...prev, ...visibleIds])),
-                                );
-                              }
-                            }}
-                            className="text-[11px] text-primary hover:underline font-medium"
-                          >
-                            {filteredModalSistemas.every((s: any) =>
-                              selectedSistemas.includes(s.id),
-                            )
-                              ? "Desmarcar todos"
-                              : "Marcar todos"}
-                          </button>
-                        )}
-                        {selectedSistemas.length > 0 && (
-                          <button
-                            type="button"
-                            onClick={() => setSelectedSistemas([])}
-                            className="text-[11px] text-muted-foreground hover:text-destructive hover:underline ml-1"
-                          >
-                            Limpar
-                          </button>
+
+                      <div className="space-y-1.5 mb-2">
+                        <Input
+                          placeholder="Buscar por nome ou CPF..."
+                          value={modalColabSearch}
+                          onChange={(e) => setModalColabSearch(e.target.value)}
+                          className="h-8 text-xs"
+                        />
+                        <Select value={modalColabOpFilter} onValueChange={setModalColabOpFilter}>
+                          <SelectTrigger className="h-7 text-[11px]">
+                            <SelectValue placeholder="Filtrar por Operação" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="todas">
+                              Todas as Operações ({colabs.length})
+                            </SelectItem>
+                            <SelectItem value="sem_operacao">Sem Operação</SelectItem>
+                            {operacoes.map((op: any) => (
+                              <SelectItem key={op.id} value={op.id}>
+                                {op.nome}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="border rounded-md p-1.5 h-44 overflow-y-auto bg-background space-y-0.5 divide-y divide-border/40">
+                        {filteredModalColabs.map((c: any) => {
+                          const isChecked = selectedColaboradores.includes(c.id);
+                          return (
+                            <label
+                              key={c.id}
+                              className={`flex items-center justify-between gap-2 text-xs p-1.5 rounded cursor-pointer transition-colors ${
+                                isChecked
+                                  ? "bg-primary/10 font-semibold text-primary"
+                                  : "hover:bg-accent/50"
+                              }`}
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setSelectedColaboradores((prev) => [...prev, c.id]);
+                                    } else {
+                                      setSelectedColaboradores((prev) =>
+                                        prev.filter((id) => id !== c.id),
+                                      );
+                                    }
+                                  }}
+                                  className="rounded border-gray-300 text-primary focus:ring-primary h-4 w-4 shrink-0"
+                                />
+                                <span className="truncate">{c.nome}</span>
+                              </div>
+                              {c.operacao?.nome && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground shrink-0">
+                                  {c.operacao.nome}
+                                </span>
+                              )}
+                            </label>
+                          );
+                        })}
+                        {filteredModalColabs.length === 0 && (
+                          <p className="text-xs text-muted-foreground text-center py-6">
+                            Nenhum colaborador encontrado
+                          </p>
                         )}
                       </div>
                     </div>
 
-                    <div className="space-y-1.5 mb-2">
+                    {/* SISTEMAS */}
+                    <div className="flex flex-col border rounded-lg p-3 bg-muted/20">
+                      <div className="flex items-center justify-between gap-1 mb-2">
+                        <div className="flex items-center gap-1.5">
+                          <Label className="font-semibold text-xs text-foreground">Sistemas</Label>
+                          <Badge variant="secondary" className="text-[10px] h-5 px-1.5 font-bold">
+                            {selectedSistemas.length} selecionado(s)
+                          </Badge>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {filteredModalSistemas.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const visibleIds = filteredModalSistemas.map((s: any) => s.id);
+                                const allVisibleChecked = visibleIds.every((id: string) =>
+                                  selectedSistemas.includes(id),
+                                );
+                                if (allVisibleChecked) {
+                                  setSelectedSistemas((prev) =>
+                                    prev.filter((id) => !visibleIds.includes(id)),
+                                  );
+                                } else {
+                                  setSelectedSistemas((prev) =>
+                                    Array.from(new Set([...prev, ...visibleIds])),
+                                  );
+                                }
+                              }}
+                              className="text-[11px] text-primary hover:underline font-medium"
+                            >
+                              {filteredModalSistemas.every((s: any) =>
+                                selectedSistemas.includes(s.id),
+                              )
+                                ? "Desmarcar todos"
+                                : "Marcar todos"}
+                            </button>
+                          )}
+                          {selectedSistemas.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => setSelectedSistemas([])}
+                              className="text-[11px] text-muted-foreground hover:text-destructive hover:underline ml-1"
+                            >
+                              Limpar
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="space-y-1.5 mb-2">
+                        <Input
+                          placeholder="Buscar sistema / produto..."
+                          value={modalSisSearch}
+                          onChange={(e) => setModalSisSearch(e.target.value)}
+                          className="h-8 text-xs"
+                        />
+                        <div className="h-7 flex items-center px-1 text-[11px] text-muted-foreground">
+                          {sistemas.length} sistemas cadastrados no total
+                        </div>
+                      </div>
+
+                      <div className="border rounded-md p-1.5 h-44 overflow-y-auto bg-background space-y-0.5 divide-y divide-border/40">
+                        {filteredModalSistemas.map((s: any) => {
+                          const isChecked = selectedSistemas.includes(s.id);
+                          return (
+                            <label
+                              key={s.id}
+                              className={`flex items-center justify-between gap-2 text-xs p-1.5 rounded cursor-pointer transition-colors ${
+                                isChecked
+                                  ? "bg-primary/10 font-semibold text-primary"
+                                  : "hover:bg-accent/50"
+                              }`}
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setSelectedSistemas((prev) => [...prev, s.id]);
+                                    } else {
+                                      setSelectedSistemas((prev) =>
+                                        prev.filter((id) => id !== s.id),
+                                      );
+                                    }
+                                  }}
+                                  className="rounded border-gray-300 text-primary focus:ring-primary h-4 w-4 shrink-0"
+                                />
+                                <span className="truncate">{s.nome}</span>
+                              </div>
+                              {s.sla_horas && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground shrink-0">
+                                  SLA: {s.sla_horas}d
+                                </span>
+                              )}
+                            </label>
+                          );
+                        })}
+                        {filteredModalSistemas.length === 0 && (
+                          <p className="text-xs text-muted-foreground text-center py-6">
+                            Nenhum sistema encontrado
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* COMBINATION SUMMARY BANNER */}
+                  <div className="bg-primary/5 border border-primary/20 rounded-lg p-2.5 flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Resumo do lote:</span>
+                    <span className="font-semibold text-foreground">
+                      {selectedColaboradores.length > 0 && selectedSistemas.length > 0 ? (
+                        <>
+                          ⚡ Serão geradas{" "}
+                          <strong className="text-primary font-bold">
+                            {selectedColaboradores.length * selectedSistemas.length}
+                          </strong>{" "}
+                          pendência(s) ({selectedColaboradores.length} colaborador(es) ×{" "}
+                          {selectedSistemas.length} sistema(s))
+                        </>
+                      ) : selectedColaboradores.length > 0 ? (
+                        <>
+                          ⚡ Serão geradas{" "}
+                          <strong className="text-primary font-bold">
+                            {selectedColaboradores.length}
+                          </strong>{" "}
+                          pendência(s) para {selectedColaboradores.length} colaborador(es)
+                        </>
+                      ) : selectedSistemas.length > 0 ? (
+                        <>
+                          ⚡ Serão geradas{" "}
+                          <strong className="text-primary font-bold">
+                            {selectedSistemas.length}
+                          </strong>{" "}
+                          pendência(s) para {selectedSistemas.length} sistema(s)
+                        </>
+                      ) : (
+                        <>1 pendência avulsa será gerada</>
+                      )}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-xs font-semibold">Data de início</Label>
                       <Input
-                        placeholder="Buscar sistema / produto..."
-                        value={modalSisSearch}
-                        onChange={(e) => setModalSisSearch(e.target.value)}
-                        className="h-8 text-xs"
+                        name="data_inicio"
+                        type="date"
+                        value={formDateInicio}
+                        onChange={(e) => setFormDateInicio(e.target.value)}
+                        className="mt-1"
                       />
-                      <div className="h-7 flex items-center px-1 text-[11px] text-muted-foreground">
-                        {sistemas.length} sistemas cadastrados no total
-                      </div>
-                    </div>
-
-                    <div className="border rounded-md p-1.5 h-44 overflow-y-auto bg-background space-y-0.5 divide-y divide-border/40">
-                      {filteredModalSistemas.map((s: any) => {
-                        const isChecked = selectedSistemas.includes(s.id);
-                        return (
-                          <label
-                            key={s.id}
-                            className={`flex items-center justify-between gap-2 text-xs p-1.5 rounded cursor-pointer transition-colors ${
-                              isChecked
-                                ? "bg-primary/10 font-semibold text-primary"
-                                : "hover:bg-accent/50"
-                            }`}
-                          >
-                            <div className="flex items-center gap-2 min-w-0">
-                              <input
-                                type="checkbox"
-                                checked={isChecked}
-                                onChange={(e) => {
-                                  if (e.target.checked) {
-                                    setSelectedSistemas((prev) => [...prev, s.id]);
-                                  } else {
-                                    setSelectedSistemas((prev) => prev.filter((id) => id !== s.id));
-                                  }
-                                }}
-                                className="rounded border-gray-300 text-primary focus:ring-primary h-4 w-4 shrink-0"
-                              />
-                              <span className="truncate">{s.nome}</span>
-                            </div>
-                            {s.sla_horas && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground shrink-0">
-                                SLA: {s.sla_horas}d
-                              </span>
-                            )}
-                          </label>
-                        );
-                      })}
-                      {filteredModalSistemas.length === 0 && (
-                        <p className="text-xs text-muted-foreground text-center py-6">
-                          Nenhum sistema encontrado
-                        </p>
+                      {formDateInicio > todayStr && (
+                        <div className="bg-blue-500/10 text-blue-700 dark:text-blue-400 border border-blue-500/20 p-2 rounded mt-1.5 text-[10px] leading-tight flex items-start gap-1">
+                          <span>📅</span>
+                          <span>Solicitação agendada para o futuro.</span>
+                        </div>
                       )}
                     </div>
+                    <div>
+                      <Label className="text-xs font-semibold">SLA (data limite - opcional)</Label>
+                      <Input name="sla_em" type="datetime-local" className="mt-1" />
+                    </div>
                   </div>
-                </div>
 
-                {/* COMBINATION SUMMARY BANNER */}
-                <div className="bg-primary/5 border border-primary/20 rounded-lg p-2.5 flex items-center justify-between text-xs">
-                  <span className="text-muted-foreground">Resumo do lote:</span>
-                  <span className="font-semibold text-foreground">
-                    {selectedColaboradores.length > 0 && selectedSistemas.length > 0 ? (
-                      <>
-                        ⚡ Serão geradas{" "}
-                        <strong className="text-primary font-bold">
-                          {selectedColaboradores.length * selectedSistemas.length}
-                        </strong>{" "}
-                        pendência(s) ({selectedColaboradores.length} colaborador(es) ×{" "}
-                        {selectedSistemas.length} sistema(s))
-                      </>
-                    ) : selectedColaboradores.length > 0 ? (
-                      <>
-                        ⚡ Serão geradas{" "}
-                        <strong className="text-primary font-bold">
-                          {selectedColaboradores.length}
-                        </strong>{" "}
-                        pendência(s) para {selectedColaboradores.length} colaborador(es)
-                      </>
-                    ) : selectedSistemas.length > 0 ? (
-                      <>
-                        ⚡ Serão geradas{" "}
-                        <strong className="text-primary font-bold">
-                          {selectedSistemas.length}
-                        </strong>{" "}
-                        pendência(s) para {selectedSistemas.length} sistema(s)
-                      </>
-                    ) : (
-                      <>1 pendência avulsa será gerada</>
-                    )}
-                  </span>
-                </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-xs font-semibold">
+                        Operação (Opcional - padrão é a do colaborador)
+                      </Label>
+                      <Select
+                        name="operacao_id"
+                        defaultValue={
+                          selectedOperacaoId !== "todas" && selectedOperacaoId !== "sem_operacao"
+                            ? selectedOperacaoId
+                            : undefined
+                        }
+                      >
+                        <SelectTrigger className="mt-1">
+                          <SelectValue placeholder="Automática (Operação do Colaborador)" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="auto">Automática (Operação do Colaborador)</SelectItem>
+                          {operacoes.map((o: any) => (
+                            <SelectItem key={o.id} value={o.id}>
+                              {o.nome}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="text-xs font-semibold">
+                        Etiquetas (separadas por vírgula)
+                      </Label>
+                      <Input name="etiquetas" placeholder="urgente, tributário" className="mt-1" />
+                    </div>
+                  </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <Label className="text-xs font-semibold">Data de início</Label>
-                    <Input
-                      name="data_inicio"
-                      type="date"
-                      value={formDateInicio}
-                      onChange={(e) => setFormDateInicio(e.target.value)}
-                      className="mt-1"
+                  <div className="flex items-center gap-2 p-2.5 bg-accent/40 rounded-lg">
+                    <input
+                      type="checkbox"
+                      name="solicitado"
+                      id="solicitado"
+                      defaultChecked
+                      className="rounded border-gray-300 text-primary focus:ring-primary h-4 w-4"
                     />
-                    {formDateInicio > todayStr && (
-                      <div className="bg-blue-500/10 text-blue-700 dark:text-blue-400 border border-blue-500/20 p-2 rounded mt-1.5 text-[10px] leading-tight flex items-start gap-1">
-                        <span>📅</span>
-                        <span>Solicitação agendada para o futuro.</span>
-                      </div>
-                    )}
-                  </div>
-                  <div>
-                    <Label className="text-xs font-semibold">SLA (data limite - opcional)</Label>
-                    <Input name="sla_em" type="datetime-local" className="mt-1" />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <Label className="text-xs font-semibold">
-                      Operação (Opcional - padrão é a do colaborador)
+                    <Label htmlFor="solicitado" className="cursor-pointer text-xs font-semibold">
+                      Iniciar já solicitado (Ir direto para o Quadro Kanban de Pendências)
                     </Label>
-                    <Select
-                      name="operacao_id"
-                      defaultValue={
-                        selectedOperacaoId !== "todas" && selectedOperacaoId !== "sem_operacao"
-                          ? selectedOperacaoId
-                          : undefined
-                      }
+                  </div>
+
+                  <DialogFooter className="pt-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setOpen(false)}
+                      disabled={create.isPending}
                     >
-                      <SelectTrigger className="mt-1">
-                        <SelectValue placeholder="Automática (Operação do Colaborador)" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="auto">Automática (Operação do Colaborador)</SelectItem>
-                        {operacoes.map((o: any) => (
-                          <SelectItem key={o.id} value={o.id}>
-                            {o.nome}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label className="text-xs font-semibold">
-                      Etiquetas (separadas por vírgula)
-                    </Label>
-                    <Input name="etiquetas" placeholder="urgente, tributário" className="mt-1" />
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 p-2.5 bg-accent/40 rounded-lg">
-                  <input
-                    type="checkbox"
-                    name="solicitado"
-                    id="solicitado"
-                    defaultChecked
-                    className="rounded border-gray-300 text-primary focus:ring-primary h-4 w-4"
-                  />
-                  <Label htmlFor="solicitado" className="cursor-pointer text-xs font-semibold">
-                    Iniciar já solicitado (Ir direto para o Quadro Kanban de Pendências)
-                  </Label>
-                </div>
-
-                <DialogFooter className="pt-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setOpen(false)}
-                    disabled={create.isPending}
-                  >
-                    Cancelar
-                  </Button>
-                  <Button type="submit" disabled={create.isPending}>
-                    {create.isPending
-                      ? "Criando pendências..."
-                      : `Criar ${
-                          selectedColaboradores.length > 0 && selectedSistemas.length > 0
-                            ? `(${selectedColaboradores.length * selectedSistemas.length})`
-                            : selectedColaboradores.length > 0
-                              ? `(${selectedColaboradores.length})`
-                              : selectedSistemas.length > 0
-                                ? `(${selectedSistemas.length})`
-                                : ""
-                        }`}
-                  </Button>
-                </DialogFooter>
-              </form>
-            </DialogContent>
-          </Dialog>
+                      Cancelar
+                    </Button>
+                    <Button type="submit" disabled={create.isPending}>
+                      {create.isPending
+                        ? "Criando pendências..."
+                        : `Criar ${
+                            selectedColaboradores.length > 0 && selectedSistemas.length > 0
+                              ? `(${selectedColaboradores.length * selectedSistemas.length})`
+                              : selectedColaboradores.length > 0
+                                ? `(${selectedColaboradores.length})`
+                                : selectedSistemas.length > 0
+                                  ? `(${selectedSistemas.length})`
+                                  : ""
+                          }`}
+                    </Button>
+                  </DialogFooter>
+                </form>
+              </DialogContent>
+            </Dialog>
           )}
 
           {canWrite && (
@@ -1450,110 +1456,110 @@ function Pendencias() {
               <Button onClick={() => setOpenQuadros(true)} variant="outline" className="gap-2">
                 <Settings className="h-4 w-4" /> Quadros
               </Button>
-            <DialogContent className="max-w-md">
-              <DialogHeader>
-                <DialogTitle>Gerenciar Quadros</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4">
-                <p className="text-xs text-muted-foreground">
-                  Quadros ativos no Kanban. Crie ou remova quadros conforme a necessidade do seu
-                  fluxo de trabalho.
-                </p>
-                <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                  {quadros.map((q: any) => {
-                    const quadrosNomes = quadros.map((x: any) => x.nome);
-                    const countInQuadro = list.filter(
-                      (p: any) =>
-                        p.solicitado !== false &&
-                        matchesColumnStatus(p.status, q.nome, quadrosNomes),
-                    ).length;
+              <DialogContent className="max-w-md">
+                <DialogHeader>
+                  <DialogTitle>Gerenciar Quadros</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <p className="text-xs text-muted-foreground">
+                    Quadros ativos no Kanban. Crie ou remova quadros conforme a necessidade do seu
+                    fluxo de trabalho.
+                  </p>
+                  <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                    {quadros.map((q: any) => {
+                      const quadrosNomes = quadros.map((x: any) => x.nome);
+                      const countInQuadro = list.filter(
+                        (p: any) =>
+                          p.solicitado !== false &&
+                          matchesColumnStatus(p.status, q.nome, quadrosNomes),
+                      ).length;
 
-                    return (
-                      <div
-                        key={q.id}
-                        className="flex items-center justify-between gap-3 p-2.5 rounded-md border bg-card/60"
-                      >
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={`h-3 w-3 rounded-full shrink-0 ${getQuadroColor(q.cor)}`}
-                          />
-                          <span className="font-semibold text-sm">{q.nome}</span>
-                          <span className="text-xs text-muted-foreground ml-1">
-                            ({countInQuadro} card{countInQuadro === 1 ? "" : "s"})
-                          </span>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                          title="Remover quadro"
-                          onClick={() => {
-                            if (
-                              confirm(
-                                `Deseja realmente remover o quadro "${q.nome}"? As pendências existentes serão mantidas e redistribuídas.`,
-                              )
-                            ) {
-                              delQuadro.mutate(q.id);
-                            }
-                          }}
+                      return (
+                        <div
+                          key={q.id}
+                          className="flex items-center justify-between gap-3 p-2.5 rounded-md border bg-card/60"
                         >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    );
-                  })}
-                  {quadros.length === 0 && (
-                    <p className="text-xs text-muted-foreground text-center py-4">
-                      Nenhum quadro cadastrado.
-                    </p>
-                  )}
-                </div>
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={`h-3 w-3 rounded-full shrink-0 ${getQuadroColor(q.cor)}`}
+                            />
+                            <span className="font-semibold text-sm">{q.nome}</span>
+                            <span className="text-xs text-muted-foreground ml-1">
+                              ({countInQuadro} card{countInQuadro === 1 ? "" : "s"})
+                            </span>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                            title="Remover quadro"
+                            onClick={() => {
+                              if (
+                                confirm(
+                                  `Deseja realmente remover o quadro "${q.nome}"? As pendências existentes serão mantidas e redistribuídas.`,
+                                )
+                              ) {
+                                delQuadro.mutate(q.id);
+                              }
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      );
+                    })}
+                    {quadros.length === 0 && (
+                      <p className="text-xs text-muted-foreground text-center py-4">
+                        Nenhum quadro cadastrado.
+                      </p>
+                    )}
+                  </div>
 
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    const fd = new FormData(e.currentTarget);
-                    const nome = (fd.get("nome") as string)?.trim();
-                    if (!nome) return;
-                    addQuadro.mutate({
-                      nome,
-                      cor: novoQuadroCor || "bg-slate-500",
-                      ordem: quadros.length + 1,
-                    });
-                    e.currentTarget.reset();
-                    setNovoQuadroCor("bg-slate-500");
-                  }}
-                  className="space-y-3 pt-4 border-t"
-                >
-                  <div>
-                    <Label className="text-xs font-semibold">Nome do Novo Quadro</Label>
-                    <Input name="nome" placeholder="Ex: EM TESTE, EM HOMOLOGAÇÃO..." required />
-                  </div>
-                  <div>
-                    <Label className="text-xs font-semibold">Cor do Quadro</Label>
-                    <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
-                      {QUADRO_COLOR_OPTIONS.map((opt) => (
-                        <button
-                          key={opt.value}
-                          type="button"
-                          onClick={() => setNovoQuadroCor(opt.value)}
-                          className={`h-6 w-6 rounded-full ${opt.value} transition-transform ${
-                            novoQuadroCor === opt.value
-                              ? "ring-2 ring-foreground ring-offset-2 scale-110"
-                              : "opacity-75 hover:opacity-100"
-                          }`}
-                          title={opt.label}
-                        />
-                      ))}
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      const fd = new FormData(e.currentTarget);
+                      const nome = (fd.get("nome") as string)?.trim();
+                      if (!nome) return;
+                      addQuadro.mutate({
+                        nome,
+                        cor: novoQuadroCor || "bg-slate-500",
+                        ordem: quadros.length + 1,
+                      });
+                      e.currentTarget.reset();
+                      setNovoQuadroCor("bg-slate-500");
+                    }}
+                    className="space-y-3 pt-4 border-t"
+                  >
+                    <div>
+                      <Label className="text-xs font-semibold">Nome do Novo Quadro</Label>
+                      <Input name="nome" placeholder="Ex: EM TESTE, EM HOMOLOGAÇÃO..." required />
                     </div>
-                  </div>
-                  <Button type="submit" className="w-full" disabled={addQuadro.isPending}>
-                    {addQuadro.isPending ? "Adicionando..." : "Adicionar Quadro"}
-                  </Button>
-                </form>
-              </div>
-            </DialogContent>
-          </Dialog>
+                    <div>
+                      <Label className="text-xs font-semibold">Cor do Quadro</Label>
+                      <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
+                        {QUADRO_COLOR_OPTIONS.map((opt) => (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            onClick={() => setNovoQuadroCor(opt.value)}
+                            className={`h-6 w-6 rounded-full ${opt.value} transition-transform ${
+                              novoQuadroCor === opt.value
+                                ? "ring-2 ring-foreground ring-offset-2 scale-110"
+                                : "opacity-75 hover:opacity-100"
+                            }`}
+                            title={opt.label}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                    <Button type="submit" className="w-full" disabled={addQuadro.isPending}>
+                      {addQuadro.isPending ? "Adicionando..." : "Adicionar Quadro"}
+                    </Button>
+                  </form>
+                </div>
+              </DialogContent>
+            </Dialog>
           )}
         </div>
       </div>

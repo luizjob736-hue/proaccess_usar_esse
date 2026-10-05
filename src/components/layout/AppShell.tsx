@@ -234,9 +234,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     !isAdmin &&
     !isCliente &&
     !isConsulta &&
-    !userRoles.some((r) =>
-      ["admin", "admin_master", "analista", "supervisor"].includes(r),
-    );
+    !userRoles.some((r) => ["admin", "admin_master", "analista", "supervisor"].includes(r));
 
   let navSections: NavSection[] = SECTIONS_FULL;
   if (isCliente) {
@@ -435,7 +433,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                       <DropdownMenuSeparator />
                     </>
                   )}
-                  <DropdownMenuItem onClick={signOut} className="text-destructive focus:text-destructive">
+                  <DropdownMenuItem
+                    onClick={signOut}
+                    className="text-destructive focus:text-destructive"
+                  >
                     <LogOut className="mr-2 h-4 w-4" /> Sair do Sistema
                   </DropdownMenuItem>
                 </DropdownMenuContent>
@@ -478,4 +479,3 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     </UserInactivityProvider>
   );
 }
-

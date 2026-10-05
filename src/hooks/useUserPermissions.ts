@@ -40,11 +40,9 @@ export function useUserPermissions() {
         u.user.role === "admin" ||
         u.user.role === "admin_master";
 
-      const isConsulta =
-        (roles.includes("consulta") || u.user.role === "consulta") && !isAdmin;
+      const isConsulta = (roles.includes("consulta") || u.user.role === "consulta") && !isAdmin;
 
-      const isCliente =
-        (roles.includes("cliente") || u.user.role === "cliente") && !isAdmin;
+      const isCliente = (roles.includes("cliente") || u.user.role === "cliente") && !isAdmin;
 
       const isOperador =
         (roles.includes("operador") || u.user.role === "operador") &&

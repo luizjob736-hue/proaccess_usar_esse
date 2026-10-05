@@ -23,7 +23,16 @@ import {
   DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Plus, LifeBuoy, Check, X, MessageCircle, Wrench, AlertTriangle, Clock } from "lucide-react";
+import {
+  Plus,
+  LifeBuoy,
+  Check,
+  X,
+  MessageCircle,
+  Wrench,
+  AlertTriangle,
+  Clock,
+} from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/chamados")({ component: Chamados });
@@ -150,7 +159,8 @@ function Chamados() {
             </Badge>
           </div>
           <p className="text-xs text-amber-800/90 dark:text-amber-300/80 mt-0.5">
-            O módulo de chamados está passando por atualizações técnicas e melhorias operacionais. Em breve novas solicitações estarão totalmente liberadas.
+            O módulo de chamados está passando por atualizações técnicas e melhorias operacionais.
+            Em breve novas solicitações estarão totalmente liberadas.
           </p>
         </div>
       </div>

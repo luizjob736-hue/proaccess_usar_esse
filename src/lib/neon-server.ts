@@ -983,7 +983,14 @@ export const neonQueryServerFn = createServerFn({ method: "POST" })
             data.payload = sanitized;
           }
         }
-      } else if (currentUser && (currentUser.role === "consulta" || (currentUser.roles && currentUser.roles.includes("consulta") && !currentUser.roles.includes("admin") && !currentUser.roles.includes("admin_master")))) {
+      } else if (
+        currentUser &&
+        (currentUser.role === "consulta" ||
+          (currentUser.roles &&
+            currentUser.roles.includes("consulta") &&
+            !currentUser.roles.includes("admin") &&
+            !currentUser.roles.includes("admin_master")))
+      ) {
         if (isWrite) {
           throw new Error(
             "Não autorizado: Usuários com perfil de Consulta possuem permissão apenas para visualização e exportação.",
@@ -1002,12 +1009,23 @@ export const neonQueryServerFn = createServerFn({ method: "POST" })
 
       // Restrict pendencias_pine and pendencias_pine_sistemas writes
       if (table === "pendencias_pine" || table === "pendencias_pine_sistemas") {
-        const allowedRoles = ["admin_master", "admin", "cliente", "consulta", "analista", "supervisor"];
+        const allowedRoles = [
+          "admin_master",
+          "admin",
+          "cliente",
+          "consulta",
+          "analista",
+          "supervisor",
+        ];
         if (currentUser && !allowedRoles.includes(currentUser.role)) {
-          throw new Error("Não autorizado: Acesso restrito a Administradores, Clientes e Consulta.");
+          throw new Error(
+            "Não autorizado: Acesso restrito a Administradores, Clientes e Consulta.",
+          );
         }
         if (currentUser && currentUser.role === "consulta" && isWrite) {
-          throw new Error("Não autorizado: Usuários com perfil de Consulta possuem permissão apenas para visualização e exportação.");
+          throw new Error(
+            "Não autorizado: Usuários com perfil de Consulta possuem permissão apenas para visualização e exportação.",
+          );
         }
       }
 

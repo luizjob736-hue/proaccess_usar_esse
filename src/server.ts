@@ -54,8 +54,7 @@ export default {
         const cookie = request.headers.get("cookie") || "";
         const authHeader = request.headers.get("authorization") || "";
         const hasSession =
-          cookie.includes("proaccess_neon_session") ||
-          authHeader.startsWith("Bearer neon_token_");
+          cookie.includes("proaccess_neon_session") || authHeader.startsWith("Bearer neon_token_");
 
         if (!hasSession) {
           return new Response(
@@ -65,10 +64,7 @@ export default {
         }
 
         const format = (url.searchParams.get("format") || "sql.gz") as
-          | "sql"
-          | "sql.gz"
-          | "json"
-          | "json.gz";
+          "sql" | "sql.gz" | "json" | "json.gz";
 
         const { exportNeonDumpPayload } = await import("./lib/neon-dump");
         const payload = await exportNeonDumpPayload(format);

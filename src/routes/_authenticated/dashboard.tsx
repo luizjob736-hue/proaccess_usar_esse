@@ -96,7 +96,7 @@ function Dashboard() {
                 return await db
                   .from("pendencias_pine")
                   .select(
-                    "id, status, arquivado, sistemas_valores, funcao, sistema_pine_id, criado_em, colaborador_nome",
+                    "id, status, arquivado, sistemas_valores, funcao, sistema_pine_id, criado_em, colaborador_id, colaborador:colaboradores(id, nome)",
                   );
               } catch {
                 return { data: [] };
@@ -169,7 +169,7 @@ function Dashboard() {
           })),
           ...pinePendList.map((p: any) => ({
             id: p.id,
-            titulo: `Pendência Pine - ${p.colaborador_nome || p.funcao || "Colaborador"}`,
+            titulo: `Pendência Pine - ${p.colaborador?.nome || p.funcao || "Colaborador"}`,
             descricao: `Função: ${p.funcao || "-"}`,
             status: p.status || "pendente",
             prioridade: "media",

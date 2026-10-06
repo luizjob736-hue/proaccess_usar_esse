@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
 import { db } from "@/integrations/database/client";
@@ -7,6 +7,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -23,6 +33,23 @@ import {
   LifeBuoy,
   Grid3x3,
   UserPlus,
+  Check,
+  X,
+  AlertTriangle,
+  FileSpreadsheet,
+  Eye,
+  ArrowRight,
+  Layers,
+  HelpCircle,
+  Search,
+  RefreshCw,
+  Sparkles,
+  FileCheck,
+  CheckCheck,
+  FileText,
+  Info,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import { matchesColumnStatus } from "./pendencias";
@@ -505,6 +532,29 @@ const TAB_GROUPS: { value: TabGroup; label: string; keys: TemplateKey[] }[] = [
   },
 ];
 
+function getMandatoryHeaders(kind: TemplateKey): string[] {
+  switch (kind) {
+    case "matriz":
+    case "colaboradores":
+    case "inativos":
+    case "pre_atendimento":
+      return ["Nome", "CPF"];
+    case "operacoes":
+    case "sistemas":
+      return ["Nome"];
+    case "perfis_acesso":
+      return ["Nome", "Sistema"];
+    case "acessos":
+      return ["CPF Colaborador", "Sistema", "Login"];
+    case "pendencias":
+      return ["Título", "Tipo", "Status"];
+    case "chamados":
+      return ["Título", "Tipo", "Status", "Sistema"];
+    default:
+      return ["Nome"];
+  }
+}
+
 function downloadCSV(key: TemplateKey, sistemasAll: any[] = []) {
   let headers: string[];
   let sample: Record<string, string>[];
@@ -690,6 +740,27 @@ function Importar() {
   );
 }
 
+interface MatchedColumnItem {
+  expected: string;
+  foundInFile: string;
+  isMandatory: boolean;
+}
+
+interface PendingImportData {
+  file: File;
+  fileName: string;
+  fileSize: string;
+  isExcel: boolean;
+  rows: Record<string, string>[];
+  fileHeaders: string[];
+  expectedHeaders: string[];
+  matchedColumns: MatchedColumnItem[];
+  missingMandatory: string[];
+  missingOptional: string[];
+  extraHeaders: string[];
+  matchScore: number;
+}
+
 function ImportCard({
   kind,
   sistemasAll = [],
@@ -701,6 +772,11 @@ function ImportCard({
 }) {
   const { canWrite, isConsulta } = useUserPermissions();
   const [showPreview, setShowPreview] = useState(false);
+  const [pendingImport, setPendingImport] = useState<PendingImportData | null>(null);
+  const [verifyOpen, setVerifyOpen] = useState(false);
+  const [previewSearch, setPreviewSearch] = useState("");
+  const [previewPage, setPreviewPage] = useState(1);
+  const PREVIEW_PAGE_SIZE = 25;
 
   let t;
   let baseHeaders: string[] = [];
@@ -836,6 +912,9 @@ function ImportCard({
         file.type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
         file.type === "application/vnd.ms-excel";
 
+      let rows: Record<string, string>[] = [];
+      let fileHeaders: string[] = [];
+
       if (isExcel) {
         const buffer = await file.arrayBuffer();
         const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
@@ -847,7 +926,11 @@ function ImportCard({
           dateNF: "yyyy-mm-dd",
         });
 
-        const rows = jsonData
+        if (jsonData.length > 0) {
+          fileHeaders = Object.keys(jsonData[0]).map((k) => k.trim());
+        }
+
+        rows = jsonData
           .map((r: any) => {
             const newR: Record<string, string> = {};
             for (const [k, v] of Object.entries(r)) {
@@ -856,262 +939,752 @@ function ImportCard({
             return newR;
           })
           .filter((r) => Object.values(r).some((v) => v && String(v).trim()));
+      } else {
+        let text = await file.text();
+        // Remove UTF-8 BOM if present
+        if (text.charCodeAt(0) === 0xfeff) {
+          text = text.slice(1);
+        }
+        // Remove sep=; directive line if present at start of CSV
+        text = text.replace(/^sep=\s*;\s*\r?\n/i, "");
 
-        if (rows.length === 0) {
-          toast.warning("Arquivo Excel está vazio ou sem linhas de dados");
-          setBusy(false);
-          return;
-        }
-        const out = await importRows(kind, rows, selectedOperacaoId);
-        setResult(out);
-        if (out.ok > 0) {
-          qc.invalidateQueries();
-        }
-        if (out.fail === 0) {
-          toast.success(`${out.ok} registros importados com sucesso!`);
-        } else {
-          toast.warning(`${out.ok} importados, ${out.fail} falhas encontradas.`);
-        }
+        await new Promise<void>((resolve, reject) => {
+          Papa.parse<Record<string, string>>(text, {
+            header: true,
+            skipEmptyLines: true,
+            transformHeader: (header) => header.trim(),
+            delimitersToGuess: [";", ",", "\t", "|"],
+            complete: (res) => {
+              fileHeaders = (res.meta.fields || []).map((f) => f.trim());
+              rows = res.data
+                .map((r) => {
+                  const newR: Record<string, string> = {};
+                  for (const [k, v] of Object.entries(r)) {
+                    if (k) newR[k.trim()] = String(v ?? "").substring(0, 250);
+                  }
+                  return newR;
+                })
+                .filter((r) => Object.values(r).some((v) => v && String(v).trim()));
+              resolve();
+            },
+            error: (err) => reject(new Error(`Falha ao ler CSV: ${err.message}`)),
+          });
+        });
+      }
+
+      if (rows.length === 0) {
+        toast.warning("Arquivo está vazio ou não possui linhas de dados válidas");
         setBusy(false);
         return;
       }
 
-      let text = await file.text();
-      // Remove UTF-8 BOM if present
-      if (text.charCodeAt(0) === 0xfeff) {
-        text = text.slice(1);
-      }
-      // Remove sep=; directive line if present at start of CSV
-      text = text.replace(/^sep=\s*;\s*\r?\n/i, "");
+      const cleanKey = (k: string) =>
+        k
+          .toLowerCase()
+          .trim()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .replace(/[^a-z0-9]/g, "");
 
-      Papa.parse<Record<string, string>>(text, {
-        header: true,
-        skipEmptyLines: true,
-        transformHeader: (header) => header.trim(),
-        delimitersToGuess: [";", ",", "\t", "|"],
-        complete: async (res) => {
-          try {
-            const rows = res.data
-              .map((r) => {
-                const newR: Record<string, string> = {};
-                for (const [k, v] of Object.entries(r)) {
-                  if (k) newR[k.trim()] = String(v ?? "").substring(0, 250);
-                }
-                return newR;
-              })
-              .filter((r) => Object.values(r).some((v) => v && String(v).trim()));
-            if (rows.length === 0) {
-              toast.warning("Arquivo CSV está vazio ou sem linhas de dados");
-              setBusy(false);
-              return;
-            }
-            const out = await importRows(kind, rows, selectedOperacaoId);
-            setResult(out);
-            if (out.ok > 0) {
-              qc.invalidateQueries();
-            }
-            if (out.fail === 0) {
-              toast.success(`${out.ok} registros importados com sucesso!`);
-            } else {
-              toast.warning(`${out.ok} importados, ${out.fail} falhas encontradas.`);
-            }
-          } catch (e: any) {
-            toast.error(e.message ?? "Erro interno ao processar importação");
-          } finally {
-            setBusy(false);
+      const expectedHeaders = t.headers;
+      const mandatoryHeaders = getMandatoryHeaders(kind);
+
+      const matchedColumns: MatchedColumnItem[] = [];
+      const missingMandatory: string[] = [];
+      const missingOptional: string[] = [];
+
+      expectedHeaders.forEach((eh: string) => {
+        const isMandatory = mandatoryHeaders.some((mh) => cleanKey(mh) === cleanKey(eh));
+        const matchedFileHeader = fileHeaders.find((fh) => cleanKey(fh) === cleanKey(eh));
+        if (matchedFileHeader) {
+          matchedColumns.push({
+            expected: eh,
+            foundInFile: matchedFileHeader,
+            isMandatory,
+          });
+        } else {
+          if (isMandatory) {
+            missingMandatory.push(eh);
+          } else {
+            missingOptional.push(eh);
           }
-        },
-        error: (err) => {
-          toast.error(`Falha ao ler o arquivo CSV: ${err.message}`);
-          setBusy(false);
-        },
+        }
       });
+
+      const extraHeaders = fileHeaders.filter(
+        (fh) => !expectedHeaders.some((eh: string) => cleanKey(eh) === cleanKey(fh)),
+      );
+
+      const matchScore = Math.round(
+        (matchedColumns.length / Math.max(expectedHeaders.length, 1)) * 100,
+      );
+
+      setPendingImport({
+        file,
+        fileName: file.name,
+        fileSize: (file.size / 1024).toFixed(1) + " KB",
+        isExcel,
+        rows,
+        fileHeaders,
+        expectedHeaders,
+        matchedColumns,
+        missingMandatory,
+        missingOptional,
+        extraHeaders,
+        matchScore,
+      });
+
+      setPreviewSearch("");
+      setPreviewPage(1);
+      setVerifyOpen(true);
+      setBusy(false);
     } catch (err: any) {
       toast.error(`Erro ao carregar o arquivo: ${err?.message || err}`);
       setBusy(false);
     }
   }
 
-  return (
-    <Card className="border border-neutral-200 dark:border-neutral-800 shadow-sm">
-      <CardHeader className="space-y-1">
-        <CardTitle className="flex items-center gap-2.5 text-lg font-semibold text-neutral-950 dark:text-neutral-50">
-          <Icon className="h-5 w-5 text-primary" /> {t.title}
-        </CardTitle>
-        <p className="text-sm text-muted-foreground leading-relaxed">{t.desc}</p>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wider block">
-              Colunas Esperadas (Delimitador: Semicolon / Ponto e vírgula ";")
-            </span>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowPreview(!showPreview)}
-              className="text-xs h-7 text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100"
-            >
-              {showPreview ? "Ocultar Prévia" : "Ver Exemplo de Preenchimento"}
-            </Button>
-          </div>
+  async function confirmImport() {
+    if (!pendingImport) return;
+    setBusy(true);
+    try {
+      const out = await importRows(kind, pendingImport.rows, selectedOperacaoId);
+      setResult(out);
+      setVerifyOpen(false);
+      setPendingImport(null);
+      if (out.ok > 0) {
+        qc.invalidateQueries();
+      }
+      if (out.fail === 0) {
+        toast.success(`${out.ok} registros importados com sucesso!`);
+      } else {
+        toast.warning(`${out.ok} importados, ${out.fail} falhas encontradas.`);
+      }
+    } catch (e: any) {
+      toast.error(e.message ?? "Erro interno ao processar importação");
+    } finally {
+      setBusy(false);
+    }
+  }
 
-          <div className="space-y-2">
-            <div>
-              <div className="flex flex-wrap gap-1.5">
-                {baseHeaders.map((h) => {
-                  const isRequired = h.toLowerCase() === "nome" || h.toLowerCase() === "cpf";
-                  return (
-                    <Badge
-                      key={h}
-                      variant="secondary"
-                      className={cn(
-                        "font-medium text-xs px-2.5 py-0.5 border shadow-none",
-                        isRequired
-                          ? "bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900 border-neutral-900 dark:border-neutral-100 font-semibold"
-                          : "bg-neutral-100 dark:bg-neutral-800/80 text-neutral-800 dark:text-neutral-200 border-neutral-200/80 dark:border-neutral-700/80",
-                      )}
-                    >
-                      {h}
-                      {isRequired && <span className="ml-1 text-[10px] opacity-75">*</span>}
-                    </Badge>
-                  );
-                })}
-              </div>
+  const filteredPreviewRows = useMemo(() => {
+    if (!pendingImport) return [];
+    if (!previewSearch.trim()) return pendingImport.rows;
+    const term = previewSearch.toLowerCase();
+    return pendingImport.rows.filter((row) =>
+      Object.values(row).some((val) => String(val).toLowerCase().includes(term)),
+    );
+  }, [pendingImport, previewSearch]);
+
+  const totalPreviewPages = Math.ceil(filteredPreviewRows.length / PREVIEW_PAGE_SIZE) || 1;
+  const paginatedPreviewRows = useMemo(() => {
+    const start = (previewPage - 1) * PREVIEW_PAGE_SIZE;
+    return filteredPreviewRows.slice(start, start + PREVIEW_PAGE_SIZE);
+  }, [filteredPreviewRows, previewPage]);
+
+  return (
+    <>
+      <Card className="border border-neutral-200 dark:border-neutral-800 shadow-sm">
+        <CardHeader className="space-y-1">
+          <CardTitle className="flex items-center gap-2.5 text-lg font-semibold text-neutral-950 dark:text-neutral-50">
+            <Icon className="h-5 w-5 text-primary" /> {t.title}
+          </CardTitle>
+          <p className="text-sm text-muted-foreground leading-relaxed">{t.desc}</p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wider block">
+                Colunas Esperadas (Delimitador: Semicolon / Ponto e vírgula ";")
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowPreview(!showPreview)}
+                className="text-xs h-7 text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100"
+              >
+                {showPreview ? "Ocultar Prévia" : "Ver Exemplo de Preenchimento"}
+              </Button>
             </div>
 
-            {systemHeaders.length > 0 && (
-              <div className="pt-1">
-                <span className="text-[11px] font-medium text-neutral-500 block mb-1.5">
-                  Credenciais por Sistema Homologado ({sistemasAll.length}{" "}
-                  {sistemasAll.length === 1 ? "sistema cadastrado" : "sistemas cadastrados"}):
-                </span>
-                <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-1.5 rounded-md bg-neutral-50 dark:bg-neutral-900/50 border border-neutral-200/60 dark:border-neutral-800/60">
-                  {sistemasAll.map((s: any) => (
-                    <span key={s.id} className="inline-flex items-center gap-1">
+            <div className="space-y-2">
+              <div>
+                <div className="flex flex-wrap gap-1.5">
+                  {baseHeaders.map((h) => {
+                    const isRequired = h.toLowerCase() === "nome" || h.toLowerCase() === "cpf";
+                    return (
                       <Badge
-                        variant="outline"
-                        className="text-[11px] px-2 py-0.5 bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-800"
+                        key={h}
+                        variant="secondary"
+                        className={cn(
+                          "font-medium text-xs px-2.5 py-0.5 border shadow-none",
+                          isRequired
+                            ? "bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900 border-neutral-900 dark:border-neutral-100 font-semibold"
+                            : "bg-neutral-100 dark:bg-neutral-800/80 text-neutral-800 dark:text-neutral-200 border-neutral-200/80 dark:border-neutral-700/80",
+                        )}
                       >
-                        {s.nome} - Usuário
+                        {h}
+                        {isRequired && <span className="ml-1 text-[10px] opacity-75">*</span>}
                       </Badge>
-                      <Badge
-                        variant="outline"
-                        className="text-[11px] px-2 py-0.5 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800"
-                      >
-                        {s.nome} - Senha
-                      </Badge>
-                    </span>
-                  ))}
+                    );
+                  })}
+                </div>
+              </div>
+
+              {systemHeaders.length > 0 && (
+                <div className="pt-1">
+                  <span className="text-[11px] font-medium text-neutral-500 block mb-1.5">
+                    Credenciais por Sistema Homologado ({sistemasAll.length}{" "}
+                    {sistemasAll.length === 1 ? "sistema cadastrado" : "sistemas cadastrados"}):
+                  </span>
+                  <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-1.5 rounded-md bg-neutral-50 dark:bg-neutral-900/50 border border-neutral-200/60 dark:border-neutral-800/60">
+                    {sistemasAll.map((s: any) => (
+                      <span key={s.id} className="inline-flex items-center gap-1">
+                        <Badge
+                          variant="outline"
+                          className="text-[11px] px-2 py-0.5 bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-800"
+                        >
+                          {s.nome} - Usuário
+                        </Badge>
+                        <Badge
+                          variant="outline"
+                          className="text-[11px] px-2 py-0.5 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800"
+                        >
+                          {s.nome} - Senha
+                        </Badge>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {showPreview && (
+              <div className="rounded-md border border-neutral-200 dark:border-neutral-800 bg-neutral-50/50 dark:bg-neutral-900/30 p-3 space-y-2 text-xs animate-in fade-in">
+                <div className="flex items-center justify-between text-muted-foreground font-medium">
+                  <span>Pré-visualização do Formato da Planilha:</span>
+                  <span className="text-[11px]">Codificação: UTF-8 / Separador: ;</span>
+                </div>
+                <div className="overflow-x-auto border border-neutral-200 dark:border-neutral-800 rounded bg-white dark:bg-neutral-950">
+                  <table className="min-w-full text-[11px] divide-y divide-neutral-200 dark:divide-neutral-800">
+                    <thead className="bg-neutral-100 dark:bg-neutral-900">
+                      <tr>
+                        {t.headers.map((h: string) => (
+                          <th
+                            key={h}
+                            className="px-2.5 py-1.5 text-left font-semibold text-neutral-700 dark:text-neutral-300 border-r border-neutral-200 dark:border-neutral-800 last:border-0 whitespace-nowrap"
+                          >
+                            {h}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
+                      <tr>
+                        {t.headers.map((h: string) => (
+                          <td
+                            key={h}
+                            className="px-2.5 py-1.5 text-neutral-600 dark:text-neutral-400 border-r border-neutral-200 dark:border-neutral-800 last:border-0 whitespace-nowrap font-mono text-[10.5px]"
+                          >
+                            {sampleRow[h] ?? "-"}
+                          </td>
+                        ))}
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
               </div>
             )}
           </div>
 
-          {showPreview && (
-            <div className="rounded-md border border-neutral-200 dark:border-neutral-800 bg-neutral-50/50 dark:bg-neutral-900/30 p-3 space-y-2 text-xs animate-in fade-in">
-              <div className="flex items-center justify-between text-muted-foreground font-medium">
-                <span>Pré-visualização do Formato da Planilha:</span>
-                <span className="text-[11px]">Codificação: UTF-8 / Separador: ;</span>
+          <div className="flex flex-wrap items-center gap-3 pt-2">
+            <Button
+              variant="outline"
+              onClick={() => downloadCSV(kind, sistemasAll)}
+              className="gap-2 border-neutral-300 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-900"
+            >
+              <FileDown className="h-4 w-4" /> Baixar Modelo Excel (.CSV)
+            </Button>
+            <label className="inline-flex cursor-pointer">
+              <Input
+                type="file"
+                accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+                disabled={!canWrite || busy}
+                className="hidden"
+                onChange={(e) => {
+                  if (!canWrite) return;
+                  const f = e.target.files?.[0];
+                  if (f) handleFile(f);
+                  e.currentTarget.value = "";
+                }}
+              />
+              {canWrite ? (
+                <Button asChild disabled={busy} className="gap-2">
+                  <span>
+                    <Upload className="h-4 w-4" />{" "}
+                    {busy ? "Carregando..." : "Selecionar Planilha para Conferir e Importar"}
+                  </span>
+                </Button>
+              ) : (
+                <Button disabled variant="outline" className="gap-2">
+                  <Upload className="h-4 w-4" /> Importação Desativada (Modo Consulta)
+                </Button>
+              )}
+            </label>
+          </div>
+
+          {result && (
+            <div className="rounded-lg border border-neutral-100 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900/50 p-4 text-sm space-y-2 mt-4 animate-fade-in">
+              <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-500 font-medium">
+                <CheckCircle2 className="h-4 w-4" /> Importados/Atualizados: {result.ok}
               </div>
-              <div className="overflow-x-auto border border-neutral-200 dark:border-neutral-800 rounded bg-white dark:bg-neutral-950">
-                <table className="min-w-full text-[11px] divide-y divide-neutral-200 dark:divide-neutral-800">
-                  <thead className="bg-neutral-100 dark:bg-neutral-900">
-                    <tr>
-                      {t.headers.map((h: string) => (
-                        <th
-                          key={h}
-                          className="px-2.5 py-1.5 text-left font-semibold text-neutral-700 dark:text-neutral-300 border-r border-neutral-200 dark:border-neutral-800 last:border-0 whitespace-nowrap"
-                        >
-                          {h}
-                        </th>
+              {result.fail > 0 && (
+                <>
+                  <div className="flex items-center gap-2 text-destructive font-medium">
+                    <AlertCircle className="h-4 w-4" /> Erros de Validação: {result.fail}
+                  </div>
+                  <div className="max-h-48 overflow-auto rounded-md bg-white dark:bg-neutral-950 p-3 border border-neutral-200 dark:border-neutral-800">
+                    <ul className="list-disc pl-5 text-xs text-muted-foreground space-y-1">
+                      {result.errors.slice(0, 30).map((e, i) => (
+                        <li key={i} className="text-red-500 dark:text-red-400">
+                          {e}
+                        </li>
                       ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
-                    <tr>
-                      {t.headers.map((h: string) => (
-                        <td
-                          key={h}
-                          className="px-2.5 py-1.5 text-neutral-600 dark:text-neutral-400 border-r border-neutral-200 dark:border-neutral-800 last:border-0 whitespace-nowrap font-mono text-[10.5px]"
-                        >
-                          {sampleRow[h] ?? "-"}
-                        </td>
-                      ))}
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
+                      {result.errors.length > 30 && (
+                        <li className="list-none text-neutral-400 pt-1">
+                          ...e mais {result.errors.length - 30} erros ocultados.
+                        </li>
+                      )}
+                    </ul>
+                  </div>
+                </>
+              )}
             </div>
           )}
-        </div>
+        </CardContent>
+      </Card>
 
-        <div className="flex flex-wrap items-center gap-3 pt-2">
-          <Button
-            variant="outline"
-            onClick={() => downloadCSV(kind, sistemasAll)}
-            className="gap-2 border-neutral-300 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-900"
-          >
-            <FileDown className="h-4 w-4" /> Baixar Modelo Excel (.CSV)
-          </Button>
-          <label className="inline-flex cursor-pointer">
-            <Input
-              type="file"
-              accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
-              disabled={!canWrite || busy}
-              className="hidden"
-              onChange={(e) => {
-                if (!canWrite) return;
-                const f = e.target.files?.[0];
-                if (f) handleFile(f);
-                e.currentTarget.value = "";
-              }}
-            />
-            {canWrite ? (
-              <Button asChild disabled={busy} className="gap-2">
-                <span>
-                  <Upload className="h-4 w-4" />{" "}
-                  {busy ? "Importando..." : "Selecionar e Enviar Arquivo"}
-                </span>
-              </Button>
-            ) : (
-              <Button disabled variant="outline" className="gap-2">
-                <Upload className="h-4 w-4" /> Importação Desativada (Modo Consulta)
-              </Button>
-            )}
-          </label>
-        </div>
-
-        {result && (
-          <div className="rounded-lg border border-neutral-100 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900/50 p-4 text-sm space-y-2 mt-4 animate-fade-in">
-            <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-500 font-medium">
-              <CheckCircle2 className="h-4 w-4" /> Importados/Atualizados: {result.ok}
-            </div>
-            {result.fail > 0 && (
-              <>
-                <div className="flex items-center gap-2 text-destructive font-medium">
-                  <AlertCircle className="h-4 w-4" /> Erros de Validação: {result.fail}
+      {/* MODAL DE CONFERÊNCIA PRÉVIA DA IMPORTAÇÃO */}
+      {pendingImport && (
+        <Dialog open={verifyOpen} onOpenChange={setVerifyOpen}>
+          <DialogContent className="sm:max-w-4xl max-h-[92vh] flex flex-col p-0 gap-0 overflow-hidden bg-background">
+            <DialogHeader className="p-5 pb-3 border-b bg-muted/20">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary shrink-0 border border-primary/20">
+                    <FileCheck className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <DialogTitle className="text-lg font-bold flex items-center gap-2">
+                      <span>Conferência Prévia de Importação:</span>
+                      <span className="text-primary">{t.title}</span>
+                    </DialogTitle>
+                    <DialogDescription className="text-xs mt-0.5">
+                      Confira se as colunas e os dados da planilha correspondem ao layout esperado
+                      antes de gravar no banco de dados.
+                    </DialogDescription>
+                  </div>
                 </div>
-                <div className="max-h-48 overflow-auto rounded-md bg-white dark:bg-neutral-950 p-3 border border-neutral-200 dark:border-neutral-800">
-                  <ul className="list-disc pl-5 text-xs text-muted-foreground space-y-1">
-                    {result.errors.slice(0, 30).map((e, i) => (
-                      <li key={i} className="text-red-500 dark:text-red-400">
-                        {e}
-                      </li>
+
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    "text-xs px-2.5 py-1 font-semibold shrink-0 gap-1.5",
+                    pendingImport.missingMandatory.length === 0
+                      ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
+                      : "bg-red-500/10 text-red-700 dark:text-red-300 border-red-500/30",
+                  )}
+                >
+                  {pendingImport.missingMandatory.length === 0 ? (
+                    <>
+                      <Check className="h-3.5 w-3.5 text-emerald-600" />
+                      Colunas Compatíveis
+                    </>
+                  ) : (
+                    <>
+                      <AlertTriangle className="h-3.5 w-3.5 text-red-600" />
+                      {pendingImport.missingMandatory.length} Campo(s) Obrigatório(s) Ausente(s)
+                    </>
+                  )}
+                </Badge>
+              </div>
+
+              {/* Cards de Métricas Rápidas do Arquivo */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-3">
+                <div className="p-2.5 rounded-lg border bg-background/80 shadow-2xs space-y-0.5">
+                  <span className="text-[11px] font-medium text-muted-foreground flex items-center gap-1">
+                    <FileSpreadsheet className="h-3.5 w-3.5 text-primary" /> Arquivo
+                  </span>
+                  <p
+                    className="text-xs font-bold text-foreground truncate"
+                    title={pendingImport.fileName}
+                  >
+                    {pendingImport.fileName}
+                  </p>
+                  <span className="text-[10px] text-muted-foreground block">
+                    {pendingImport.fileSize} • {pendingImport.isExcel ? "Excel XLSX" : "CSV"}
+                  </span>
+                </div>
+
+                <div className="p-2.5 rounded-lg border bg-background/80 shadow-2xs space-y-0.5">
+                  <span className="text-[11px] font-medium text-muted-foreground flex items-center gap-1">
+                    <Layers className="h-3.5 w-3.5 text-emerald-600" /> Total de Linhas
+                  </span>
+                  <p className="text-base font-extrabold text-foreground">
+                    {pendingImport.rows.length} registros
+                  </p>
+                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium block">
+                    Prontos para validação
+                  </span>
+                </div>
+
+                <div className="p-2.5 rounded-lg border bg-background/80 shadow-2xs space-y-0.5">
+                  <span className="text-[11px] font-medium text-muted-foreground flex items-center gap-1">
+                    <CheckCheck className="h-3.5 w-3.5 text-blue-600" /> Colunas Reconhecidas
+                  </span>
+                  <p className="text-base font-extrabold text-foreground">
+                    {pendingImport.matchedColumns.length} de {pendingImport.expectedHeaders.length}
+                  </p>
+                  <span className="text-[10px] text-muted-foreground block">
+                    {pendingImport.matchScore}% dos campos previstos
+                  </span>
+                </div>
+
+                <div className="p-2.5 rounded-lg border bg-background/80 shadow-2xs space-y-0.5">
+                  <span className="text-[11px] font-medium text-muted-foreground flex items-center gap-1">
+                    <Building2 className="h-3.5 w-3.5 text-amber-600" /> Operação
+                  </span>
+                  <p className="text-xs font-bold text-foreground truncate">
+                    {selectedOperacaoId === "todas"
+                      ? "Detectar por Linha / Todas"
+                      : "Operação Ativa"}
+                  </p>
+                  <span className="text-[10px] text-muted-foreground block">Escopo de destino</span>
+                </div>
+              </div>
+            </DialogHeader>
+
+            <Tabs defaultValue="colunas" className="flex-1 flex flex-col overflow-hidden">
+              <div className="px-5 pt-2 border-b bg-muted/10">
+                <TabsList className="bg-muted/50 h-9 p-0.5">
+                  <TabsTrigger value="colunas" className="text-xs gap-1.5 h-8">
+                    <CheckCheck className="h-3.5 w-3.5" />
+                    Conferência das Colunas ({pendingImport.matchedColumns.length}/
+                    {pendingImport.expectedHeaders.length})
+                  </TabsTrigger>
+                  <TabsTrigger value="dados" className="text-xs gap-1.5 h-8">
+                    <FileText className="h-3.5 w-3.5" />
+                    Prévia dos Dados ({pendingImport.rows.length} linhas)
+                  </TabsTrigger>
+                </TabsList>
+              </div>
+
+              {/* ABA 1: CONFERÊNCIA DAS COLUNAS */}
+              <TabsContent value="colunas" className="flex-1 overflow-y-auto p-5 space-y-5 m-0">
+                {/* Mensagem de Diagnóstico */}
+                {pendingImport.missingMandatory.length === 0 ? (
+                  <div className="p-3.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 dark:text-emerald-300 text-xs flex items-start gap-2.5">
+                    <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5 text-emerald-600" />
+                    <div>
+                      <span className="font-semibold block">
+                        Tudo certo! As colunas obrigatórias estão batendo perfeitamente.
+                      </span>
+                      <p className="text-[11px] opacity-90 mt-0.5">
+                        O cabeçalho do arquivo foi identificado com sucesso. Os dados estão prontos
+                        para serem inseridos ou atualizados.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-3.5 rounded-lg bg-red-500/10 border border-red-500/20 text-red-800 dark:text-red-300 text-xs flex items-start gap-2.5">
+                    <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-red-600" />
+                    <div>
+                      <span className="font-semibold block">
+                        Atenção: Campos obrigatórios não localizados na planilha!
+                      </span>
+                      <p className="text-[11px] opacity-90 mt-0.5">
+                        O arquivo não contém os seguintes campos obrigatórios:{" "}
+                        <strong>{pendingImport.missingMandatory.join(", ")}</strong>. Ajuste o
+                        cabeçalho do seu arquivo para corresponder ao modelo antes de importar.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* 1. Colunas Identificadas */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                      <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                      Colunas Reconhecidas e Mapeadas ({pendingImport.matchedColumns.length})
+                    </span>
+                    <span className="text-[11px] text-muted-foreground">
+                      Campos que serão lidos da sua planilha
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                    {pendingImport.matchedColumns.map((col) => (
+                      <div
+                        key={col.expected}
+                        className="p-2 rounded-md border border-emerald-500/30 bg-emerald-50/40 dark:bg-emerald-950/20 text-xs flex items-center justify-between gap-2 shadow-2xs"
+                      >
+                        <div className="min-w-0">
+                          <span className="font-semibold text-emerald-900 dark:text-emerald-200 block truncate">
+                            {col.expected}
+                          </span>
+                          <span className="text-[10px] text-muted-foreground block truncate">
+                            Na planilha:{" "}
+                            <strong className="text-foreground">"{col.foundInFile}"</strong>
+                          </span>
+                        </div>
+                        <Badge
+                          variant="outline"
+                          className="bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500/40 text-[10px] shrink-0"
+                        >
+                          <Check className="h-3 w-3 mr-0.5" /> OK
+                        </Badge>
+                      </div>
                     ))}
-                    {result.errors.length > 30 && (
-                      <li className="list-none text-neutral-400 pt-1">
-                        ...e mais {result.errors.length - 30} erros ocultados.
-                      </li>
-                    )}
-                  </ul>
+                  </div>
                 </div>
-              </>
-            )}
-          </div>
-        )}
-      </CardContent>
-    </Card>
+
+                {/* 2. Colunas Opcionais Ausentes */}
+                {pendingImport.missingOptional.length > 0 && (
+                  <div className="space-y-2 pt-2 border-t">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-muted-foreground flex items-center gap-1.5">
+                        <span className="h-2 w-2 rounded-full bg-amber-500" />
+                        Colunas Opcionais Ausentes ({pendingImport.missingOptional.length})
+                      </span>
+                      <span className="text-[11px] text-muted-foreground">
+                        Não encontradas na planilha (serão deixadas em branco ou mantidas)
+                      </span>
+                    </div>
+
+                    <div className="flex flex-wrap gap-1.5">
+                      {pendingImport.missingOptional.map((h) => (
+                        <Badge
+                          key={h}
+                          variant="outline"
+                          className="bg-amber-500/10 text-amber-800 dark:text-amber-300 border-amber-500/30 text-xs py-1 px-2.5 font-medium"
+                        >
+                          <Info className="h-3 w-3 mr-1 text-amber-600" /> {h}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 3. Colunas Obrigatórias Ausentes */}
+                {pendingImport.missingMandatory.length > 0 && (
+                  <div className="space-y-2 pt-2 border-t">
+                    <span className="text-xs font-bold text-destructive flex items-center gap-1.5">
+                      <span className="h-2 w-2 rounded-full bg-destructive" />
+                      Campos Obrigatórios Faltando ({pendingImport.missingMandatory.length})
+                    </span>
+
+                    <div className="flex flex-wrap gap-1.5">
+                      {pendingImport.missingMandatory.map((h) => (
+                        <Badge
+                          key={h}
+                          variant="destructive"
+                          className="text-xs py-1 px-2.5 font-bold"
+                        >
+                          <X className="h-3 w-3 mr-1" /> {h} (Obrigatório)
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 4. Colunas Extras na Planilha */}
+                {pendingImport.extraHeaders.length > 0 && (
+                  <div className="space-y-2 pt-2 border-t">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-muted-foreground flex items-center gap-1.5">
+                        <span className="h-2 w-2 rounded-full bg-slate-400" />
+                        Colunas Adicionais na Planilha ({pendingImport.extraHeaders.length})
+                      </span>
+                      <span className="text-[11px] text-muted-foreground">
+                        Colunas presentes no arquivo que não fazem parte do modelo (serão ignoradas)
+                      </span>
+                    </div>
+
+                    <div className="flex flex-wrap gap-1.5">
+                      {pendingImport.extraHeaders.map((h) => (
+                        <Badge
+                          key={h}
+                          variant="secondary"
+                          className="text-xs py-0.5 px-2 bg-muted text-muted-foreground border text-[11px]"
+                        >
+                          {h}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </TabsContent>
+
+              {/* ABA 2: PRÉVIA DOS DADOS (TABELA) */}
+              <TabsContent value="dados" className="flex-1 flex flex-col overflow-hidden p-0 m-0">
+                {/* Barra de Filtro e Busca na Prévia */}
+                <div className="p-3 border-b bg-muted/20 flex items-center justify-between gap-3">
+                  <div className="relative w-full max-w-sm">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                    <Input
+                      placeholder="Filtrar dados da prévia (nome, CPF, etc.)..."
+                      value={previewSearch}
+                      onChange={(e) => {
+                        setPreviewSearch(e.target.value);
+                        setPreviewPage(1);
+                      }}
+                      className="pl-8 h-8 text-xs bg-background"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground shrink-0">
+                    <span>
+                      Exibindo {paginatedPreviewRows.length} de {filteredPreviewRows.length} linhas
+                    </span>
+                    {totalPreviewPages > 1 && (
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={() => setPreviewPage((p) => Math.max(1, p - 1))}
+                          disabled={previewPage === 1}
+                        >
+                          <ChevronLeft className="h-3.5 w-3.5" />
+                        </Button>
+                        <span className="text-[11px] font-medium px-1">
+                          {previewPage} / {totalPreviewPages}
+                        </span>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={() => setPreviewPage((p) => Math.min(totalPreviewPages, p + 1))}
+                          disabled={previewPage === totalPreviewPages}
+                        >
+                          <ChevronRight className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Tabela com Scroll */}
+                <div className="flex-1 overflow-auto border-b">
+                  <table className="min-w-full text-xs divide-y divide-border border-collapse">
+                    <thead className="bg-muted/60 sticky top-0 z-10 shadow-2xs">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-bold text-muted-foreground w-12 border-r">
+                          #
+                        </th>
+                        {pendingImport.fileHeaders.map((h) => {
+                          const isMatched = pendingImport.matchedColumns.some(
+                            (c) => c.foundInFile === h,
+                          );
+                          return (
+                            <th
+                              key={h}
+                              className={cn(
+                                "px-3 py-2 text-left font-bold border-r whitespace-nowrap",
+                                isMatched
+                                  ? "text-emerald-700 dark:text-emerald-300 bg-emerald-500/10"
+                                  : "text-muted-foreground",
+                              )}
+                            >
+                              <div className="flex items-center gap-1.5">
+                                <span>{h}</span>
+                                {isMatched && (
+                                  <Badge
+                                    variant="outline"
+                                    className="text-[9px] px-1 py-0 border-emerald-500/40 text-emerald-600"
+                                  >
+                                    Mapeada
+                                  </Badge>
+                                )}
+                              </div>
+                            </th>
+                          );
+                        })}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border bg-background">
+                      {paginatedPreviewRows.map((row, idx) => {
+                        const rowNum = (previewPage - 1) * PREVIEW_PAGE_SIZE + idx + 1;
+                        return (
+                          <tr key={idx} className="hover:bg-muted/40 transition-colors">
+                            <td className="px-3 py-1.5 font-mono text-[11px] text-muted-foreground border-r bg-muted/10">
+                              {rowNum}
+                            </td>
+                            {pendingImport.fileHeaders.map((h) => (
+                              <td
+                                key={h}
+                                className="px-3 py-1.5 border-r whitespace-nowrap text-foreground font-mono text-[11px]"
+                              >
+                                {row[h] || (
+                                  <span className="text-muted-foreground/50 italic">—</span>
+                                )}
+                              </td>
+                            ))}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </TabsContent>
+            </Tabs>
+
+            <DialogFooter className="p-4 border-t bg-muted/20 flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div className="text-xs text-muted-foreground flex items-center gap-2">
+                <FileSpreadsheet className="h-4 w-4 text-primary shrink-0" />
+                <span>
+                  Pronto para importar <strong>{pendingImport.rows.length} registros</strong> em{" "}
+                  <strong>{t.title}</strong>.
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setVerifyOpen(false);
+                    setPendingImport(null);
+                  }}
+                  disabled={busy}
+                  className="text-xs"
+                >
+                  Cancelar
+                </Button>
+
+                <Button
+                  onClick={confirmImport}
+                  disabled={busy || pendingImport.missingMandatory.length > 0}
+                  className="text-xs gap-2 bg-primary text-primary-foreground font-bold shadow-xs hover:bg-primary/90"
+                >
+                  {busy ? (
+                    <>
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                      Gravando no Banco...
+                    </>
+                  ) : (
+                    <>
+                      <Check className="h-4 w-4" />
+                      Confirmar e Importar {pendingImport.rows.length} Registros
+                    </>
+                  )}
+                </Button>
+              </div>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+    </>
   );
 }
 

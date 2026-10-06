@@ -223,7 +223,7 @@ export function PendenciasPinePage() {
       if (error) throw error;
       return data || [];
     },
-    enabled: isAdmin,
+    enabled: hasAccess,
   });
 
   // 4. Pendencias Pine rows (each row is a Collaborator)
@@ -353,9 +353,19 @@ export function PendenciasPinePage() {
     [],
   );
   const [newColabSistemasStatus, setNewColabSistemasStatus] = useState<Record<string, string>>({});
+  const [newColabSearchSystemQuery, setNewColabSearchSystemQuery] = useState("");
   const [newColabChamado, setNewColabChamado] = useState("");
   const [newColabObs, setNewColabObs] = useState("");
   const [newColabLoginSenha, setNewColabLoginSenha] = useState("");
+
+  // Edit Open Case State (Admin)
+  const [editRowData, setEditRowData] = useState<any>(null);
+  const [editSelectedSystemKeys, setEditSelectedSystemKeys] = useState<string[]>([]);
+  const [editSistemasStatus, setEditSistemasStatus] = useState<Record<string, string>>({});
+  const [editChamado, setEditChamado] = useState("");
+  const [editObs, setEditObs] = useState("");
+  const [editLoginSenha, setEditLoginSenha] = useState("");
+  const [editSearchSystemQuery, setEditSearchSystemQuery] = useState("");
 
   const handleToggleColabSelection = (colabId: string) => {
     setSelectedColabIds((prev) =>
@@ -372,32 +382,101 @@ export function PendenciasPinePage() {
     setSelectedColabIds([]);
   };
 
-  // Systems selection helpers for New Colab Modal
-  const handleTogglePineSistemaForColab = (sisId: string) => {
-    setSelectedPineSistemaIdsForColab((prev) => {
-      const isSelected = prev.includes(sisId);
-      if (isSelected) {
-        // Desmarcando
-        return prev.filter((id) => id !== sisId);
+  // Combine all systems from general catalog ('sistemas' table) and existing Pine columns
+  const allAvailableSystemsForSelection = useMemo(() => {
+    const pineBySistemaId = new Map<string, any>();
+    const pineByName = new Map<string, any>();
+    for (const ps of pineSistemas) {
+      if (ps.sistema_id) pineBySistemaId.set(ps.sistema_id, ps);
+      if (ps.nome) pineByName.set((ps.nome || "").toLowerCase().trim(), ps);
+    }
+
+    const unifiedList: Array<{
+      key: string;
+      nome: string;
+      categoria: string;
+      sistema_id: string | null;
+      pine_sistema_id: string | null;
+      isPineColumn: boolean;
+    }> = [];
+
+    const addedPineIds = new Set<string>();
+
+    for (const cs of catalogSistemas) {
+      const matchedPine =
+        pineBySistemaId.get(cs.id) || pineByName.get((cs.nome || "").toLowerCase().trim());
+      if (matchedPine) {
+        addedPineIds.add(matchedPine.id);
+        unifiedList.push({
+          key: matchedPine.id,
+          nome: matchedPine.nome || cs.nome,
+          categoria: cs.categoria || "Geral",
+          sistema_id: cs.id,
+          pine_sistema_id: matchedPine.id,
+          isPineColumn: true,
+        });
       } else {
-        // Marcando
+        unifiedList.push({
+          key: `cat_${cs.id}`,
+          nome: cs.nome,
+          categoria: cs.categoria || "Geral",
+          sistema_id: cs.id,
+          pine_sistema_id: null,
+          isPineColumn: false,
+        });
+      }
+    }
+
+    for (const ps of pineSistemas) {
+      if (!addedPineIds.has(ps.id)) {
+        unifiedList.push({
+          key: ps.id,
+          nome: ps.nome,
+          categoria: "Personalizado (Pine)",
+          sistema_id: ps.sistema_id || null,
+          pine_sistema_id: ps.id,
+          isPineColumn: true,
+        });
+      }
+    }
+
+    return unifiedList.sort((a, b) => a.nome.localeCompare(b.nome));
+  }, [catalogSistemas, pineSistemas]);
+
+  // Systems filtered for New Colab Modal
+  const filteredSystemsForNewColab = useMemo(() => {
+    const q = newColabSearchSystemQuery.trim().toLowerCase();
+    if (!q) return allAvailableSystemsForSelection;
+    return allAvailableSystemsForSelection.filter(
+      (s) =>
+        s.nome.toLowerCase().includes(q) || (s.categoria && s.categoria.toLowerCase().includes(q)),
+    );
+  }, [allAvailableSystemsForSelection, newColabSearchSystemQuery]);
+
+  // Systems selection helpers for New Colab Modal
+  const handleTogglePineSistemaForColab = (sysKey: string) => {
+    setSelectedPineSistemaIdsForColab((prev) => {
+      const isSelected = prev.includes(sysKey);
+      if (isSelected) {
+        return prev.filter((id) => id !== sysKey);
+      } else {
         setNewColabSistemasStatus((st) => ({
           ...st,
-          [sisId]: st[sisId] && st[sisId] !== "-" ? st[sisId] : "CRIAÇÃO",
+          [sysKey]: st[sysKey] && st[sysKey] !== "-" ? st[sysKey] : "CRIAÇÃO",
         }));
-        return [...prev, sisId];
+        return [...prev, sysKey];
       }
     });
   };
 
   const handleSelectAllPineSistemasForColab = () => {
-    const allIds = pineSistemas.map((s: any) => s.id);
-    setSelectedPineSistemaIdsForColab(allIds);
+    const allKeys = filteredSystemsForNewColab.map((s) => s.key);
+    setSelectedPineSistemaIdsForColab(allKeys);
     setNewColabSistemasStatus((prev) => {
       const updated = { ...prev };
-      for (const id of allIds) {
-        if (!updated[id] || updated[id] === "-") {
-          updated[id] = "CRIAÇÃO";
+      for (const k of allKeys) {
+        if (!updated[k] || updated[k] === "-") {
+          updated[k] = "CRIAÇÃO";
         }
       }
       return updated;
@@ -415,8 +494,8 @@ export function PendenciasPinePage() {
     }
     setNewColabSistemasStatus((prev) => {
       const updated = { ...prev };
-      for (const sisId of selectedPineSistemaIdsForColab) {
-        updated[sisId] = statusVal;
+      for (const sysKey of selectedPineSistemaIdsForColab) {
+        updated[sysKey] = statusVal;
       }
       return updated;
     });
@@ -425,7 +504,95 @@ export function PendenciasPinePage() {
     );
   };
 
-  const [editRowModal, setEditRowModal] = useState<any>(null);
+  // Systems filtered for Edit Open Case Modal
+  const filteredSystemsForEdit = useMemo(() => {
+    const q = editSearchSystemQuery.trim().toLowerCase();
+    if (!q) return allAvailableSystemsForSelection;
+    return allAvailableSystemsForSelection.filter(
+      (s) =>
+        s.nome.toLowerCase().includes(q) || (s.categoria && s.categoria.toLowerCase().includes(q)),
+    );
+  }, [allAvailableSystemsForSelection, editSearchSystemQuery]);
+
+  const handleOpenEditRow = (row: any) => {
+    setEditRowData(row);
+    setEditChamado(row.numero_chamado || "");
+    setEditObs(row.observacao || "");
+    setEditLoginSenha(row.login_senha || "");
+    setEditSearchSystemQuery("");
+
+    const currentVals: Record<string, string> = row.sistemas_valores || {};
+    const selectedKeys: string[] = [];
+    const statusMap: Record<string, string> = {};
+
+    for (const sys of allAvailableSystemsForSelection) {
+      const val =
+        (sys.pine_sistema_id && currentVals[sys.pine_sistema_id]) ||
+        currentVals[sys.key] ||
+        currentVals[sys.nome] ||
+        (row.sistema_pine_id && sys.pine_sistema_id === row.sistema_pine_id ? row.funcao : null);
+
+      if (val && val !== "-") {
+        selectedKeys.push(sys.key);
+        statusMap[sys.key] = val;
+      } else {
+        statusMap[sys.key] = "-";
+      }
+    }
+
+    setEditSelectedSystemKeys(selectedKeys);
+    setEditSistemasStatus(statusMap);
+  };
+
+  const handleToggleEditSystem = (sysKey: string) => {
+    setEditSelectedSystemKeys((prev) => {
+      const isSelected = prev.includes(sysKey);
+      if (isSelected) {
+        return prev.filter((k) => k !== sysKey);
+      } else {
+        setEditSistemasStatus((st) => ({
+          ...st,
+          [sysKey]: st[sysKey] && st[sysKey] !== "-" ? st[sysKey] : "CRIAÇÃO",
+        }));
+        return [...prev, sysKey];
+      }
+    });
+  };
+
+  const handleSelectAllEditSystems = () => {
+    const allKeys = filteredSystemsForEdit.map((s) => s.key);
+    setEditSelectedSystemKeys(allKeys);
+    setEditSistemasStatus((prev) => {
+      const updated = { ...prev };
+      for (const k of allKeys) {
+        if (!updated[k] || updated[k] === "-") {
+          updated[k] = "CRIAÇÃO";
+        }
+      }
+      return updated;
+    });
+  };
+
+  const handleClearAllEditSystems = () => {
+    setEditSelectedSystemKeys([]);
+  };
+
+  const handleSetBulkStatusForEditMarked = (statusVal: string) => {
+    if (editSelectedSystemKeys.length === 0) {
+      toast.warning("Marque ao menos um sistema antes de aplicar o status em lote.");
+      return;
+    }
+    setEditSistemasStatus((prev) => {
+      const updated = { ...prev };
+      for (const k of editSelectedSystemKeys) {
+        updated[k] = statusVal;
+      }
+      return updated;
+    });
+    toast.success(
+      `Status "${statusVal}" aplicado a ${editSelectedSystemKeys.length} sistema(s) marcado(s)!`,
+    );
+  };
 
   // Available systems in catalog that are not yet added as columns
   const availableCatalogSistemas = useMemo(() => {
@@ -630,24 +797,72 @@ export function PendenciasPinePage() {
     }
   };
 
-  // 3. Create new Collaborator rows (Batch or Single)
+  // 3. Create new Collaborator rows (Batch or Single, supporting any system)
   const createColaboradoresRows = useMutation({
     mutationFn: async (payload: {
       colaborador_ids: string[];
-      sistemas_valores: Record<string, string>;
+      selectedSystemKeys: string[];
+      sistemas_status: Record<string, string>;
       numero_chamado: string;
       observacao: string;
       login_senha?: string;
     }) => {
-      const maxOrdem = pendencias.reduce((max: number, p: any) => Math.max(max, p.ordem || 0), 0);
+      let currentMaxOrdem = pineSistemas.reduce(
+        (max: number, s: any) => Math.max(max, s.ordem || 0),
+        0,
+      );
+      const finalSistemasValores: Record<string, string> = {};
+      const allCreatedPineSistemas: any[] = [];
+
+      for (const sysKey of payload.selectedSystemKeys) {
+        const sysInfo = allAvailableSystemsForSelection.find((s) => s.key === sysKey);
+        if (!sysInfo) continue;
+
+        let targetPineId = sysInfo.pine_sistema_id;
+        const statusVal = payload.sistemas_status[sysKey] || "CRIAÇÃO";
+
+        if (!targetPineId) {
+          currentMaxOrdem += 1;
+          const { data: createdSis, error: createErr } = await db
+            .from("pendencias_pine_sistemas")
+            .insert({
+              nome: sysInfo.nome.trim(),
+              sistema_id: sysInfo.sistema_id,
+              ordem: currentMaxOrdem,
+              ativo: true,
+            })
+            .select()
+            .single();
+
+          if (createErr) throw createErr;
+          targetPineId = createdSis.id;
+          allCreatedPineSistemas.push(createdSis);
+        }
+
+        if (targetPineId) {
+          finalSistemasValores[targetPineId] = statusVal;
+        }
+      }
+
+      // Ensure all other existing Pine columns have "-" if not marked
+      for (const ps of pineSistemas) {
+        if (!finalSistemasValores[ps.id]) {
+          finalSistemasValores[ps.id] = "-";
+        }
+      }
+
+      const maxRowOrdem = pendencias.reduce(
+        (max: number, p: any) => Math.max(max, p.ordem || 0),
+        0,
+      );
       const rowsToInsert = payload.colaborador_ids.map((cId, idx) => ({
         colaborador_id: cId,
-        sistemas_valores: payload.sistemas_valores,
+        sistemas_valores: finalSistemasValores,
         funcao: "-",
         numero_chamado: (payload.numero_chamado || "").slice(0, 200),
         observacao: (payload.observacao || "").slice(0, 200),
         login_senha: (payload.login_senha || "").slice(0, 200),
-        ordem: maxOrdem + idx + 1,
+        ordem: maxRowOrdem + idx + 1,
         arquivado: false,
         status: "pendente",
       }));
@@ -655,10 +870,11 @@ export function PendenciasPinePage() {
       const { data, error } = await db.from("pendencias_pine").insert(rowsToInsert).select();
       if (error) throw error;
 
-      // Sync any systems marked with CRIAÇÃO to the Matriz Principal (acessos table)
-      for (const [sisId, statusVal] of Object.entries(payload.sistemas_valores || {})) {
+      // Sync any systems marked with CRIAÇÃO to the Matriz Principal
+      const allPineCombined = [...pineSistemas, ...allCreatedPineSistemas];
+      for (const [sisId, statusVal] of Object.entries(finalSistemasValores)) {
         if (statusVal === "CRIAÇÃO") {
-          const sisPine = pineSistemas.find((s: any) => s.id === sisId);
+          const sisPine = allPineCombined.find((s: any) => s.id === sisId);
           if (sisPine) {
             for (const cId of payload.colaborador_ids) {
               await syncCriacaoToMatriz(cId, sisPine);
@@ -671,34 +887,125 @@ export function PendenciasPinePage() {
     },
     onSuccess: (data, variables) => {
       const count = variables.colaborador_ids.length;
-      const hasCriacao = Object.values(variables.sistemas_valores || {}).includes("CRIAÇÃO");
-      if (count > 1) {
-        toast.success(
-          `${count} colaboradores adicionados à Tabela Pine com sucesso!${
-            hasCriacao ? " (Acessos em CRIAÇÃO sincronizados na Matriz Principal)" : ""
-          }`,
-        );
-      } else {
-        toast.success(
-          `Colaborador adicionado à Tabela Pine com sucesso!${
-            hasCriacao ? " (Acessos em CRIAÇÃO sincronizados na Matriz Principal)" : ""
-          }`,
-        );
-      }
+      toast.success(
+        count > 1
+          ? `${count} colaboradores adicionados à Tabela Pine com sucesso!`
+          : "Colaborador adicionado à Tabela Pine com sucesso!",
+      );
       setModalNewColabOpen(false);
       setSelectedColabIds([]);
+      setSelectedPineSistemaIdsForColab([]);
+      setNewColabSearchSystemQuery("");
       setColabSearchQuery("");
       setNewColabSistemasStatus({});
       setNewColabChamado("");
       setNewColabObs("");
       setNewColabLoginSenha("");
       qc.invalidateQueries({ queryKey: ["pendencias_pine"] });
+      qc.invalidateQueries({ queryKey: ["pendencias_pine_sistemas"] });
       qc.invalidateQueries({ queryKey: ["acessos"] });
       qc.invalidateQueries({ queryKey: ["matriz-acessos"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
     },
     onError: (err: any) => {
       toast.error(`Erro ao adicionar colaborador(es): ${err.message}`);
+    },
+  });
+
+  // 3.1 Update Open Case / Pendência Row (Admin)
+  const updateColaboradorRow = useMutation({
+    mutationFn: async (payload: {
+      rowId: string;
+      colaboradorId: string;
+      selectedSystemKeys: string[];
+      sistemas_status: Record<string, string>;
+      numero_chamado: string;
+      observacao: string;
+      login_senha: string;
+    }) => {
+      let currentMaxOrdem = pineSistemas.reduce(
+        (max: number, s: any) => Math.max(max, s.ordem || 0),
+        0,
+      );
+      const finalSistemasValores: Record<string, string> = {};
+      const allCreatedPineSistemas: any[] = [];
+
+      for (const sysKey of payload.selectedSystemKeys) {
+        const sysInfo = allAvailableSystemsForSelection.find((s) => s.key === sysKey);
+        if (!sysInfo) continue;
+
+        let targetPineId = sysInfo.pine_sistema_id;
+        const statusVal = payload.sistemas_status[sysKey] || "CRIAÇÃO";
+
+        if (!targetPineId) {
+          currentMaxOrdem += 1;
+          const { data: createdSis, error: createErr } = await db
+            .from("pendencias_pine_sistemas")
+            .insert({
+              nome: sysInfo.nome.trim(),
+              sistema_id: sysInfo.sistema_id,
+              ordem: currentMaxOrdem,
+              ativo: true,
+            })
+            .select()
+            .single();
+
+          if (createErr) throw createErr;
+          targetPineId = createdSis.id;
+          allCreatedPineSistemas.push(createdSis);
+        }
+
+        if (targetPineId) {
+          finalSistemasValores[targetPineId] = statusVal;
+        }
+      }
+
+      // For existing Pine columns not marked, assign "-"
+      for (const ps of pineSistemas) {
+        if (!finalSistemasValores[ps.id]) {
+          finalSistemasValores[ps.id] = "-";
+        }
+      }
+
+      const { data, error } = await db
+        .from("pendencias_pine")
+        .update({
+          sistemas_valores: finalSistemasValores,
+          numero_chamado: (payload.numero_chamado || "").slice(0, 200),
+          observacao: (payload.observacao || "").slice(0, 200),
+          login_senha: (payload.login_senha || "").slice(0, 200),
+          atualizado_em: new Date().toISOString(),
+        })
+        .eq("id", payload.rowId)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Sync any systems marked with CRIAÇÃO to the Matriz Principal
+      const allPineCombined = [...pineSistemas, ...allCreatedPineSistemas];
+      for (const [sisId, statusVal] of Object.entries(finalSistemasValores)) {
+        if (statusVal === "CRIAÇÃO") {
+          const sisPine = allPineCombined.find((s: any) => s.id === sisId);
+          if (sisPine && payload.colaboradorId) {
+            await syncCriacaoToMatriz(payload.colaboradorId, sisPine);
+          }
+        }
+      }
+
+      return data;
+    },
+    onSuccess: () => {
+      toast.success("Caso/Pendência atualizado com sucesso!");
+      setEditRowData(null);
+      qc.invalidateQueries({ queryKey: ["pendencias_pine"] });
+      qc.invalidateQueries({ queryKey: ["pendencias_pine_sistemas"] });
+      qc.invalidateQueries({ queryKey: ["acessos"] });
+      qc.invalidateQueries({ queryKey: ["matriz-acessos"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+    onError: (err: any) => {
+      toast.error(`Erro ao atualizar caso: ${err.message}`);
     },
   });
 
@@ -1612,6 +1919,7 @@ export function PendenciasPinePage() {
                       }
                     }}
                     copyText={copyText}
+                    onEdit={() => handleOpenEditRow(row)}
                   />
                 ))
               )}
@@ -2078,85 +2386,102 @@ export function PendenciasPinePage() {
               </div>
             )}
 
-            {/* Set status & Marcar Sistemas para a Pendência */}
-            {pineSistemas.length > 0 && (
-              <div className="space-y-3 border-t pt-3">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <div>
-                    <Label className="text-xs font-bold block text-foreground flex items-center gap-1.5">
-                      <Server className="h-3.5 w-3.5 text-primary" />
-                      <span>2. Marcar Sistemas que terão Pendência:</span>
-                      <Badge
-                        variant="outline"
-                        className={`text-[10px] px-1.5 py-0 h-4.5 font-semibold ${
-                          selectedPineSistemaIdsForColab.length > 0
-                            ? "bg-primary/10 text-primary border-primary/30"
-                            : "bg-muted text-muted-foreground border-border"
-                        }`}
-                      >
-                        {selectedPineSistemaIdsForColab.length} de {pineSistemas.length} sistema(s)
-                        marcado(s)
-                      </Badge>
-                    </Label>
-                    <p className="text-[11px] text-muted-foreground mt-0.5">
-                      Marque a caixa de seleção dos sistemas que receberão pendência. Sistemas
-                      desmarcados ficarão como &quot;-&quot; (sem pendência).
-                    </p>
-                  </div>
-
-                  <div className="flex items-center gap-2 text-xs">
-                    <button
-                      type="button"
-                      onClick={handleSelectAllPineSistemasForColab}
-                      className="text-primary hover:underline font-medium text-[11px]"
+            {/* Set status & Marcar Sistemas para a Pendência (Qualquer Sistema do Catálogo ou Pine) */}
+            <div className="space-y-3 border-t pt-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <Label className="text-xs font-bold block text-foreground flex items-center gap-1.5">
+                    <Server className="h-3.5 w-3.5 text-primary" />
+                    <span>2. Marcar Sistemas que terão Pendência:</span>
+                    <Badge
+                      variant="outline"
+                      className={`text-[10px] px-1.5 py-0 h-4.5 font-semibold ${
+                        selectedPineSistemaIdsForColab.length > 0
+                          ? "bg-primary/10 text-primary border-primary/30"
+                          : "bg-muted text-muted-foreground border-border"
+                      }`}
                     >
-                      Marcar Todos
-                    </button>
-                    <span className="text-muted-foreground">•</span>
-                    <button
-                      type="button"
-                      onClick={handleClearAllPineSistemasForColab}
-                      className="text-destructive hover:underline font-medium text-[11px]"
-                    >
-                      Desmarcar Todos
-                    </button>
-                  </div>
+                      {selectedPineSistemaIdsForColab.length} de{" "}
+                      {allAvailableSystemsForSelection.length} sistema(s) marcado(s)
+                    </Badge>
+                  </Label>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    Você pode marcar qualquer sistema cadastrado no sistema. Sistemas desmarcados
+                    ficarão como &quot;-&quot; (sem pendência).
+                  </p>
                 </div>
 
-                {/* Barra de Ação Rápida para definir status de todos os marcados */}
-                {selectedPineSistemaIdsForColab.length > 0 && (
-                  <div className="p-2.5 rounded-md bg-secondary/40 border flex flex-wrap items-center justify-between gap-2 text-xs">
-                    <span className="text-muted-foreground font-medium text-[11px]">
-                      Aplicar a todos os {selectedPineSistemaIdsForColab.length} sistema(s)
-                      marcado(s):
-                    </span>
-                    <div className="flex flex-wrap gap-1">
-                      {PRESET_FUNCOES.filter((f) => f !== "-").map((f) => (
-                        <Button
-                          key={f}
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleSetBulkStatusForMarkedSistemas(f)}
-                          className="h-6 text-[10px] px-2 bg-background hover:bg-primary/10 hover:text-primary border"
-                        >
-                          {f}
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                <div className="flex items-center gap-2 text-xs">
+                  <button
+                    type="button"
+                    onClick={handleSelectAllPineSistemasForColab}
+                    className="text-primary hover:underline font-medium text-[11px]"
+                  >
+                    Marcar Todos ({filteredSystemsForNewColab.length})
+                  </button>
+                  <span className="text-muted-foreground">•</span>
+                  <button
+                    type="button"
+                    onClick={handleClearAllPineSistemasForColab}
+                    className="text-destructive hover:underline font-medium text-[11px]"
+                  >
+                    Desmarcar Todos
+                  </button>
+                </div>
+              </div>
 
-                {/* Grid de Sistemas com Checkbox Individual e Status */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-64 overflow-y-auto p-1">
-                  {pineSistemas.map((sis: any) => {
-                    const isMarked = selectedPineSistemaIdsForColab.includes(sis.id);
-                    const currentVal = isMarked ? newColabSistemasStatus[sis.id] || "CRIAÇÃO" : "-";
+              {/* Busca Rápida de Sistemas */}
+              <div className="relative">
+                <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+                <Input
+                  placeholder="Pesquisar qualquer sistema por nome ou categoria..."
+                  value={newColabSearchSystemQuery}
+                  onChange={(e) => setNewColabSearchSystemQuery(e.target.value)}
+                  className="pl-8 h-8 text-xs bg-background"
+                />
+              </div>
+
+              {/* Barra de Ação Rápida para definir status de todos os marcados */}
+              {selectedPineSistemaIdsForColab.length > 0 && (
+                <div className="p-2.5 rounded-md bg-secondary/40 border flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <span className="text-muted-foreground font-medium text-[11px]">
+                    Aplicar a todos os {selectedPineSistemaIdsForColab.length} sistema(s)
+                    marcado(s):
+                  </span>
+                  <div className="flex flex-wrap gap-1">
+                    {PRESET_FUNCOES.filter((f) => f !== "-").map((f) => (
+                      <Button
+                        key={f}
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleSetBulkStatusForMarkedSistemas(f)}
+                        className="h-6 text-[10px] px-2 bg-background hover:bg-primary/10 hover:text-primary border"
+                      >
+                        {f}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Grid de Sistemas com Checkbox Individual e Status */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-64 overflow-y-auto p-1 border rounded-md bg-muted/10">
+                {filteredSystemsForNewColab.length === 0 ? (
+                  <div className="col-span-2 p-4 text-center text-xs text-muted-foreground">
+                    Nenhum sistema encontrado com o termo pesquisado.
+                  </div>
+                ) : (
+                  filteredSystemsForNewColab.map((sis) => {
+                    const isMarked = selectedPineSistemaIdsForColab.includes(sis.key);
+                    const currentVal = isMarked
+                      ? newColabSistemasStatus[sis.key] || "CRIAÇÃO"
+                      : "-";
 
                     return (
                       <div
-                        key={sis.id}
-                        className={`p-3 border rounded-lg transition-all space-y-2 ${
+                        key={sis.key}
+                        className={`p-2.5 border rounded-lg transition-all space-y-2 ${
                           isMarked
                             ? "bg-card border-primary/40 shadow-xs ring-1 ring-primary/20"
                             : "bg-muted/30 border-dashed border-border/70 opacity-75"
@@ -2165,22 +2490,28 @@ export function PendenciasPinePage() {
                         {/* Header do Card com Checkbox */}
                         <div
                           className="flex items-center justify-between gap-2 cursor-pointer select-none"
-                          onClick={() => handleTogglePineSistemaForColab(sis.id)}
+                          onClick={() => handleTogglePineSistemaForColab(sis.key)}
                         >
                           <div className="flex items-center gap-2 min-w-0">
                             <Checkbox
-                              id={`check-pine-sis-${sis.id}`}
+                              id={`check-pine-sis-${sis.key}`}
                               checked={isMarked}
-                              onCheckedChange={() => handleTogglePineSistemaForColab(sis.id)}
+                              onCheckedChange={() => handleTogglePineSistemaForColab(sis.key)}
                               onClick={(e) => e.stopPropagation()}
                               className="shrink-0"
                             />
-                            <Label
-                              htmlFor={`check-pine-sis-${sis.id}`}
-                              className="text-xs font-bold text-foreground truncate cursor-pointer"
-                            >
-                              {sis.nome}
-                            </Label>
+                            <div className="min-w-0">
+                              <Label
+                                htmlFor={`check-pine-sis-${sis.key}`}
+                                className="text-xs font-bold text-foreground truncate cursor-pointer block"
+                              >
+                                {sis.nome}
+                              </Label>
+                              <span className="text-[10px] text-muted-foreground font-normal">
+                                {sis.categoria || "Geral"}{" "}
+                                {!sis.isPineColumn ? "• (Novo na tabela)" : ""}
+                              </span>
+                            </div>
                           </div>
 
                           <Badge
@@ -2195,8 +2526,8 @@ export function PendenciasPinePage() {
 
                         {/* Botões de Função/Status (apenas visíveis/ativos se o sistema estiver marcado) */}
                         {isMarked ? (
-                          <div className="pt-1">
-                            <span className="text-[10px] text-muted-foreground block mb-1">
+                          <div className="pt-1 border-t border-border/50">
+                            <span className="text-[10px] text-muted-foreground block mb-1 font-medium">
                               Selecione a ação / status para este sistema:
                             </span>
                             <div className="flex flex-wrap gap-1">
@@ -2208,7 +2539,7 @@ export function PendenciasPinePage() {
                                     e.stopPropagation();
                                     setNewColabSistemasStatus((prev) => ({
                                       ...prev,
-                                      [sis.id]: f,
+                                      [sis.key]: f,
                                     }));
                                   }}
                                   className={`text-[10px] px-2 py-0.5 rounded border transition-colors ${
@@ -2224,15 +2555,15 @@ export function PendenciasPinePage() {
                           </div>
                         ) : (
                           <p className="text-[10px] text-muted-foreground italic">
-                            Sistema desmarcado (nenhuma pendência cadastrada para este sistema).
+                            Sistema não marcado para esta pendência.
                           </p>
                         )}
                       </div>
                     );
-                  })}
-                </div>
+                  })
+                )}
               </div>
-            )}
+            </div>
 
             {/* Nº do Chamado, Observação & Login/Senha */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 border-t pt-3">
@@ -2315,19 +2646,10 @@ export function PendenciasPinePage() {
                   return;
                 }
 
-                // Compilar os status finais considerando sistemas marcados vs desmarcados
-                const finalSistemasValores: Record<string, string> = {};
-                for (const sis of pineSistemas) {
-                  if (selectedPineSistemaIdsForColab.includes(sis.id)) {
-                    finalSistemasValores[sis.id] = newColabSistemasStatus[sis.id] || "CRIAÇÃO";
-                  } else {
-                    finalSistemasValores[sis.id] = "-";
-                  }
-                }
-
                 createColaboradoresRows.mutate({
                   colaborador_ids: selectedColabIds,
-                  sistemas_valores: finalSistemasValores,
+                  selectedSystemKeys: selectedPineSistemaIdsForColab,
+                  sistemas_status: newColabSistemasStatus,
                   numero_chamado: newColabChamado,
                   observacao: newColabObs,
                   login_senha: newColabLoginSenha,
@@ -2346,6 +2668,338 @@ export function PendenciasPinePage() {
               ) : (
                 "Adicionar à Tabela"
               )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal: Editar Caso Aberto / Pendência (Exclusivo Administrador) */}
+      <Dialog
+        open={!!editRowData}
+        onOpenChange={(open) => {
+          if (!open) {
+            setEditRowData(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-primary">
+              <Edit2 className="h-5 w-5" />
+              <span>Editar Caso Aberto / Pendência Pine</span>
+            </DialogTitle>
+            <DialogDescription>
+              Altere os status dos sistemas, número de chamado, observações ou credenciais deste
+              caso em aberto.
+            </DialogDescription>
+          </DialogHeader>
+
+          {editRowData && (
+            <div className="space-y-4 py-2">
+              {/* Header com Dados do Colaborador */}
+              <div className="rounded-lg border bg-muted/30 p-3.5 text-xs space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-2">
+                  <div>
+                    <span className="text-[10px] text-muted-foreground block uppercase font-medium">
+                      Colaborador:
+                    </span>
+                    <span className="text-sm font-bold text-foreground uppercase">
+                      {editRowData.colaborador?.nome || "SEM NOME"}
+                    </span>
+                  </div>
+                  <Badge
+                    variant="outline"
+                    className="bg-primary/10 text-primary border-primary/30 text-xs font-semibold"
+                  >
+                    Caso Aberto / Pendente
+                  </Badge>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-foreground/80">
+                  <div>
+                    <span className="text-[10px] text-muted-foreground block">CPF:</span>
+                    <strong className="font-mono">{formatCpf(editRowData.colaborador?.cpf)}</strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-muted-foreground block">Nascimento:</span>
+                    <strong>{formatDate(editRowData.colaborador?.data_nascimento)}</strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-muted-foreground block">E-mail:</span>
+                    <strong className="truncate block" title={editRowData.colaborador?.email || ""}>
+                      {editRowData.colaborador?.email || "—"}
+                    </strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-muted-foreground block">Telefone:</span>
+                    <strong>{formatPhone(editRowData.colaborador?.telefone)}</strong>
+                  </div>
+                </div>
+              </div>
+
+              {/* Seção 2: Marcar Sistemas e Ajustar Status do Caso */}
+              <div className="space-y-3 border-t pt-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <Label className="text-xs font-bold block text-foreground flex items-center gap-1.5">
+                      <Server className="h-3.5 w-3.5 text-primary" />
+                      <span>
+                        Sistemas e Status do Caso ({editSelectedSystemKeys.length} marcados):
+                      </span>
+                    </Label>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      Marque ou desmarque sistemas cadastrados para alterar a abrangência deste
+                      caso.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2 text-xs">
+                    <button
+                      type="button"
+                      onClick={handleSelectAllEditSystems}
+                      className="text-primary hover:underline font-medium text-[11px]"
+                    >
+                      Marcar Todos ({filteredSystemsForEdit.length})
+                    </button>
+                    <span className="text-muted-foreground">•</span>
+                    <button
+                      type="button"
+                      onClick={handleClearAllEditSystems}
+                      className="text-destructive hover:underline font-medium text-[11px]"
+                    >
+                      Desmarcar Todos
+                    </button>
+                  </div>
+                </div>
+
+                {/* Busca Rápida de Sistemas no Modal de Edição */}
+                <div className="relative">
+                  <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+                  <Input
+                    placeholder="Pesquisar sistemas por nome ou categoria..."
+                    value={editSearchSystemQuery}
+                    onChange={(e) => setEditSearchSystemQuery(e.target.value)}
+                    className="pl-8 h-8 text-xs bg-background"
+                  />
+                </div>
+
+                {/* Barra de Ação Rápida para status em lote na edição */}
+                {editSelectedSystemKeys.length > 0 && (
+                  <div className="p-2.5 rounded-md bg-secondary/40 border flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <span className="text-muted-foreground font-medium text-[11px]">
+                      Aplicar a todos os {editSelectedSystemKeys.length} sistema(s) marcado(s):
+                    </span>
+                    <div className="flex flex-wrap gap-1">
+                      {PRESET_FUNCOES.filter((f) => f !== "-").map((f) => (
+                        <Button
+                          key={f}
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleSetBulkStatusForEditMarked(f)}
+                          className="h-6 text-[10px] px-2 bg-background hover:bg-primary/10 hover:text-primary border"
+                        >
+                          {f}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Grid de Sistemas com Checkbox Individual na Edição */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-60 overflow-y-auto p-1 border rounded-md bg-muted/10">
+                  {filteredSystemsForEdit.length === 0 ? (
+                    <div className="col-span-2 p-4 text-center text-xs text-muted-foreground">
+                      Nenhum sistema encontrado com o termo pesquisado.
+                    </div>
+                  ) : (
+                    filteredSystemsForEdit.map((sis) => {
+                      const isMarked = editSelectedSystemKeys.includes(sis.key);
+                      const currentVal = isMarked ? editSistemasStatus[sis.key] || "CRIAÇÃO" : "-";
+
+                      return (
+                        <div
+                          key={sis.key}
+                          className={`p-2.5 border rounded-lg transition-all space-y-2 ${
+                            isMarked
+                              ? "bg-card border-primary/40 shadow-xs ring-1 ring-primary/20"
+                              : "bg-muted/30 border-dashed border-border/70 opacity-75"
+                          }`}
+                        >
+                          <div
+                            className="flex items-center justify-between gap-2 cursor-pointer select-none"
+                            onClick={() => handleToggleEditSystem(sis.key)}
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <Checkbox
+                                id={`check-edit-sis-${sis.key}`}
+                                checked={isMarked}
+                                onCheckedChange={() => handleToggleEditSystem(sis.key)}
+                                onClick={(e) => e.stopPropagation()}
+                                className="shrink-0"
+                              />
+                              <div className="min-w-0">
+                                <Label
+                                  htmlFor={`check-edit-sis-${sis.key}`}
+                                  className="text-xs font-bold text-foreground truncate cursor-pointer block"
+                                >
+                                  {sis.nome}
+                                </Label>
+                                <span className="text-[10px] text-muted-foreground font-normal">
+                                  {sis.categoria || "Geral"}{" "}
+                                  {!sis.isPineColumn ? "• (Novo na tabela)" : ""}
+                                </span>
+                              </div>
+                            </div>
+
+                            <Badge
+                              variant="outline"
+                              className={`text-[10px] font-semibold tracking-wide uppercase px-2 py-0.5 shrink-0 ${getFuncaoBadgeStyle(
+                                currentVal,
+                              )}`}
+                            >
+                              {currentVal}
+                            </Badge>
+                          </div>
+
+                          {isMarked ? (
+                            <div className="pt-1 border-t border-border/50">
+                              <span className="text-[10px] text-muted-foreground block mb-1 font-medium">
+                                Alterar status deste sistema:
+                              </span>
+                              <div className="flex flex-wrap gap-1">
+                                {PRESET_FUNCOES.map((f) => (
+                                  <button
+                                    key={f}
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setEditSistemasStatus((prev) => ({
+                                        ...prev,
+                                        [sis.key]: f,
+                                      }));
+                                    }}
+                                    className={`text-[10px] px-2 py-0.5 rounded border transition-colors ${
+                                      currentVal === f
+                                        ? "bg-primary text-primary-foreground font-semibold border-primary shadow-xs"
+                                        : "bg-background text-muted-foreground hover:bg-muted border-border"
+                                    }`}
+                                  >
+                                    {f}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          ) : (
+                            <p className="text-[10px] text-muted-foreground italic">
+                              Sistema não marcado para este caso.
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
+              {/* Nº do Chamado, Observação & Login/Senha */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 border-t pt-3">
+                <div>
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-semibold">Nº do Chamado (máx. 200 carac.)</Label>
+                    <span
+                      className={`text-[10px] ${
+                        editChamado.length > 190
+                          ? "text-destructive font-bold"
+                          : "text-muted-foreground"
+                      }`}
+                    >
+                      {editChamado.length}/200
+                    </span>
+                  </div>
+                  <Input
+                    placeholder="Ex: INC987654"
+                    maxLength={200}
+                    value={editChamado}
+                    onChange={(e) => setEditChamado(e.target.value)}
+                    className="mt-1 h-9 text-xs"
+                  />
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-semibold">Observação (máx. 200 carac.)</Label>
+                    <span
+                      className={`text-[10px] ${
+                        editObs.length > 190
+                          ? "text-destructive font-bold"
+                          : "text-muted-foreground"
+                      }`}
+                    >
+                      {editObs.length}/200
+                    </span>
+                  </div>
+                  <Input
+                    placeholder="Observações do caso..."
+                    maxLength={200}
+                    value={editObs}
+                    onChange={(e) => setEditObs(e.target.value)}
+                    className="mt-1 h-9 text-xs"
+                  />
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-semibold">Login/ Senha (máx. 200 carac.)</Label>
+                    <span
+                      className={`text-[10px] ${
+                        editLoginSenha.length > 190
+                          ? "text-destructive font-bold"
+                          : "text-muted-foreground"
+                      }`}
+                    >
+                      {editLoginSenha.length}/200
+                    </span>
+                  </div>
+                  <Input
+                    placeholder="Login / senha provisória..."
+                    maxLength={200}
+                    value={editLoginSenha}
+                    onChange={(e) => setEditLoginSenha(e.target.value)}
+                    className="mt-1 h-9 text-xs"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setEditRowData(null)}>
+              Cancelar
+            </Button>
+            <Button
+              className="bg-primary text-primary-foreground font-semibold gap-1.5"
+              disabled={updateColaboradorRow.isPending}
+              onClick={() => {
+                if (!editRowData) return;
+
+                updateColaboradorRow.mutate({
+                  rowId: editRowData.id,
+                  colaboradorId: editRowData.colaborador_id,
+                  selectedSystemKeys: editSelectedSystemKeys,
+                  sistemas_status: editSistemasStatus,
+                  numero_chamado: editChamado,
+                  observacao: editObs,
+                  login_senha: editLoginSenha,
+                });
+              }}
+            >
+              <Check className="h-4 w-4" />
+              <span>
+                {updateColaboradorRow.isPending
+                  ? "Salvando Alterações..."
+                  : "Salvar Alterações do Caso"}
+              </span>
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2508,6 +3162,7 @@ function PineUnifiedRow({
   onDelete,
   onSolucionar,
   onReabrir,
+  onEdit,
   copyText,
 }: {
   index: number;
@@ -2520,6 +3175,7 @@ function PineUnifiedRow({
   onDelete: () => void;
   onSolucionar?: () => void;
   onReabrir?: () => void;
+  onEdit?: () => void;
   copyText: (val: string, label: string) => void;
 }) {
   const colab = row.colaborador || {};
@@ -2890,15 +3546,27 @@ function PineUnifiedRow({
         <td className="py-2.5 px-3 text-center">
           <div className="flex items-center justify-center gap-1">
             {!isSolucionado ? (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
-                onClick={onSolucionar}
-                title="Solucionar Pendência e Enviar para o Histórico"
-              >
-                <CheckCircle2 className="h-4 w-4" />
-              </Button>
+              <>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950/40"
+                  onClick={onEdit}
+                  title="Editar Caso Aberto (Sistemas, Chamado, Observação, Login/Senha)"
+                >
+                  <Edit2 className="h-3.5 w-3.5" />
+                </Button>
+
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
+                  onClick={onSolucionar}
+                  title="Solucionar Pendência e Enviar para o Histórico"
+                >
+                  <CheckCircle2 className="h-4 w-4" />
+                </Button>
+              </>
             ) : (
               <Button
                 variant="ghost"

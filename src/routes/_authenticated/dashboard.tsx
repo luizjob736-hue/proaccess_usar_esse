@@ -81,7 +81,7 @@ function Dashboard() {
         const [colabRes, sistRes, accRes, pendRes, quadrosRes, pinePendRes, pineSistRes] =
           await Promise.all([
             db.from("colaboradores").select("id, status, nome", { count: "exact" }),
-            db.from("sistemas").select("id, nome, responsavel_id", { count: "exact" }),
+            db.from("sistemas").select("id, nome, responsavel_id, categoria", { count: "exact" }),
             db.from("acessos").select("id, status, sistema_id, colaborador_id, login, senha", {
               count: "exact",
             }),
@@ -114,8 +114,8 @@ function Dashboard() {
         const colabList = colabRes.data ?? [];
         const sistList = sistRes.data ?? [];
         const rawAccList = accRes.data ?? [];
-        const accList = rawAccList.filter(isValidAccess);
         const rawPendList = pendRes.data ?? [];
+
         // Only active pendencias (not archived and not concluded)
         const pendList = rawPendList.filter(
           (p: any) => !p.arquivado && p.status !== "concluido" && p.status !== "concluida",
@@ -136,14 +136,29 @@ function Dashboard() {
             .map((c: any) => c.id),
         );
 
-        const orfaosCount = accList.filter(
+        // Órfãos: acessos pertencentes a colaboradores desligados ou inativos
+        const orfaosCount = rawAccList.filter(
           (a: any) => a.colaborador_id && desligadosIds.has(a.colaborador_id),
         ).length;
 
-        const acessosAtivosCount = accList.filter((a: any) => {
+        // Acessos Pendentes ou Solicitados
+        const pendentesAcessosCount = rawAccList.filter(
+          (a: any) =>
+            a.status === "pendente" ||
+            a.status === "solicitado" ||
+            a.status === "em_analise" ||
+            a.login === "Solicitado" ||
+            a.senha === "Solicitado",
+        ).length;
+
+        // Acessos Ativos e Regulares
+        const acessosAtivosCount = rawAccList.filter((a: any) => {
           const isAccAtivo =
             a.status === "ativo" || a.status === "ATIVO" || !a.status || a.status !== "inativo";
           if (!isAccAtivo) return false;
+          if (a.status === "pendente" || a.status === "solicitado" || a.login === "Solicitado") {
+            return false;
+          }
           if (a.colaborador_id) {
             const cStatus = colabStatusMap.get(a.colaborador_id);
             if (cStatus === "desligado" || cStatus === "inativo") {
@@ -154,6 +169,17 @@ function Dashboard() {
         }).length;
 
         const semRespCount = sistList.filter((s: any) => !s.responsavel_id).length;
+
+        // Contagem de demandas individuais de acessos na guia Pine
+        let pineDemandasAcessosTotal = 0;
+        pinePendList.forEach((p: any) => {
+          const vals = Object.values(p.sistemas_valores || {});
+          vals.forEach((v: any) => {
+            if (typeof v === "string" && v.trim() !== "" && v.trim() !== "-" && v.trim() !== "—") {
+              pineDemandasAcessosTotal++;
+            }
+          });
+        });
 
         // Combined pendencias data (both standard and Pine)
         const combinedPendData = [
@@ -184,13 +210,15 @@ function Dashboard() {
           colabAtivos: colabList.filter((c: any) => c.status === "ativo").length,
           sistTotal: sistRes.count ?? sistList.length,
           sistData: sistList,
-          acessosTotal: accList.length,
+          acessosTotal: rawAccList.length,
           acessosAtivos: acessosAtivosCount,
-          acessosData: accList,
+          acessosPendentes: pendentesAcessosCount,
+          acessosData: rawAccList,
           colabStatusMap,
           pendTotal: combinedPendData.length,
           pendPadraoTotal: pendList.length,
           pinePendTotal: pinePendList.length,
+          pineDemandasAcessosTotal,
           pendData: combinedPendData,
           pineSistemas: pineSistList,
           orfaos: orfaosCount,
@@ -206,10 +234,12 @@ function Dashboard() {
           sistData: [],
           acessosTotal: 0,
           acessosAtivos: 0,
+          acessosPendentes: 0,
           acessosData: [],
           pendTotal: 0,
           pendPadraoTotal: 0,
           pinePendTotal: 0,
+          pineDemandasAcessosTotal: 0,
           pendData: [],
           pineSistemas: [],
           orfaos: 0,
@@ -220,9 +250,14 @@ function Dashboard() {
     },
   });
 
-  const quadrosList = data?.quadros ?? [];
-  const quadrosNomes = quadrosList.map((q: any) => q.nome);
-  const pendData = data?.pendData ?? [];
+  const rawQuadrosList = data?.quadros;
+  const rawPendData = data?.pendData;
+  const rawPineSistemas = data?.pineSistemas;
+
+  const quadrosList = useMemo(() => rawQuadrosList ?? [], [rawQuadrosList]);
+  const quadrosNomes = useMemo(() => quadrosList.map((q: any) => q.nome), [quadrosList]);
+  const pendData = useMemo(() => rawPendData ?? [], [rawPendData]);
+  const pineSistemas = useMemo(() => rawPineSistemas ?? [], [rawPineSistemas]);
 
   // 1. Pendências por Status (mapeado para os Quadros do sistema)
   const pendChart = useMemo(() => {
@@ -262,21 +297,24 @@ function Dashboard() {
   }, [quadrosList, pendData, quadrosNomes]);
 
   // 2. Pendências por Sistema (Produto) - Integrando sistemas padrão e sistemas Pine
+  const sistData = data?.sistData;
   const sisMap = useMemo(
-    () => new Map((data?.sistData ?? []).map((s: any) => [s.id, s.nome])),
-    [data?.sistData],
+    () => new Map((sistData ?? []).map((s: any) => [s.id, s.nome])),
+    [sistData],
   );
-  const pineSistemas = data?.pineSistemas ?? [];
 
   const pendBySistemaChart = useMemo(() => {
     const pendBySisMap: Record<string, number> = {};
     pendData.forEach((p: any) => {
       if (p.isPine) {
         let matchedCount = 0;
+        const valoresObj = p.sistemas_valores || {};
+
+        // Percorre os sistemas cadastrados na esteira Pine
         if (pineSistemas.length > 0) {
           for (const pineSis of pineSistemas) {
-            const val = p.sistemas_valores?.[pineSis.id] || p.sistemas_valores?.[pineSis.nome];
-            if (val && val !== "-" && val !== "—") {
+            const val = valoresObj[pineSis.id] || valoresObj[pineSis.nome];
+            if (val && typeof val === "string" && val !== "-" && val !== "—") {
               const sisCatalogNome = pineSis.sistema_id ? sisMap.get(pineSis.sistema_id) : null;
               const finalNome = sisCatalogNome || pineSis.nome || "Pine";
               pendBySisMap[finalNome] = (pendBySisMap[finalNome] || 0) + 1;
@@ -284,6 +322,19 @@ function Dashboard() {
             }
           }
         }
+
+        // Também verifica se há chaves de sistemas adicionais que são IDs do catálogo ou nomes diretos
+        for (const [key, val] of Object.entries(valoresObj)) {
+          if (typeof val === "string" && val !== "-" && val !== "—") {
+            const alreadyMatched = pineSistemas.some((ps: any) => ps.id === key || ps.nome === key);
+            if (!alreadyMatched) {
+              const catalogName = sisMap.get(key) || key;
+              pendBySisMap[catalogName] = (pendBySisMap[catalogName] || 0) + 1;
+              matchedCount++;
+            }
+          }
+        }
+
         if (matchedCount === 0) {
           pendBySisMap["Pine"] = (pendBySisMap["Pine"] || 0) + 1;
         }
@@ -301,13 +352,13 @@ function Dashboard() {
   }, [pendData, pineSistemas, sisMap]);
 
   // 3. Pendências por Prioridade
-  const prioLabels: Record<string, string> = {
-    baixa: "Baixa",
-    media: "Média",
-    alta: "Alta",
-    critica: "Crítica",
-  };
   const pendByPriorityChart = useMemo(() => {
+    const PRIO_LABELS: Record<string, string> = {
+      baixa: "Baixa",
+      media: "Média",
+      alta: "Alta",
+      critica: "Crítica",
+    };
     const pendByPrioMap: Record<string, number> = {
       Crítica: 0,
       Alta: 0,
@@ -316,7 +367,7 @@ function Dashboard() {
     };
     pendData.forEach((p: any) => {
       const rawPrio = (p.prioridade || "media").toLowerCase();
-      const label = prioLabels[rawPrio] || "Média";
+      const label = PRIO_LABELS[rawPrio] || "Média";
       pendByPrioMap[label] = (pendByPrioMap[label] || 0) + 1;
     });
     return Object.entries(pendByPrioMap)
@@ -332,6 +383,13 @@ function Dashboard() {
       const colabStatus = a.colaborador_id && statusMap ? statusMap.get(a.colaborador_id) : null;
       if (a.status === "inativo" || colabStatus === "desligado" || colabStatus === "inativo") {
         st = "Inativo / Órfão";
+      } else if (
+        a.status === "pendente" ||
+        a.status === "solicitado" ||
+        a.login === "Solicitado" ||
+        a.senha === "Solicitado"
+      ) {
+        st = "Solicitado / Pendente";
       } else if (a.status) {
         st = a.status.charAt(0).toUpperCase() + a.status.slice(1).toLowerCase();
       }
@@ -358,6 +416,7 @@ function Dashboard() {
   };
   const ACC_COLORS: Record<string, string> = {
     Ativo: "#10b981",
+    "Solicitado / Pendente": "#f59e0b",
     "Inativo / Órfão": "#f43f5e",
     Pendente: "#f59e0b",
   };
@@ -425,7 +484,7 @@ function Dashboard() {
           icon={KeyRound}
           label="Acessos & Credenciais"
           value={data?.acessosTotal ?? 0}
-          sub={`${data?.acessosAtivos ?? 0} regulares • ${data?.orfaos ?? 0} órfãos`}
+          sub={`${data?.acessosAtivos ?? 0} ativos • ${data?.acessosPendentes ?? 0} solicitados • ${data?.orfaos ?? 0} órfãos`}
           tone={data?.orfaos ? "warn" : "ok"}
           linkTo="/lista-acessos"
         />
@@ -445,6 +504,101 @@ function Dashboard() {
           tone={(data?.pendTotal ?? 0) > 0 ? "accent" : "ok"}
           linkTo="/pendencias"
         />
+      </div>
+
+      {/* Painel Consolidado: Pendências vs Pendências Pine */}
+      <div className="grid gap-4 sm:grid-cols-2">
+        {/* Card Guia Pendências */}
+        <div className="relative overflow-hidden rounded-xl border border-border/80 bg-gradient-to-br from-card to-muted/30 p-4 shadow-xs">
+          <div className="flex items-start justify-between">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
+                <h3 className="text-sm font-bold text-foreground">Guia Pendências (Geral)</h3>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Chamados operacionais, solicitações avulsas e quadros Kanban
+              </p>
+            </div>
+            <Badge
+              variant="outline"
+              className="font-semibold text-blue-600 bg-blue-500/10 border-blue-200 dark:border-blue-800"
+            >
+              {data?.pendPadraoTotal ?? 0} ativas
+            </Badge>
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-3 border-t border-border/50 pt-3">
+            <div>
+              <p className="text-[11px] font-medium text-muted-foreground">Chamados Abertos</p>
+              <p className="text-lg font-black text-foreground">{data?.pendPadraoTotal ?? 0}</p>
+            </div>
+            <div>
+              <p className="text-[11px] font-medium text-muted-foreground">Quadros de Fluxo</p>
+              <p className="text-lg font-black text-foreground">{data?.quadros?.length ?? 0}</p>
+            </div>
+          </div>
+
+          <div className="mt-3 pt-2 border-t border-border/40 flex justify-end">
+            <Button
+              asChild
+              variant="ghost"
+              size="sm"
+              className="h-7 text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950/40 p-0 px-2 font-semibold"
+            >
+              <Link to="/pendencias">
+                Acessar Pendências <ArrowUpRight className="h-3.5 w-3.5 ml-1" />
+              </Link>
+            </Button>
+          </div>
+        </div>
+
+        {/* Card Guia Pendências Pine */}
+        <div className="relative overflow-hidden rounded-xl border border-border/80 bg-gradient-to-br from-card to-muted/30 p-4 shadow-xs">
+          <div className="flex items-start justify-between">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="h-2 w-2 rounded-full bg-accent animate-pulse" />
+                <h3 className="text-sm font-bold text-foreground">Guia Pendências Pine</h3>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Esteira especializada de acessos com múltiplos sistemas configuráveis
+              </p>
+            </div>
+            <Badge
+              variant="outline"
+              className="font-semibold text-accent bg-accent/10 border-accent/30"
+            >
+              {data?.pinePendTotal ?? 0} colaboradores
+            </Badge>
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-3 border-t border-border/50 pt-3">
+            <div>
+              <p className="text-[11px] font-medium text-muted-foreground">Colaboradores em Fila</p>
+              <p className="text-lg font-black text-foreground">{data?.pinePendTotal ?? 0}</p>
+            </div>
+            <div>
+              <p className="text-[11px] font-medium text-muted-foreground">Demandas de Sistemas</p>
+              <p className="text-lg font-black text-accent">
+                {data?.pineDemandasAcessosTotal ?? 0}
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-3 pt-2 border-t border-border/40 flex justify-end">
+            <Button
+              asChild
+              variant="ghost"
+              size="sm"
+              className="h-7 text-xs text-accent hover:text-accent/90 hover:bg-accent/10 p-0 px-2 font-semibold"
+            >
+              <Link to="/pendencias-pine">
+                Acessar Pendências Pine <ArrowUpRight className="h-3.5 w-3.5 ml-1" />
+              </Link>
+            </Button>
+          </div>
+        </div>
       </div>
 
       {/* SEÇÃO PRINCIPAL DE GRÁFICOS */}

@@ -1,0 +1,20 @@
+{
+  "name": "ProAccess — Gestão de Acessos",
+  "short_name": "ProAccess",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "/favicon.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "theme_color": "#0E284A",
+  "background_color": "#0B1F3A",
+  "display": "standalone",
+  "start_url": "/"
+}

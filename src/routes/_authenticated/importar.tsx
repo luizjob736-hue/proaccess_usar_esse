@@ -699,6 +699,7 @@ function ImportCard({
   sistemasAll?: any[];
   selectedOperacaoId?: string;
 }) {
+  const { canWrite, isConsulta } = useUserPermissions();
   const [showPreview, setShowPreview] = useState(false);
 
   let t;

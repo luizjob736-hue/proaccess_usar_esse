@@ -342,11 +342,16 @@ export function PendenciasPinePage() {
   // Modals state
   const [modalManageSistemasOpen, setModalManageSistemasOpen] = useState(false);
   const [selectedCatalogSistemaId, setSelectedCatalogSistemaId] = useState<string>("");
+  const [selectedCatalogSistemaIds, setSelectedCatalogSistemaIds] = useState<string[]>([]);
+  const [catalogSearchQuery, setCatalogSearchQuery] = useState("");
   const [customSistemaNome, setCustomSistemaNome] = useState("");
 
   const [modalNewColabOpen, setModalNewColabOpen] = useState(false);
   const [colabSearchQuery, setColabSearchQuery] = useState("");
   const [selectedColabIds, setSelectedColabIds] = useState<string[]>([]);
+  const [selectedPineSistemaIdsForColab, setSelectedPineSistemaIdsForColab] = useState<string[]>(
+    [],
+  );
   const [newColabSistemasStatus, setNewColabSistemasStatus] = useState<Record<string, string>>({});
   const [newColabChamado, setNewColabChamado] = useState("");
   const [newColabObs, setNewColabObs] = useState("");
@@ -367,6 +372,59 @@ export function PendenciasPinePage() {
     setSelectedColabIds([]);
   };
 
+  // Systems selection helpers for New Colab Modal
+  const handleTogglePineSistemaForColab = (sisId: string) => {
+    setSelectedPineSistemaIdsForColab((prev) => {
+      const isSelected = prev.includes(sisId);
+      if (isSelected) {
+        // Desmarcando
+        return prev.filter((id) => id !== sisId);
+      } else {
+        // Marcando
+        setNewColabSistemasStatus((st) => ({
+          ...st,
+          [sisId]: st[sisId] && st[sisId] !== "-" ? st[sisId] : "CRIAÇÃO",
+        }));
+        return [...prev, sisId];
+      }
+    });
+  };
+
+  const handleSelectAllPineSistemasForColab = () => {
+    const allIds = pineSistemas.map((s: any) => s.id);
+    setSelectedPineSistemaIdsForColab(allIds);
+    setNewColabSistemasStatus((prev) => {
+      const updated = { ...prev };
+      for (const id of allIds) {
+        if (!updated[id] || updated[id] === "-") {
+          updated[id] = "CRIAÇÃO";
+        }
+      }
+      return updated;
+    });
+  };
+
+  const handleClearAllPineSistemasForColab = () => {
+    setSelectedPineSistemaIdsForColab([]);
+  };
+
+  const handleSetBulkStatusForMarkedSistemas = (statusVal: string) => {
+    if (selectedPineSistemaIdsForColab.length === 0) {
+      toast.warning("Marque ao menos um sistema antes de aplicar o status em lote.");
+      return;
+    }
+    setNewColabSistemasStatus((prev) => {
+      const updated = { ...prev };
+      for (const sisId of selectedPineSistemaIdsForColab) {
+        updated[sisId] = statusVal;
+      }
+      return updated;
+    });
+    toast.success(
+      `Status "${statusVal}" aplicado a ${selectedPineSistemaIdsForColab.length} sistema(s) marcado(s)!`,
+    );
+  };
+
   const [editRowModal, setEditRowModal] = useState<any>(null);
 
   // Available systems in catalog that are not yet added as columns
@@ -384,6 +442,31 @@ export function PendenciasPinePage() {
         !existingPineNomes.has((s.nome || "").toLowerCase().trim()),
     );
   }, [catalogSistemas, pineSistemas]);
+
+  // Filtered available catalog systems for batch addition in modal
+  const filteredCatalogSistemasForModal = useMemo(() => {
+    const q = catalogSearchQuery.trim().toLowerCase();
+    if (!q) return availableCatalogSistemas;
+    return availableCatalogSistemas.filter(
+      (s: any) =>
+        (s.nome || "").toLowerCase().includes(q) || (s.categoria || "").toLowerCase().includes(q),
+    );
+  }, [availableCatalogSistemas, catalogSearchQuery]);
+
+  const handleToggleCatalogSistemaSelection = (sisId: string) => {
+    setSelectedCatalogSistemaIds((prev) =>
+      prev.includes(sisId) ? prev.filter((id) => id !== sisId) : [...prev, sisId],
+    );
+  };
+
+  const handleSelectAllFilteredCatalogSistemas = () => {
+    const idsToAdd = filteredCatalogSistemasForModal.map((s: any) => s.id);
+    setSelectedCatalogSistemaIds((prev) => Array.from(new Set([...prev, ...idsToAdd])));
+  };
+
+  const handleClearCatalogSistemasSelection = () => {
+    setSelectedCatalogSistemaIds([]);
+  };
 
   // Selected collaborators details preview
   const selectedColaboradores = useMemo(() => {
@@ -405,7 +488,7 @@ export function PendenciasPinePage() {
   }, [allColaboradores, colabSearchQuery]);
 
   // Mutations
-  // 1. Add System to Pine Columns
+  // 1. Add Single System to Pine Columns
   const addSistemaColumn = useMutation({
     mutationFn: async (payload: { nome: string; sistema_id: string | null }) => {
       const maxOrdem = pineSistemas.reduce((max: number, s: any) => Math.max(max, s.ordem || 0), 0);
@@ -430,6 +513,32 @@ export function PendenciasPinePage() {
     },
     onError: (err: any) => {
       toast.error(`Erro ao cadastrar coluna de sistema: ${err.message}`);
+    },
+  });
+
+  // 1.1 Add Multiple Systems to Pine Columns (Batch)
+  const addMultipleSistemaColumns = useMutation({
+    mutationFn: async (sistemasToAdd: Array<{ nome: string; sistema_id: string | null }>) => {
+      const maxOrdem = pineSistemas.reduce((max: number, s: any) => Math.max(max, s.ordem || 0), 0);
+      const rows = sistemasToAdd.map((s, idx) => ({
+        nome: s.nome.trim(),
+        sistema_id: s.sistema_id,
+        ordem: maxOrdem + idx + 1,
+        ativo: true,
+      }));
+      const { data, error } = await db.from("pendencias_pine_sistemas").insert(rows).select();
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data: any) => {
+      const count = data?.length || 1;
+      toast.success(`${count} sistema(s) adicionado(s) com sucesso às colunas de Pendências Pine!`);
+      setSelectedCatalogSistemaIds([]);
+      setSelectedCatalogSistemaId("");
+      qc.invalidateQueries({ queryKey: ["pendencias_pine_sistemas"] });
+    },
+    onError: (err: any) => {
+      toast.error(`Erro ao cadastrar sistemas: ${err.message}`);
     },
   });
 
@@ -1523,26 +1632,42 @@ export function PendenciasPinePage() {
       </Card>
 
       {/* Modal: Cadastrar Sistema (Opção de adicionar sistemas a partir da guia Sistemas) */}
-      <Dialog open={modalManageSistemasOpen} onOpenChange={setModalManageSistemasOpen}>
-        <DialogContent className="sm:max-w-xl">
+      <Dialog
+        open={modalManageSistemasOpen}
+        onOpenChange={(open) => {
+          setModalManageSistemasOpen(open);
+          if (!open) {
+            setSelectedCatalogSistemaIds([]);
+            setSelectedCatalogSistemaId("");
+            setCatalogSearchQuery("");
+            setCustomSistemaNome("");
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Server className="h-5 w-5 text-primary" />
-              <span>Cadastrar Sistema nas Colunas da Tabela</span>
+              <span>Gerenciar e Marcar Sistemas para Colunas Pine</span>
             </DialogTitle>
             <DialogDescription>
-              Selecione quais sistemas da guia &quot;Sistemas&quot; devem aparecer como colunas
-              nesta tabela única de Pendências Pine.
+              Marque quais sistemas da guia <strong>&quot;Sistemas&quot;</strong> devem aparecer
+              como colunas nesta tabela única de Pendências Pine.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-2">
             {/* 1. Current columns list */}
             <div>
-              <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block mb-1.5">
-                Colunas de Sistemas Atuais ({pineSistemas.length})
-              </Label>
-              <div className="border rounded-md divide-y divide-border max-h-40 overflow-y-auto bg-background">
+              <div className="flex items-center justify-between mb-1.5">
+                <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  Colunas de Sistemas Atuais ({pineSistemas.length})
+                </Label>
+                <span className="text-[11px] text-muted-foreground">
+                  Visíveis na tabela única de pendências
+                </span>
+              </div>
+              <div className="border rounded-md divide-y divide-border max-h-36 overflow-y-auto bg-background">
                 {pineSistemas.length === 0 ? (
                   <p className="p-3 text-xs text-muted-foreground text-center">
                     Nenhum sistema adicionado como coluna ainda.
@@ -1551,18 +1676,18 @@ export function PendenciasPinePage() {
                   pineSistemas.map((sis: any, idx: number) => (
                     <div
                       key={sis.id}
-                      className="p-2.5 text-xs flex items-center justify-between hover:bg-muted/50"
+                      className="p-2 text-xs flex items-center justify-between hover:bg-muted/50"
                     >
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-muted-foreground text-[11px] w-5">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="font-mono text-muted-foreground text-[11px] w-5 shrink-0">
                           {idx + 1}.
                         </span>
-                        <span className="font-medium text-foreground">{sis.nome}</span>
+                        <span className="font-medium text-foreground truncate">{sis.nome}</span>
                       </div>
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                        className="h-6 w-6 text-muted-foreground hover:text-destructive shrink-0"
                         title="Remover coluna"
                         onClick={() => {
                           if (
@@ -1582,71 +1707,154 @@ export function PendenciasPinePage() {
               </div>
             </div>
 
-            {/* 2. Add system from existing Sistemas */}
-            <div className="rounded-lg border bg-muted/30 p-3.5 space-y-3">
-              <Label className="text-xs font-semibold text-foreground block">
-                Adicionar Sistema da guia &quot;Sistemas&quot;:
-              </Label>
-              <div className="flex items-center gap-2">
-                <Select
-                  value={selectedCatalogSistemaId}
-                  onValueChange={setSelectedCatalogSistemaId}
-                >
-                  <SelectTrigger className="h-9 flex-1 text-xs">
-                    <SelectValue placeholder="Selecione um sistema cadastrado..." />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-56">
-                    {availableCatalogSistemas.length === 0 ? (
-                      <SelectItem value="none" disabled>
-                        Todos os sistemas já foram adicionados
-                      </SelectItem>
-                    ) : (
-                      availableCatalogSistemas.map((s: any) => (
-                        <SelectItem key={s.id} value={s.id}>
-                          {s.nome} {s.categoria ? `(${s.categoria})` : ""}
-                        </SelectItem>
-                      ))
+            {/* 2. Marcar Sistemas do Catálogo em Lote com Checkboxes */}
+            <div className="rounded-lg border bg-muted/20 p-3.5 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <Label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                    <span>Marcar Sistemas da guia &quot;Sistemas&quot; para adicionar:</span>
+                    {selectedCatalogSistemaIds.length > 0 && (
+                      <Badge variant="default" className="text-[10px] px-1.5 py-0 h-4 font-bold">
+                        {selectedCatalogSistemaIds.length} marcado(s)
+                      </Badge>
                     )}
-                  </SelectContent>
-                </Select>
-
-                <Button
-                  size="sm"
-                  className="h-9 gap-1 text-xs shrink-0"
-                  disabled={!selectedCatalogSistemaId || selectedCatalogSistemaId === "none"}
-                  onClick={() => {
-                    const found = catalogSistemas.find(
-                      (s: any) => s.id === selectedCatalogSistemaId,
-                    );
-                    if (found) {
-                      addSistemaColumn.mutate({
-                        nome: found.nome,
-                        sistema_id: found.id,
-                      });
-                    }
-                  }}
-                >
-                  <Plus className="h-3.5 w-3.5" /> Adicionar Coluna
-                </Button>
+                  </Label>
+                  <p className="text-[11px] text-muted-foreground">
+                    Selecione um ou múltiplos sistemas cadastrados para incluir como novas colunas
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 text-xs">
+                  <button
+                    type="button"
+                    onClick={handleSelectAllFilteredCatalogSistemas}
+                    className="text-primary hover:underline font-medium text-[11px]"
+                  >
+                    Marcar listados ({filteredCatalogSistemasForModal.length})
+                  </button>
+                  {selectedCatalogSistemaIds.length > 0 && (
+                    <>
+                      <span className="text-muted-foreground">•</span>
+                      <button
+                        type="button"
+                        onClick={handleClearCatalogSistemasSelection}
+                        className="text-destructive hover:underline font-medium text-[11px]"
+                      >
+                        Desmarcar todos
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
 
+              {/* Busca de Sistemas do Catálogo */}
+              <div className="relative">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Filtrar sistemas do catálogo por nome ou categoria..."
+                  value={catalogSearchQuery}
+                  onChange={(e) => setCatalogSearchQuery(e.target.value)}
+                  className="pl-9 h-8 text-xs bg-background"
+                />
+              </div>
+
+              {/* Lista de Sistemas com Checkbox */}
+              <div className="border rounded-md max-h-48 overflow-y-auto divide-y divide-border bg-background">
+                {filteredCatalogSistemasForModal.length === 0 ? (
+                  <div className="p-4 text-center text-xs text-muted-foreground">
+                    {availableCatalogSistemas.length === 0
+                      ? "Todos os sistemas cadastrados no catálogo já foram adicionados como colunas."
+                      : "Nenhum sistema encontrado com o termo pesquisado."}
+                  </div>
+                ) : (
+                  filteredCatalogSistemasForModal.map((s: any) => {
+                    const isChecked = selectedCatalogSistemaIds.includes(s.id);
+                    return (
+                      <div
+                        key={s.id}
+                        onClick={() => handleToggleCatalogSistemaSelection(s.id)}
+                        className={`p-2.5 text-xs flex items-center justify-between cursor-pointer transition-colors ${
+                          isChecked
+                            ? "bg-primary/10 font-semibold text-primary"
+                            : "hover:bg-muted/60"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                          <Checkbox
+                            checked={isChecked}
+                            onCheckedChange={() => handleToggleCatalogSistemaSelection(s.id)}
+                            onClick={(e) => e.stopPropagation()}
+                            className="shrink-0"
+                          />
+                          <div className="min-w-0">
+                            <span className="text-foreground truncate block">{s.nome}</span>
+                            {s.categoria && (
+                              <span className="text-[10px] text-muted-foreground font-normal">
+                                Categoria: {s.categoria}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        {isChecked && (
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] bg-primary/20 text-primary border-primary/30 shrink-0 font-medium"
+                          >
+                            Marcado
+                          </Badge>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* Botão de Adicionar Sistemas Marcados em Lote */}
+              {selectedCatalogSistemaIds.length > 0 && (
+                <div className="flex justify-end pt-1">
+                  <Button
+                    size="sm"
+                    className="gap-1.5 text-xs bg-primary text-primary-foreground font-semibold"
+                    disabled={addMultipleSistemaColumns.isPending}
+                    onClick={() => {
+                      const toAdd = selectedCatalogSistemaIds
+                        .map((id) => {
+                          const found = catalogSistemas.find((cs: any) => cs.id === id);
+                          return found ? { nome: found.nome, sistema_id: found.id } : null;
+                        })
+                        .filter(Boolean) as Array<{ nome: string; sistema_id: string }>;
+
+                      if (toAdd.length > 0) {
+                        addMultipleSistemaColumns.mutate(toAdd);
+                      }
+                    }}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    <span>
+                      {addMultipleSistemaColumns.isPending
+                        ? "Adicionando..."
+                        : `Adicionar ${selectedCatalogSistemaIds.length} Sistema(s) Marcado(s)`}
+                    </span>
+                  </Button>
+                </div>
+              )}
+
               {/* Or type custom system name */}
-              <div className="pt-2 border-t">
-                <Label className="text-[11px] text-muted-foreground block mb-1">
-                  Ou digite um nome de sistema personalizado:
+              <div className="pt-3 border-t">
+                <Label className="text-[11px] text-muted-foreground block mb-1 font-medium">
+                  Ou digite um nome de sistema personalizado caso não esteja no catálogo:
                 </Label>
                 <div className="flex items-center gap-2">
                   <Input
                     placeholder="Ex: Novo Sistema X"
                     value={customSistemaNome}
                     onChange={(e) => setCustomSistemaNome(e.target.value)}
-                    className="h-8 text-xs flex-1"
+                    className="h-8 text-xs flex-1 bg-background"
                   />
                   <Button
                     variant="outline"
                     size="sm"
                     className="h-8 text-xs shrink-0"
-                    disabled={!customSistemaNome.trim()}
+                    disabled={!customSistemaNome.trim() || addSistemaColumn.isPending}
                     onClick={() => {
                       addSistemaColumn.mutate({
                         nome: customSistemaNome.trim(),
@@ -1654,7 +1862,8 @@ export function PendenciasPinePage() {
                       });
                     }}
                   >
-                    Adicionar
+                    <Plus className="h-3.5 w-3.5 mr-1" />
+                    {addSistemaColumn.isPending ? "Adicionando..." : "Adicionar Personalizado"}
                   </Button>
                 </div>
               </div>
@@ -1674,23 +1883,33 @@ export function PendenciasPinePage() {
           setModalNewColabOpen(open);
           if (!open) {
             setSelectedColabIds([]);
+            setSelectedPineSistemaIdsForColab([]);
             setColabSearchQuery("");
             setNewColabSistemasStatus({});
             setNewColabChamado("");
             setNewColabObs("");
             setNewColabLoginSenha("");
+          } else {
+            // Quando abre, por padrão podemos marcar os sistemas existentes
+            const allIds = pineSistemas.map((s: any) => s.id);
+            setSelectedPineSistemaIdsForColab(allIds);
+            const defaultStatuses: Record<string, string> = {};
+            for (const id of allIds) {
+              defaultStatuses[id] = "CRIAÇÃO";
+            }
+            setNewColabSistemasStatus(defaultStatuses);
           }
         }}
       >
-        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <UserPlus className="h-5 w-5 text-primary" />
-              <span>Adicionar Colaborador(es) à Tabela Pine</span>
+              <span>Adicionar Colaborador(es) e Marcar Sistemas na Tabela Pine</span>
             </DialogTitle>
             <DialogDescription>
-              Selecione um ou mais colaboradores da Matriz Principal marcando as caixas de seleção.
-              Os dados e status definidos serão aplicados em lote.
+              Selecione os colaboradores e marque quais sistemas terão pendências associadas. Os
+              status definidos serão aplicados em lote.
             </DialogDescription>
           </DialogHeader>
 
@@ -1740,7 +1959,7 @@ export function PendenciasPinePage() {
                   />
                 </div>
 
-                <div className="border rounded-md max-h-52 overflow-y-auto divide-y divide-border bg-background">
+                <div className="border rounded-md max-h-48 overflow-y-auto divide-y divide-border bg-background">
                   {filteredColabsForModal.length === 0 ? (
                     <div className="p-3 text-center text-xs text-muted-foreground">
                       Nenhum colaborador ativo encontrado.
@@ -1859,39 +2078,155 @@ export function PendenciasPinePage() {
               </div>
             )}
 
-            {/* Set status for each system column */}
+            {/* Set status & Marcar Sistemas para a Pendência */}
             {pineSistemas.length > 0 && (
-              <div className="space-y-2 border-t pt-3">
-                <Label className="text-xs font-semibold block">
-                  2. Status em cada Sistema (Colunas):
-                </Label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <div className="space-y-3 border-t pt-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <Label className="text-xs font-bold block text-foreground flex items-center gap-1.5">
+                      <Server className="h-3.5 w-3.5 text-primary" />
+                      <span>2. Marcar Sistemas que terão Pendência:</span>
+                      <Badge
+                        variant="outline"
+                        className={`text-[10px] px-1.5 py-0 h-4.5 font-semibold ${
+                          selectedPineSistemaIdsForColab.length > 0
+                            ? "bg-primary/10 text-primary border-primary/30"
+                            : "bg-muted text-muted-foreground border-border"
+                        }`}
+                      >
+                        {selectedPineSistemaIdsForColab.length} de {pineSistemas.length} sistema(s)
+                        marcado(s)
+                      </Badge>
+                    </Label>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      Marque a caixa de seleção dos sistemas que receberão pendência. Sistemas
+                      desmarcados ficarão como &quot;-&quot; (sem pendência).
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2 text-xs">
+                    <button
+                      type="button"
+                      onClick={handleSelectAllPineSistemasForColab}
+                      className="text-primary hover:underline font-medium text-[11px]"
+                    >
+                      Marcar Todos
+                    </button>
+                    <span className="text-muted-foreground">•</span>
+                    <button
+                      type="button"
+                      onClick={handleClearAllPineSistemasForColab}
+                      className="text-destructive hover:underline font-medium text-[11px]"
+                    >
+                      Desmarcar Todos
+                    </button>
+                  </div>
+                </div>
+
+                {/* Barra de Ação Rápida para definir status de todos os marcados */}
+                {selectedPineSistemaIdsForColab.length > 0 && (
+                  <div className="p-2.5 rounded-md bg-secondary/40 border flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <span className="text-muted-foreground font-medium text-[11px]">
+                      Aplicar a todos os {selectedPineSistemaIdsForColab.length} sistema(s)
+                      marcado(s):
+                    </span>
+                    <div className="flex flex-wrap gap-1">
+                      {PRESET_FUNCOES.filter((f) => f !== "-").map((f) => (
+                        <Button
+                          key={f}
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleSetBulkStatusForMarkedSistemas(f)}
+                          className="h-6 text-[10px] px-2 bg-background hover:bg-primary/10 hover:text-primary border"
+                        >
+                          {f}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Grid de Sistemas com Checkbox Individual e Status */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-64 overflow-y-auto p-1">
                   {pineSistemas.map((sis: any) => {
-                    const currentVal = newColabSistemasStatus[sis.id] || "-";
+                    const isMarked = selectedPineSistemaIdsForColab.includes(sis.id);
+                    const currentVal = isMarked ? newColabSistemasStatus[sis.id] || "CRIAÇÃO" : "-";
+
                     return (
-                      <div key={sis.id} className="p-2 border rounded-md bg-muted/20 space-y-1.5">
-                        <span className="text-xs font-medium block truncate">{sis.nome}</span>
-                        <div className="flex flex-wrap gap-1">
-                          {PRESET_FUNCOES.map((f) => (
-                            <button
-                              key={f}
-                              type="button"
-                              onClick={() =>
-                                setNewColabSistemasStatus((prev) => ({
-                                  ...prev,
-                                  [sis.id]: f,
-                                }))
-                              }
-                              className={`text-[10px] px-2 py-0.5 rounded border transition-colors ${
-                                currentVal === f
-                                  ? "bg-primary text-primary-foreground font-semibold border-primary"
-                                  : "bg-background text-muted-foreground hover:bg-muted border-border"
-                              }`}
+                      <div
+                        key={sis.id}
+                        className={`p-3 border rounded-lg transition-all space-y-2 ${
+                          isMarked
+                            ? "bg-card border-primary/40 shadow-xs ring-1 ring-primary/20"
+                            : "bg-muted/30 border-dashed border-border/70 opacity-75"
+                        }`}
+                      >
+                        {/* Header do Card com Checkbox */}
+                        <div
+                          className="flex items-center justify-between gap-2 cursor-pointer select-none"
+                          onClick={() => handleTogglePineSistemaForColab(sis.id)}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <Checkbox
+                              id={`check-pine-sis-${sis.id}`}
+                              checked={isMarked}
+                              onCheckedChange={() => handleTogglePineSistemaForColab(sis.id)}
+                              onClick={(e) => e.stopPropagation()}
+                              className="shrink-0"
+                            />
+                            <Label
+                              htmlFor={`check-pine-sis-${sis.id}`}
+                              className="text-xs font-bold text-foreground truncate cursor-pointer"
                             >
-                              {f}
-                            </button>
-                          ))}
+                              {sis.nome}
+                            </Label>
+                          </div>
+
+                          <Badge
+                            variant="outline"
+                            className={`text-[10px] font-semibold tracking-wide uppercase px-2 py-0.5 shrink-0 ${getFuncaoBadgeStyle(
+                              currentVal,
+                            )}`}
+                          >
+                            {currentVal}
+                          </Badge>
                         </div>
+
+                        {/* Botões de Função/Status (apenas visíveis/ativos se o sistema estiver marcado) */}
+                        {isMarked ? (
+                          <div className="pt-1">
+                            <span className="text-[10px] text-muted-foreground block mb-1">
+                              Selecione a ação / status para este sistema:
+                            </span>
+                            <div className="flex flex-wrap gap-1">
+                              {PRESET_FUNCOES.map((f) => (
+                                <button
+                                  key={f}
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setNewColabSistemasStatus((prev) => ({
+                                      ...prev,
+                                      [sis.id]: f,
+                                    }));
+                                  }}
+                                  className={`text-[10px] px-2 py-0.5 rounded border transition-colors ${
+                                    currentVal === f
+                                      ? "bg-primary text-primary-foreground font-semibold border-primary shadow-xs"
+                                      : "bg-background text-muted-foreground hover:bg-muted border-border"
+                                  }`}
+                                >
+                                  {f}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-[10px] text-muted-foreground italic">
+                            Sistema desmarcado (nenhuma pendência cadastrada para este sistema).
+                          </p>
+                        )}
                       </div>
                     );
                   })}
@@ -1903,7 +2238,7 @@ export function PendenciasPinePage() {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 border-t pt-3">
               <div>
                 <div className="flex items-center justify-between">
-                  <Label className="text-xs">Nº do Chamado (máx. 200 carac.)</Label>
+                  <Label className="text-xs font-semibold">Nº do Chamado (máx. 200 carac.)</Label>
                   <span
                     className={`text-[10px] ${
                       newColabChamado.length > 190
@@ -1925,7 +2260,7 @@ export function PendenciasPinePage() {
 
               <div>
                 <div className="flex items-center justify-between">
-                  <Label className="text-xs">Observação (máx. 200 carac.)</Label>
+                  <Label className="text-xs font-semibold">Observação (máx. 200 carac.)</Label>
                   <span
                     className={`text-[10px] ${
                       newColabObs.length > 190
@@ -1947,7 +2282,7 @@ export function PendenciasPinePage() {
 
               <div>
                 <div className="flex items-center justify-between">
-                  <Label className="text-xs">Login/ Senha (máx. 200 carac.)</Label>
+                  <Label className="text-xs font-semibold">Login/ Senha (máx. 200 carac.)</Label>
                   <span
                     className={`text-[10px] ${
                       newColabLoginSenha.length > 190
@@ -1979,9 +2314,20 @@ export function PendenciasPinePage() {
                   toast.error("Selecione ao menos um colaborador da lista.");
                   return;
                 }
+
+                // Compilar os status finais considerando sistemas marcados vs desmarcados
+                const finalSistemasValores: Record<string, string> = {};
+                for (const sis of pineSistemas) {
+                  if (selectedPineSistemaIdsForColab.includes(sis.id)) {
+                    finalSistemasValores[sis.id] = newColabSistemasStatus[sis.id] || "CRIAÇÃO";
+                  } else {
+                    finalSistemasValores[sis.id] = "-";
+                  }
+                }
+
                 createColaboradoresRows.mutate({
                   colaborador_ids: selectedColabIds,
-                  sistemas_valores: newColabSistemasStatus,
+                  sistemas_valores: finalSistemasValores,
                   numero_chamado: newColabChamado,
                   observacao: newColabObs,
                   login_senha: newColabLoginSenha,

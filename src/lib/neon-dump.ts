@@ -45,6 +45,7 @@ function mapDataType(col: any): string {
 
 export interface NeonTableStat {
   name: string;
+  schema: string;
   rows: number;
   columns: number;
 }
@@ -62,13 +63,24 @@ export interface NeonDatabaseInfo {
   tables: NeonTableStat[];
 }
 
+function getDumpFilePaths(format: "sql" | "sql.gz" | "json" | "json.gz"): string[] {
+  const cwd = process.cwd();
+  const tmp = os.tmpdir();
+  const filename = `neon_database_dump.${format}`;
+  return [path.join(cwd, filename), path.join(tmp, filename)];
+}
+
 export async function getNeonDatabaseInfo(): Promise<NeonDatabaseInfo> {
   const pool = await getNeonPool();
 
-  const tablesRes = await pool.query(
-    "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE' ORDER BY table_name;",
-  );
-  const tables = tablesRes.rows.map((r: any) => r.table_name);
+  const tablesRes = await pool.query(`
+    SELECT table_schema, table_name 
+    FROM information_schema.tables 
+    WHERE table_schema IN ('public', 'auth', 'storage') 
+      AND table_type = 'BASE TABLE' 
+    ORDER BY CASE table_schema WHEN 'auth' THEN 1 WHEN 'storage' THEN 2 ELSE 3 END, table_name;
+  `);
+  const tables = tablesRes.rows;
 
   const tableStats: NeonTableStat[] = [];
   let totalRows = 0;
@@ -77,21 +89,22 @@ export async function getNeonDatabaseInfo(): Promise<NeonDatabaseInfo> {
     try {
       const [colRes, countRes] = await Promise.all([
         pool.query(
-          "SELECT COUNT(*) as count FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1;",
-          [t],
+          "SELECT COUNT(*) as count FROM information_schema.columns WHERE table_schema = $1 AND table_name = $2;",
+          [t.table_schema, t.table_name],
         ),
-        pool.query(`SELECT COUNT(*) as count FROM "${t}";`),
+        pool.query(`SELECT COUNT(*) as count FROM "${t.table_schema}"."${t.table_name}";`),
       ]);
       const rowCount = parseInt(countRes.rows[0]?.count || "0", 10);
       const colCount = parseInt(colRes.rows[0]?.count || "0", 10);
       totalRows += rowCount;
       tableStats.push({
-        name: t,
+        name: t.table_name,
+        schema: t.table_schema,
         rows: rowCount,
         columns: colCount,
       });
     } catch {
-      tableStats.push({ name: t, rows: 0, columns: 0 });
+      tableStats.push({ name: t.table_name, schema: t.table_schema, rows: 0, columns: 0 });
     }
   }
 
@@ -101,32 +114,25 @@ export async function getNeonDatabaseInfo(): Promise<NeonDatabaseInfo> {
   let jsonFileSizeMb = "0";
   let jsonGzSizeMb = "0";
 
-  try {
-    const cwd = process.cwd();
-    const sqlPath = path.join(cwd, "neon_database_dump.sql");
-    const sqlGzPath = path.join(cwd, "neon_database_dump.sql.gz");
-    const jsonPath = path.join(cwd, "neon_database_dump.json");
-    const jsonGzPath = path.join(cwd, "neon_database_dump.json.gz");
-
-    if (fs.existsSync(sqlPath)) {
-      const stat = fs.statSync(sqlPath);
-      lastDumpAt = stat.mtime.toISOString();
-      sqlFileSizeMb = (stat.size / 1024 / 1024).toFixed(2);
+  for (const fmt of ["sql", "sql.gz", "json", "json.gz"] as const) {
+    for (const p of getDumpFilePaths(fmt)) {
+      if (fs.existsSync(p)) {
+        try {
+          const stat = fs.statSync(p);
+          if (!lastDumpAt || stat.mtime.toISOString() > lastDumpAt) {
+            lastDumpAt = stat.mtime.toISOString();
+          }
+          const mb = (stat.size / 1024 / 1024).toFixed(2);
+          if (fmt === "sql") sqlFileSizeMb = mb;
+          if (fmt === "sql.gz") sqlGzSizeMb = mb;
+          if (fmt === "json") jsonFileSizeMb = mb;
+          if (fmt === "json.gz") jsonGzSizeMb = mb;
+          break;
+        } catch {
+          // ignore
+        }
+      }
     }
-    if (fs.existsSync(sqlGzPath)) {
-      const stat = fs.statSync(sqlGzPath);
-      sqlGzSizeMb = (stat.size / 1024 / 1024).toFixed(2);
-    }
-    if (fs.existsSync(jsonPath)) {
-      const stat = fs.statSync(jsonPath);
-      jsonFileSizeMb = (stat.size / 1024 / 1024).toFixed(2);
-    }
-    if (fs.existsSync(jsonGzPath)) {
-      const stat = fs.statSync(jsonGzPath);
-      jsonGzSizeMb = (stat.size / 1024 / 1024).toFixed(2);
-    }
-  } catch {
-    // ignore
   }
 
   return {
@@ -153,19 +159,24 @@ export async function generateNeonDatabaseDumpFiles(): Promise<{
   const start = Date.now();
   const pool = await getNeonPool();
 
-  const tablesRes = await pool.query(
-    "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE' ORDER BY table_name;",
-  );
-  const tables = tablesRes.rows.map((r: any) => r.table_name);
+  const tablesRes = await pool.query(`
+    SELECT table_schema, table_name 
+    FROM information_schema.tables 
+    WHERE table_schema IN ('public', 'auth', 'storage') 
+      AND table_type = 'BASE TABLE' 
+    ORDER BY CASE table_schema WHEN 'auth' THEN 1 WHEN 'storage' THEN 2 ELSE 3 END, table_name;
+  `);
+  const tables = tablesRes.rows;
 
   const timestamp = new Date().toISOString();
 
   let sql = `-- ==========================================================================\n`;
-  sql += `-- PROACCESS - BACKUP COMPLETO DO BANCO DE DADOS NEON (POSTGRESQL)\n`;
+  sql += `-- PROACCESS - BACKUP INTEGRAL DO BANCO DE DADOS NEON (POSTGRESQL)\n`;
   sql += `-- Gerado em: ${timestamp} (UTC)\n`;
   sql += `-- Host: ep-sweet-sea-ayco0rx7-pooler.c-5.us-east-2.aws.neon.tech\n`;
   sql += `-- Banco: neondb\n`;
   sql += `-- Total de Tabelas: ${tables.length}\n`;
+  sql += `-- Schemas inclusos: public, auth, storage\n`;
   sql += `-- ==========================================================================\n\n`;
 
   sql += `SET statement_timeout = 0;\n`;
@@ -175,6 +186,9 @@ export async function generateNeonDatabaseDumpFiles(): Promise<{
   sql += `SET client_min_messages = warning;\n`;
   sql += `SET row_security = off;\n\n`;
   sql += `BEGIN;\n\n`;
+  sql += `CREATE SCHEMA IF NOT EXISTS "auth";\n`;
+  sql += `CREATE SCHEMA IF NOT EXISTS "storage";\n`;
+  sql += `CREATE SCHEMA IF NOT EXISTS "public";\n\n`;
   sql += `-- Desabilita triggers e checagem de chaves temporariamente para restauracao sem conflitos de ordem\n`;
   sql += `SET session_replication_role = 'replica';\n\n`;
 
@@ -185,6 +199,7 @@ export async function generateNeonDatabaseDumpFiles(): Promise<{
       banco: "neondb",
       engine: "PostgreSQL (Neon Serverless)",
       total_tabelas: tables.length,
+      schemas: ["public", "auth", "storage"],
     },
     tabelas: {},
     estatisticas: {},
@@ -193,24 +208,34 @@ export async function generateNeonDatabaseDumpFiles(): Promise<{
   let totalRowsAcrossAll = 0;
 
   for (const t of tables) {
+    const sName = t.table_schema;
+    const tName = t.table_name;
+    const fullName = `"${sName}"."${tName}"`;
+    const dictKey = sName === "public" ? tName : `${sName}.${tName}`;
+
     const colRes = await pool.query(
-      "SELECT column_name, data_type, udt_name, is_nullable, column_default, character_maximum_length FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1 ORDER BY ordinal_position;",
-      [t],
+      `SELECT column_name, data_type, udt_name, is_nullable, column_default, character_maximum_length 
+       FROM information_schema.columns 
+       WHERE table_schema = $1 AND table_name = $2 
+       ORDER BY ordinal_position;`,
+      [sName, tName],
     );
     const cols = colRes.rows;
 
-    const rowRes = await pool.query(`SELECT * FROM "${t}";`);
+    const rowRes = await pool.query(`SELECT * FROM ${fullName};`);
     const rows = rowRes.rows;
     totalRowsAcrossAll += rows.length;
 
-    jsonDump.tabelas[t] = rows;
-    jsonDump.estatisticas[t] = {
+    jsonDump.tabelas[dictKey] = rows;
+    jsonDump.estatisticas[dictKey] = {
+      schema: sName,
+      tabela: tName,
       colunas: cols.length,
       registros: rows.length,
     };
 
     sql += `-- --------------------------------------------------------------------------\n`;
-    sql += `-- Tabela: "${t}" (${rows.length} registros, ${cols.length} colunas)\n`;
+    sql += `-- Tabela: ${fullName} (${rows.length} registros, ${cols.length} colunas)\n`;
     sql += `-- --------------------------------------------------------------------------\n`;
 
     // CREATE TABLE DDL
@@ -225,7 +250,7 @@ export async function generateNeonDatabaseDumpFiles(): Promise<{
       return def;
     });
 
-    sql += `CREATE TABLE IF NOT EXISTS "${t}" (\n${colDefs.join(",\n")}\n);\n\n`;
+    sql += `CREATE TABLE IF NOT EXISTS ${fullName} (\n${colDefs.join(",\n")}\n);\n\n`;
 
     // INSERT INTO DML (Batched)
     if (rows.length > 0) {
@@ -240,7 +265,7 @@ export async function generateNeonDatabaseDumpFiles(): Promise<{
           })
           .join(",\n");
 
-        sql += `INSERT INTO "${t}" (${colNames}) VALUES\n${valuesList};\n`;
+        sql += `INSERT INTO ${fullName} (${colNames}) VALUES\n${valuesList};\n`;
       }
       sql += `\n`;
     }
@@ -254,11 +279,11 @@ export async function generateNeonDatabaseDumpFiles(): Promise<{
   const cwd = process.cwd();
   const tmpDir = os.tmpdir();
 
-  try {
-    const sqlPath = path.join(cwd, "neon_database_dump.sql");
-    const sqlGzPath = path.join(cwd, "neon_database_dump.sql.gz");
-    const jsonPath = path.join(cwd, "neon_database_dump.json");
-    const jsonGzPath = path.join(cwd, "neon_database_dump.json.gz");
+  const writeDumpFiles = (dir: string) => {
+    const sqlPath = path.join(dir, "neon_database_dump.sql");
+    const sqlGzPath = path.join(dir, "neon_database_dump.sql.gz");
+    const jsonPath = path.join(dir, "neon_database_dump.json");
+    const jsonGzPath = path.join(dir, "neon_database_dump.json.gz");
 
     fs.writeFileSync(sqlPath, sql, "utf-8");
     fs.writeFileSync(jsonPath, JSON.stringify(jsonDump, null, 2), "utf-8");
@@ -270,27 +295,18 @@ export async function generateNeonDatabaseDumpFiles(): Promise<{
     const jsonBuffer = Buffer.from(JSON.stringify(jsonDump), "utf-8");
     const jsonGz = zlib.gzipSync(jsonBuffer, { level: 6 });
     fs.writeFileSync(jsonGzPath, jsonGz);
+  };
+
+  try {
+    writeDumpFiles(cwd);
   } catch {
-    // If process.cwd() is read-only (e.g. Vercel Lambda), write to os.tmpdir()
-    try {
-      const sqlPath = path.join(tmpDir, "neon_database_dump.sql");
-      const sqlGzPath = path.join(tmpDir, "neon_database_dump.sql.gz");
-      const jsonPath = path.join(tmpDir, "neon_database_dump.json");
-      const jsonGzPath = path.join(tmpDir, "neon_database_dump.json.gz");
+    // If process.cwd() is read-only, write to os.tmpdir()
+  }
 
-      fs.writeFileSync(sqlPath, sql, "utf-8");
-      fs.writeFileSync(jsonPath, JSON.stringify(jsonDump, null, 2), "utf-8");
-
-      const sqlBuffer = Buffer.from(sql, "utf-8");
-      const sqlGz = zlib.gzipSync(sqlBuffer, { level: 6 });
-      fs.writeFileSync(sqlGzPath, sqlGz);
-
-      const jsonBuffer = Buffer.from(JSON.stringify(jsonDump), "utf-8");
-      const jsonGz = zlib.gzipSync(jsonBuffer, { level: 6 });
-      fs.writeFileSync(jsonGzPath, jsonGz);
-    } catch {
-      // ignore ephemeral cache write errors
-    }
+  try {
+    writeDumpFiles(tmpDir);
+  } catch {
+    // ignore
   }
 
   return {
@@ -299,6 +315,76 @@ export async function generateNeonDatabaseDumpFiles(): Promise<{
     totalTables: tables.length,
     durationMs: Date.now() - start,
     generatedAt: timestamp,
+  };
+}
+
+export async function getOrGenerateDumpFile(
+  format: "sql" | "sql.gz" | "json" | "json.gz",
+): Promise<{
+  buffer: Buffer;
+  filename: string;
+  mimeType: string;
+  sizeMb: string;
+}> {
+  const dateStr = new Date().toISOString().split("T")[0];
+  const filename = `neon_database_dump_${dateStr}.${format}`;
+  const mimeType = format.endsWith(".gz")
+    ? "application/gzip"
+    : format === "sql"
+      ? "application/sql;charset=utf-8"
+      : "application/json;charset=utf-8";
+
+  // Check if existing file is recent (< 2 hours)
+  const candidatePaths = getDumpFilePaths(format);
+  let foundBuffer: Buffer | null = null;
+
+  for (const p of candidatePaths) {
+    if (fs.existsSync(p)) {
+      try {
+        const stat = fs.statSync(p);
+        const ageHours = (Date.now() - stat.mtimeMs) / (1000 * 3600);
+        if (ageHours < 2) {
+          foundBuffer = fs.readFileSync(p);
+          break;
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  if (foundBuffer) {
+    return {
+      buffer: foundBuffer,
+      filename,
+      mimeType,
+      sizeMb: (foundBuffer.length / 1024 / 1024).toFixed(2),
+    };
+  }
+
+  // Not found or older than 2 hours: generate fresh dump files
+  await generateNeonDatabaseDumpFiles();
+
+  for (const p of candidatePaths) {
+    if (fs.existsSync(p)) {
+      try {
+        foundBuffer = fs.readFileSync(p);
+        break;
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  if (!foundBuffer) {
+    throw new Error(`Falha ao carregar arquivo de dump gerado (${format})`);
+  }
+
+  return {
+    buffer: foundBuffer,
+    filename,
+    mimeType,
+    sizeMb: (foundBuffer.length / 1024 / 1024).toFixed(2),
   };
 }
 
@@ -313,162 +399,28 @@ export async function exportNeonDumpPayload(
   totalRows: number;
   totalTables: number;
 }> {
-  const pool = await getNeonPool();
+  const file = await getOrGenerateDumpFile(format);
+  const info = await getNeonDatabaseInfo();
 
-  const tablesRes = await pool.query(
-    "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE' ORDER BY table_name;",
-  );
-  const tables = tablesRes.rows.map((r: any) => r.table_name);
-
-  const timestamp = new Date().toISOString();
-  const dateStr = timestamp.split("T")[0];
-
-  let sql = `-- ==========================================================================\n`;
-  sql += `-- PROACCESS - BACKUP COMPLETO DO BANCO DE DADOS NEON (POSTGRESQL)\n`;
-  sql += `-- Gerado em: ${timestamp} (UTC)\n`;
-  sql += `-- Host: ep-sweet-sea-ayco0rx7-pooler.c-5.us-east-2.aws.neon.tech\n`;
-  sql += `-- Banco: neondb\n`;
-  sql += `-- Total de Tabelas: ${tables.length}\n`;
-  sql += `-- ==========================================================================\n\n`;
-
-  sql += `SET statement_timeout = 0;\n`;
-  sql += `SET client_encoding = 'UTF8';\n`;
-  sql += `SET standard_conforming_strings = on;\n`;
-  sql += `SET check_function_bodies = false;\n`;
-  sql += `SET client_min_messages = warning;\n`;
-  sql += `SET row_security = off;\n\n`;
-  sql += `BEGIN;\n\n`;
-  sql += `-- Desabilita triggers e checagem de chaves temporariamente para restauracao sem conflitos de ordem\n`;
-  sql += `SET session_replication_role = 'replica';\n\n`;
-
-  const jsonDump: any = {
-    metadata: {
-      sistema: "ProAccess",
-      gerado_em: timestamp,
-      banco: "neondb",
-      engine: "PostgreSQL (Neon Serverless)",
-      total_tabelas: tables.length,
-    },
-    tabelas: {},
-    estatisticas: {},
-  };
-
-  let totalRowsAcrossAll = 0;
-
-  for (const t of tables) {
-    const colRes = await pool.query(
-      "SELECT column_name, data_type, udt_name, is_nullable, column_default, character_maximum_length FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1 ORDER BY ordinal_position;",
-      [t],
-    );
-    const cols = colRes.rows;
-
-    const rowRes = await pool.query(`SELECT * FROM "${t}";`);
-    const rows = rowRes.rows;
-    totalRowsAcrossAll += rows.length;
-
-    if (format.startsWith("json")) {
-      jsonDump.tabelas[t] = rows;
-      jsonDump.estatisticas[t] = {
-        colunas: cols.length,
-        registros: rows.length,
-      };
-    }
-
-    if (format.startsWith("sql")) {
-      sql += `-- --------------------------------------------------------------------------\n`;
-      sql += `-- Tabela: "${t}" (${rows.length} registros, ${cols.length} colunas)\n`;
-      sql += `-- --------------------------------------------------------------------------\n`;
-
-      const colDefs = cols.map((c: any) => {
-        let def = `  "${c.column_name}" ${mapDataType(c)}`;
-        if (c.column_default) {
-          def += ` DEFAULT ${c.column_default}`;
-        }
-        if (c.is_nullable === "NO") {
-          def += ` NOT NULL`;
-        }
-        return def;
-      });
-
-      sql += `CREATE TABLE IF NOT EXISTS "${t}" (\n${colDefs.join(",\n")}\n);\n\n`;
-
-      if (rows.length > 0) {
-        const colNames = cols.map((c: any) => `"${c.column_name}"`).join(", ");
-        const BATCH_SIZE = 100;
-        for (let i = 0; i < rows.length; i += BATCH_SIZE) {
-          const batch = rows.slice(i, i + BATCH_SIZE);
-          const valuesList = batch
-            .map((r: any) => {
-              const vals = cols.map((c: any) => escapeSqlVal(r[c.column_name]));
-              return `(${vals.join(", ")})`;
-            })
-            .join(",\n");
-
-          sql += `INSERT INTO "${t}" (${colNames}) VALUES\n${valuesList};\n`;
-        }
-        sql += `\n`;
-      }
-    }
-  }
-
-  if (format.startsWith("sql")) {
-    sql += `-- Restaura verificacao de chaves e conclui transacao\n`;
-    sql += `SET session_replication_role = 'DEFAULT';\n\n`;
-    sql += `COMMIT;\n`;
-    sql += `-- =================== FIM DO DUMP NEON ===================\n`;
-  }
-
-  if (format === "sql") {
-    const buf = Buffer.from(sql, "utf-8");
+  if (format.endsWith(".gz")) {
     return {
-      content: sql,
-      filename: `neon_database_dump_${dateStr}.sql`,
-      mimeType: "application/sql;charset=utf-8",
-      isBase64: false,
-      sizeMb: (buf.length / 1024 / 1024).toFixed(2),
-      totalRows: totalRowsAcrossAll,
-      totalTables: tables.length,
-    };
-  }
-
-  if (format === "sql.gz") {
-    const sqlBuffer = Buffer.from(sql, "utf-8");
-    const compressed = zlib.gzipSync(sqlBuffer, { level: 6 });
-    return {
-      content: compressed.toString("base64"),
-      filename: `neon_database_dump_${dateStr}.sql.gz`,
-      mimeType: "application/gzip",
+      content: file.buffer.toString("base64"),
+      filename: file.filename,
+      mimeType: file.mimeType,
       isBase64: true,
-      sizeMb: (compressed.length / 1024 / 1024).toFixed(2),
-      totalRows: totalRowsAcrossAll,
-      totalTables: tables.length,
+      sizeMb: file.sizeMb,
+      totalRows: info.totalRows,
+      totalTables: info.totalTables,
     };
   }
 
-  if (format === "json") {
-    const jsonStr = JSON.stringify(jsonDump, null, 2);
-    const buf = Buffer.from(jsonStr, "utf-8");
-    return {
-      content: jsonStr,
-      filename: `neon_database_dump_${dateStr}.json`,
-      mimeType: "application/json;charset=utf-8",
-      isBase64: false,
-      sizeMb: (buf.length / 1024 / 1024).toFixed(2),
-      totalRows: totalRowsAcrossAll,
-      totalTables: tables.length,
-    };
-  }
-
-  // json.gz
-  const jsonBuffer = Buffer.from(JSON.stringify(jsonDump), "utf-8");
-  const compressed = zlib.gzipSync(jsonBuffer, { level: 6 });
   return {
-    content: compressed.toString("base64"),
-    filename: `neon_database_dump_${dateStr}.json.gz`,
-    mimeType: "application/gzip",
-    isBase64: true,
-    sizeMb: (compressed.length / 1024 / 1024).toFixed(2),
-    totalRows: totalRowsAcrossAll,
-    totalTables: tables.length,
+    content: file.buffer.toString("utf-8"),
+    filename: file.filename,
+    mimeType: file.mimeType,
+    isBase64: false,
+    sizeMb: file.sizeMb,
+    totalRows: info.totalRows,
+    totalTables: info.totalTables,
   };
 }

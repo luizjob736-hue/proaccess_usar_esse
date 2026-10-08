@@ -62,71 +62,32 @@ export function NeonDatabaseBackupCard() {
     },
   });
 
-  const handleDownload = async (format: "sql" | "sql.gz" | "json" | "json.gz") => {
-    if (downloadingFormat) return;
-    setDownloadingFormat(format);
-    const toastId = toast.loading(
-      `Gerando e preparando cópia do banco (${format.toUpperCase()}). Aguarde alguns instantes...`,
+  const handleDownload = (format: "sql" | "sql.gz" | "json" | "json.gz") => {
+    // Obter token de sessão atual
+    let token = "";
+    try {
+      const rawSession = localStorage.getItem("proaccess_neon_session");
+      if (rawSession) {
+        const s = JSON.parse(rawSession);
+        token = s?.access_token || "";
+      }
+    } catch {
+      // ignore
+    }
+
+    const tokenParam = token ? `&token=${encodeURIComponent(token)}` : "";
+    const downloadUrl = `/api/download-neon-dump?format=${format}${tokenParam}`;
+
+    toast.info(
+      `Iniciando download da cópia (${format.toUpperCase()}). O navegador salvará o arquivo diretamente.`,
     );
 
-    try {
-      // Obter token de sessão atual
-      let token = "";
-      try {
-        const rawSession = localStorage.getItem("proaccess_neon_session");
-        if (rawSession) {
-          const s = JSON.parse(rawSession);
-          token = s?.access_token || "";
-        }
-      } catch {
-        // ignore
-      }
-
-      const headers: Record<string, string> = {};
-      if (token) {
-        headers["Authorization"] = `Bearer ${token}`;
-      }
-
-      const tokenParam = token ? `&token=${encodeURIComponent(token)}` : "";
-      const response = await fetch(`/api/download-neon-dump?format=${format}${tokenParam}`, {
-        method: "GET",
-        headers,
-      });
-
-      if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(errText || `Erro no servidor (HTTP ${response.status})`);
-      }
-
-      const blob = await response.blob();
-      const contentDisposition = response.headers.get("Content-Disposition") || "";
-      let filename = `neon_database_dump_${new Date().toISOString().split("T")[0]}.${format}`;
-      const match = contentDisposition.match(/filename="?([^";]+)"?/);
-      if (match && match[1]) {
-        filename = match[1];
-      }
-
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-      const sizeMb = (blob.size / 1024 / 1024).toFixed(2);
-      toast.success(`Download concluído: ${filename} (${sizeMb} MB)!`, {
-        id: toastId,
-      });
-    } catch (err: any) {
-      console.error("Erro no download do dump:", err);
-      toast.error(err?.message || "Erro ao realizar o download da cópia do banco de dados", {
-        id: toastId,
-      });
-    } finally {
-      setDownloadingFormat(null);
-    }
+    const a = document.createElement("a");
+    a.href = downloadUrl;
+    a.setAttribute("download", `neon_database_dump.${format}`);
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   };
 
   const isWorking = generateMutation.isPending || isFetching || !!downloadingFormat;

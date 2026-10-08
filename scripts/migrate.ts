@@ -128,7 +128,9 @@ async function main() {
     `);
 
     // 2. Read all migration files in order
-    const migrationsDir = path.join(process.cwd(), "supabase", "migrations");
+    const migrationsDir = fs.existsSync(path.join(process.cwd(), "migrations"))
+      ? path.join(process.cwd(), "migrations")
+      : path.join(process.cwd(), "supabase", "migrations");
     const files = fs
       .readdirSync(migrationsDir)
       .filter((f) => f.endsWith(".sql"))

@@ -69,28 +69,14 @@ export default {
         const format = (url.searchParams.get("format") || "sql.gz") as
           "sql" | "sql.gz" | "json" | "json.gz";
 
-        const { exportNeonDumpPayload } = await import("./lib/neon-dump");
-        const payload = await exportNeonDumpPayload(format);
+        const { getOrGenerateDumpFile } = await import("./lib/neon-dump");
+        const { buffer, filename, mimeType } = await getOrGenerateDumpFile(format);
 
-        if (payload.isBase64) {
-          const buffer = Buffer.from(payload.content, "base64");
-          return new Response(buffer, {
-            status: 200,
-            headers: {
-              "Content-Type": payload.mimeType,
-              "Content-Disposition": `attachment; filename="${payload.filename}"`,
-              "Content-Length": String(buffer.length),
-              "Cache-Control": "no-cache, no-store, must-revalidate",
-            },
-          });
-        }
-
-        const buffer = Buffer.from(payload.content, "utf-8");
         return new Response(buffer, {
           status: 200,
           headers: {
-            "Content-Type": payload.mimeType,
-            "Content-Disposition": `attachment; filename="${payload.filename}"`,
+            "Content-Type": mimeType,
+            "Content-Disposition": `attachment; filename="${filename}"`,
             "Content-Length": String(buffer.length),
             "Cache-Control": "no-cache, no-store, must-revalidate",
           },

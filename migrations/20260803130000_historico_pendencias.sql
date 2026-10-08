@@ -1,0 +1,1 @@
+ALTER TABLE public.pendencias ADD COLUMN IF NOT EXISTS arquivado BOOLEAN NOT NULL DEFAULT false;

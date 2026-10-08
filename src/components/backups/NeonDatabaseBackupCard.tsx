@@ -21,11 +21,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import {
-  getNeonDatabaseStats,
-  generateNeonDumpServerFn,
-  downloadNeonDumpServerFn,
-} from "@/lib/backups.functions";
+import { getNeonDatabaseStats, generateNeonDumpServerFn } from "@/lib/backups.functions";
 import { cn } from "@/lib/utils";
 
 export function NeonDatabaseBackupCard() {
@@ -38,7 +34,6 @@ export function NeonDatabaseBackupCard() {
 
   const getStatsFn = useServerFn(getNeonDatabaseStats);
   const generateDumpFn = useServerFn(generateNeonDumpServerFn);
-  const downloadDumpFn = useServerFn(downloadNeonDumpServerFn);
 
   const {
     data: dbInfo,
@@ -70,38 +65,62 @@ export function NeonDatabaseBackupCard() {
   const handleDownload = async (format: "sql" | "sql.gz" | "json" | "json.gz") => {
     if (downloadingFormat) return;
     setDownloadingFormat(format);
-    const toastId = toast.loading(`Preparando e exportando cópia (${format.toUpperCase()})...`);
+    const toastId = toast.loading(
+      `Gerando e preparando cópia do banco (${format.toUpperCase()}). Aguarde alguns instantes...`,
+    );
 
     try {
-      const res = await downloadDumpFn({ data: { format } });
-      let blob: Blob;
-
-      if (res.isBase64) {
-        const binaryString = atob(res.content);
-        const len = binaryString.length;
-        const bytes = new Uint8Array(len);
-        for (let i = 0; i < len; i++) {
-          bytes[i] = binaryString.charCodeAt(i);
+      // Obter token de sessão atual
+      let token = "";
+      try {
+        const rawSession = localStorage.getItem("proaccess_neon_session");
+        if (rawSession) {
+          const s = JSON.parse(rawSession);
+          token = s?.access_token || "";
         }
-        blob = new Blob([bytes], { type: res.mimeType });
-      } else {
-        blob = new Blob([res.content], { type: res.mimeType });
+      } catch {
+        // ignore
+      }
+
+      const headers: Record<string, string> = {};
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+
+      const tokenParam = token ? `&token=${encodeURIComponent(token)}` : "";
+      const response = await fetch(`/api/download-neon-dump?format=${format}${tokenParam}`, {
+        method: "GET",
+        headers,
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(errText || `Erro no servidor (HTTP ${response.status})`);
+      }
+
+      const blob = await response.blob();
+      const contentDisposition = response.headers.get("Content-Disposition") || "";
+      let filename = `neon_database_dump_${new Date().toISOString().split("T")[0]}.${format}`;
+      const match = contentDisposition.match(/filename="?([^";]+)"?/);
+      if (match && match[1]) {
+        filename = match[1];
       }
 
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = res.filename;
+      a.download = filename;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      toast.success(`Download concluído: ${res.filename} (${res.sizeMb} MB)!`, {
+      const sizeMb = (blob.size / 1024 / 1024).toFixed(2);
+      toast.success(`Download concluído: ${filename} (${sizeMb} MB)!`, {
         id: toastId,
       });
     } catch (err: any) {
-      console.error(err);
+      console.error("Erro no download do dump:", err);
       toast.error(err?.message || "Erro ao realizar o download da cópia do banco de dados", {
         id: toastId,
       });

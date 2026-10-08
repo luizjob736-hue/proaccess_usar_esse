@@ -22,6 +22,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
+import { TableSortHeader, SortOrder, sortData } from "@/components/ui/table-sort-header";
 import {
   FileDown,
   Search,
@@ -411,6 +412,31 @@ function PendenciasHistorico() {
     periodoFiltro,
     busca,
   ]);
+
+  const [sortField, setSortField] = useState<string>("dataFimObj");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      setSortOrder("asc");
+    }
+  };
+
+  const sortedRows = useMemo(() => {
+    return sortData(filtered, sortField, sortOrder, {
+      titulo: (p: any) => p.titulo || "",
+      "colaborador.nome": (p: any) => p.colaborador?.nome || p.titulo || "",
+      "operacao.nome": (p: any) => p.operacao?.nome || "",
+      "sistema.nome": (p: any) => p.sistema?.nome || "",
+      status: (p: any) => p.status || "",
+      dataInicioObj: (p: any) => p.dataInicioObj?.getTime() || 0,
+      dataFimObj: (p: any) => p.dataFimObj?.getTime() || 0,
+      duracaoDias: (p: any) => p.duracaoDias || 0,
+    });
+  }, [filtered, sortField, sortOrder]);
 
   // Export handlers
   const handleExport = (fmt: "xlsx" | "csv") => {

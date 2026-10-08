@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
+import { TableSortHeader, SortOrder, sortData } from "@/components/ui/table-sort-header";
 import {
   Table2,
   Plus,
@@ -338,6 +339,37 @@ export function PendenciasPinePage() {
 
     return result;
   }, [pendencias, viewMode, ocultarFinalizadas, search, filterStatus]);
+
+  const [sortField, setSortField] = useState<string>("colaborador.nome");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      setSortOrder("asc");
+    }
+  };
+
+  const sortedRows = useMemo(() => {
+    return sortData(filteredRows, sortField, sortOrder, {
+      "colaborador.nome": (r: any) => r.colaborador?.nome || "",
+      "colaborador.cpf": (r: any) => r.colaborador?.cpf || "",
+      "colaborador.data_nascimento": (r: any) => r.colaborador?.data_nascimento || "",
+      "colaborador.email": (r: any) => r.colaborador?.email || "",
+      "colaborador.telefone": (r: any) => r.colaborador?.telefone || "",
+      numero_chamado: (r: any) => r.numero_chamado || "",
+      observacao: (r: any) => r.observacao || "",
+      login_senha: (r: any) => r.login_senha || "",
+      concluido_em: (r: any) => r.concluido_em || "",
+      ...pineSistemas.reduce((acc: any, sis: any) => {
+        acc[`sis:${sis.id}`] = (r: any) =>
+          r.sistemas_valores?.[sis.id] || r.sistemas_valores?.[sis.nome] || "";
+        return acc;
+      }, {}),
+    });
+  }, [filteredRows, sortField, sortOrder, pineSistemas]);
 
   // Modals state
   const [modalManageSistemasOpen, setModalManageSistemasOpen] = useState(false);
@@ -1731,11 +1763,51 @@ export function PendenciasPinePage() {
                 <th className="py-3 px-3 text-center w-12 border-r border-border/50">#</th>
 
                 {/* 2. Fixed Collaborator Columns */}
-                <th className="py-3 px-4 min-w-[220px] border-r border-border/50">Nome</th>
-                <th className="py-3 px-3 min-w-[130px] border-r border-border/50">CPF</th>
-                <th className="py-3 px-3 min-w-[120px] border-r border-border/50">Data de Nasc.</th>
-                <th className="py-3 px-4 min-w-[220px] border-r border-border/50">E-mail</th>
-                <th className="py-3 px-3 min-w-[140px] border-r border-border/50">Telefone</th>
+                <th className="py-3 px-4 min-w-[220px] border-r border-border/50">
+                  <TableSortHeader
+                    label="Nome"
+                    field="colaborador.nome"
+                    currentField={sortField}
+                    currentOrder={sortOrder}
+                    onSort={handleSort}
+                  />
+                </th>
+                <th className="py-3 px-3 min-w-[130px] border-r border-border/50">
+                  <TableSortHeader
+                    label="CPF"
+                    field="colaborador.cpf"
+                    currentField={sortField}
+                    currentOrder={sortOrder}
+                    onSort={handleSort}
+                  />
+                </th>
+                <th className="py-3 px-3 min-w-[120px] border-r border-border/50">
+                  <TableSortHeader
+                    label="Data de Nasc."
+                    field="colaborador.data_nascimento"
+                    currentField={sortField}
+                    currentOrder={sortOrder}
+                    onSort={handleSort}
+                  />
+                </th>
+                <th className="py-3 px-4 min-w-[220px] border-r border-border/50">
+                  <TableSortHeader
+                    label="E-mail"
+                    field="colaborador.email"
+                    currentField={sortField}
+                    currentOrder={sortOrder}
+                    onSort={handleSort}
+                  />
+                </th>
+                <th className="py-3 px-3 min-w-[140px] border-r border-border/50">
+                  <TableSortHeader
+                    label="Telefone"
+                    field="colaborador.telefone"
+                    currentField={sortField}
+                    currentOrder={sortOrder}
+                    onSort={handleSort}
+                  />
+                </th>
 
                 {/* 3. Dynamic System Columns */}
                 {pineSistemas.map((sis: any) => (
@@ -1744,9 +1816,14 @@ export function PendenciasPinePage() {
                     className="py-3 px-3 min-w-[170px] border-r border-border/50 bg-secondary/30 text-foreground"
                   >
                     <div className="flex items-center justify-between gap-1">
-                      <span className="font-bold truncate" title={sis.nome}>
-                        {sis.nome}
-                      </span>
+                      <TableSortHeader
+                        label={sis.nome}
+                        field={`sis:${sis.id}`}
+                        currentField={sortField}
+                        currentOrder={sortOrder}
+                        onSort={handleSort}
+                        className="font-bold truncate max-w-[130px]"
+                      />
                       {isAdmin && (
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -1785,7 +1862,13 @@ export function PendenciasPinePage() {
                 {/* 4. The Chamado, Observação & Login/Senha Columns */}
                 <th className="py-3 px-3 min-w-[200px] bg-primary/5 text-foreground font-bold border-r border-border/50">
                   <div className="flex items-center justify-between">
-                    <span>Nº do Chamado</span>
+                    <TableSortHeader
+                      label="Nº do Chamado"
+                      field="numero_chamado"
+                      currentField={sortField}
+                      currentOrder={sortOrder}
+                      onSort={handleSort}
+                    />
                     <span className="text-[10px] text-muted-foreground font-normal">
                       (200 carac.)
                     </span>
@@ -1793,7 +1876,13 @@ export function PendenciasPinePage() {
                 </th>
                 <th className="py-3 px-3 min-w-[230px] bg-primary/5 text-foreground font-bold border-r border-border/50">
                   <div className="flex items-center justify-between">
-                    <span>Observação</span>
+                    <TableSortHeader
+                      label="Observação"
+                      field="observacao"
+                      currentField={sortField}
+                      currentOrder={sortOrder}
+                      onSort={handleSort}
+                    />
                     <span className="text-[10px] text-muted-foreground font-normal">
                       (200 carac.)
                     </span>
@@ -1801,7 +1890,13 @@ export function PendenciasPinePage() {
                 </th>
                 <th className="py-3 px-3 min-w-[200px] bg-primary/5 text-foreground font-bold border-r border-border/50">
                   <div className="flex items-center justify-between">
-                    <span>Login/ Senha</span>
+                    <TableSortHeader
+                      label="Login/ Senha"
+                      field="login_senha"
+                      currentField={sortField}
+                      currentOrder={sortOrder}
+                      onSort={handleSort}
+                    />
                     <span className="text-[10px] text-muted-foreground font-normal">
                       (200 carac.)
                     </span>
@@ -1812,7 +1907,13 @@ export function PendenciasPinePage() {
                 <th className="py-3 px-3 min-w-[170px] bg-emerald-500/5 text-foreground font-bold border-r border-border/50">
                   <div className="flex items-center gap-1.5">
                     <CalendarCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                    <span>Data de finalização</span>
+                    <TableSortHeader
+                      label="Data de finalização"
+                      field="concluido_em"
+                      currentField={sortField}
+                      currentOrder={sortOrder}
+                      onSort={handleSort}
+                    />
                   </div>
                 </th>
 
@@ -1877,7 +1978,7 @@ export function PendenciasPinePage() {
                   </td>
                 </tr>
               ) : (
-                filteredRows.map((row: any, index: number) => (
+                sortedRows.map((row: any, index: number) => (
                   <PineUnifiedRow
                     key={row.id}
                     index={index + 1}

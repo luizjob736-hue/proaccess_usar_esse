@@ -25,6 +25,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
+import { TableSortHeader, SortOrder, sortData } from "@/components/ui/table-sort-header";
 import {
   Eye,
   EyeOff,
@@ -722,13 +723,54 @@ export function MatrizView({
     onlyPreAtendimento,
   ]);
 
-  const totalPages = pageSize > 0 ? Math.ceil(filtered.length / pageSize) : 1;
+  const [sortField, setSortField] = useState<string>("nome");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
+
+  const handleSort = useCallback((field: string) => {
+    setSortField((currentField) => {
+      if (currentField === field) {
+        setSortOrder((currentOrder) => (currentOrder === "asc" ? "desc" : "asc"));
+        return field;
+      }
+      setSortOrder("asc");
+      return field;
+    });
+  }, []);
+
+  const sortedRows = useMemo(() => {
+    return sortData(filtered, sortField, sortOrder, {
+      nome: (r: any) => r.nome,
+      cpf: (r: any) => r.cpf,
+      admissao_em: (r: any) => r.admissao_em,
+      jornada: (r: any) => r.jornada,
+      produto: (r: any) => r.produto,
+      horario_entrada: (r: any) => r.horario_entrada,
+      horario_saida: (r: any) => r.horario_saida,
+      inicio_na_operacao: (r: any) => r.inicio_na_operacao,
+      apelido_intergrall: (r: any) => r.apelido_intergrall,
+      data_nascimento: (r: any) => r.data_nascimento,
+      email: (r: any) => r.email,
+      email_senha: (r: any) => r.email_senha,
+      telefone: (r: any) => r.telefone,
+      cargo: (r: any) => r.cargo,
+      inativado_em: (r: any) => r.inativado_em,
+      ...sistemas.reduce((acc: any, s: any) => {
+        acc[`sistema:${s.id}`] = (r: any) =>
+          r.acessos?.[s.id]?.login || r.acessos?.[s.id]?.senha || "";
+        acc[`sistema:${s.id}:user`] = (r: any) => r.acessos?.[s.id]?.login || "";
+        acc[`sistema:${s.id}:pass`] = (r: any) => r.acessos?.[s.id]?.senha || "";
+        return acc;
+      }, {}),
+    });
+  }, [filtered, sortField, sortOrder, sistemas]);
+
+  const totalPages = pageSize > 0 ? Math.ceil(sortedRows.length / pageSize) : 1;
   const currentPage = Math.min(Math.max(1, page), totalPages || 1);
   const paginatedRows = useMemo(() => {
-    if (pageSize === 0) return filtered;
+    if (pageSize === 0) return sortedRows;
     const start = (currentPage - 1) * pageSize;
-    return filtered.slice(start, start + pageSize);
-  }, [filtered, currentPage, pageSize]);
+    return sortedRows.slice(start, start + pageSize);
+  }, [sortedRows, currentPage, pageSize]);
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
@@ -1188,32 +1230,146 @@ export function MatrizView({
                       onCheckedChange={toggleSelectAll}
                       aria-label="Selecionar todos os colaboradores"
                     />
-                    <span>Nome</span>
+                    <TableSortHeader
+                      label="Nome"
+                      field="nome"
+                      currentField={sortField}
+                      currentOrder={sortOrder}
+                      onSort={handleSort}
+                    />
                   </div>
                 </th>
-                <th className="p-2.5 text-left border-b border-r min-w-[110px]">CPF</th>
+                <th className="p-2.5 text-left border-b border-r min-w-[110px]">
+                  <TableSortHeader
+                    label="CPF"
+                    field="cpf"
+                    currentField={sortField}
+                    currentOrder={sortOrder}
+                    onSort={handleSort}
+                  />
+                </th>
                 {onlyPreAtendimento && (
                   <>
-                    <th className="p-2.5 text-left border-b border-r min-w-[110px]">Admissão</th>
-                    <th className="p-2.5 text-left border-b border-r min-w-[120px]">Jornada</th>
-                    <th className="p-2.5 text-left border-b border-r min-w-[130px]">Produto</th>
-                    <th className="p-2.5 text-left border-b border-r min-w-[90px]">Entrada</th>
-                    <th className="p-2.5 text-left border-b border-r min-w-[90px]">Saída</th>
-                    <th className="p-2.5 text-left border-b border-r min-w-[125px]">
-                      Início na Operação
+                    <th className="p-2.5 text-left border-b border-r min-w-[110px]">
+                      <TableSortHeader
+                        label="Admissão"
+                        field="admissao_em"
+                        currentField={sortField}
+                        currentOrder={sortOrder}
+                        onSort={handleSort}
+                      />
+                    </th>
+                    <th className="p-2.5 text-left border-b border-r min-w-[120px]">
+                      <TableSortHeader
+                        label="Jornada"
+                        field="jornada"
+                        currentField={sortField}
+                        currentOrder={sortOrder}
+                        onSort={handleSort}
+                      />
                     </th>
                     <th className="p-2.5 text-left border-b border-r min-w-[130px]">
-                      Apelido Intergrall
+                      <TableSortHeader
+                        label="Produto"
+                        field="produto"
+                        currentField={sortField}
+                        currentOrder={sortOrder}
+                        onSort={handleSort}
+                      />
+                    </th>
+                    <th className="p-2.5 text-left border-b border-r min-w-[90px]">
+                      <TableSortHeader
+                        label="Entrada"
+                        field="horario_entrada"
+                        currentField={sortField}
+                        currentOrder={sortOrder}
+                        onSort={handleSort}
+                      />
+                    </th>
+                    <th className="p-2.5 text-left border-b border-r min-w-[90px]">
+                      <TableSortHeader
+                        label="Saída"
+                        field="horario_saida"
+                        currentField={sortField}
+                        currentOrder={sortOrder}
+                        onSort={handleSort}
+                      />
+                    </th>
+                    <th className="p-2.5 text-left border-b border-r min-w-[125px]">
+                      <TableSortHeader
+                        label="Início na Operação"
+                        field="inicio_na_operacao"
+                        currentField={sortField}
+                        currentOrder={sortOrder}
+                        onSort={handleSort}
+                      />
+                    </th>
+                    <th className="p-2.5 text-left border-b border-r min-w-[130px]">
+                      <TableSortHeader
+                        label="Apelido Intergrall"
+                        field="apelido_intergrall"
+                        currentField={sortField}
+                        currentOrder={sortOrder}
+                        onSort={handleSort}
+                      />
                     </th>
                   </>
                 )}
-                <th className="p-2.5 text-left border-b border-r min-w-[100px]">Nascimento</th>
-                <th className="p-2.5 text-left border-b border-r min-w-[160px]">E-mail</th>
-                <th className="p-2.5 text-left border-b border-r min-w-[120px]">Senha e-mail</th>
-                <th className="p-2.5 text-left border-b border-r min-w-[110px]">Telefone</th>
-                <th className="p-2.5 text-left border-b border-r min-w-[120px]">Cargo</th>
+                <th className="p-2.5 text-left border-b border-r min-w-[100px]">
+                  <TableSortHeader
+                    label="Nascimento"
+                    field="data_nascimento"
+                    currentField={sortField}
+                    currentOrder={sortOrder}
+                    onSort={handleSort}
+                  />
+                </th>
+                <th className="p-2.5 text-left border-b border-r min-w-[160px]">
+                  <TableSortHeader
+                    label="E-mail"
+                    field="email"
+                    currentField={sortField}
+                    currentOrder={sortOrder}
+                    onSort={handleSort}
+                  />
+                </th>
+                <th className="p-2.5 text-left border-b border-r min-w-[120px]">
+                  <TableSortHeader
+                    label="Senha e-mail"
+                    field="email_senha"
+                    currentField={sortField}
+                    currentOrder={sortOrder}
+                    onSort={handleSort}
+                  />
+                </th>
+                <th className="p-2.5 text-left border-b border-r min-w-[110px]">
+                  <TableSortHeader
+                    label="Telefone"
+                    field="telefone"
+                    currentField={sortField}
+                    currentOrder={sortOrder}
+                    onSort={handleSort}
+                  />
+                </th>
+                <th className="p-2.5 text-left border-b border-r min-w-[120px]">
+                  <TableSortHeader
+                    label="Cargo"
+                    field="cargo"
+                    currentField={sortField}
+                    currentOrder={sortOrder}
+                    onSort={handleSort}
+                  />
+                </th>
                 {onlyInativos && (
-                  <th className="p-2.5 text-left border-b border-r min-w-[110px]">Inativado em</th>
+                  <th className="p-2.5 text-left border-b border-r min-w-[110px]">
+                    <TableSortHeader
+                      label="Inativado em"
+                      field="inativado_em"
+                      currentField={sortField}
+                      currentOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                  </th>
                 )}
                 <th className="p-2.5 text-center border-b border-r min-w-[120px]">Ações</th>
                 {sistemas.map((s) => (
@@ -1222,7 +1378,14 @@ export function MatrizView({
                     colSpan={2}
                     className="p-2 text-center border-b border-r bg-primary/10 font-semibold text-foreground min-w-[200px]"
                   >
-                    {s.nome}
+                    <TableSortHeader
+                      label={s.nome}
+                      field={`sistema:${s.id}`}
+                      currentField={sortField}
+                      currentOrder={sortOrder}
+                      onSort={handleSort}
+                      align="center"
+                    />
                   </th>
                 ))}
               </tr>
@@ -1249,8 +1412,26 @@ export function MatrizView({
                 <th className="border-r" />
                 {sistemas.map((s) => (
                   <Fragment key={s.id}>
-                    <th className="p-1 text-left border-r font-medium">Usuário</th>
-                    <th className="p-1 text-left border-r font-medium">Senha</th>
+                    <th className="p-1 text-left border-r font-medium">
+                      <TableSortHeader
+                        label="Usuário"
+                        field={`sistema:${s.id}:user`}
+                        currentField={sortField}
+                        currentOrder={sortOrder}
+                        onSort={handleSort}
+                        className="text-[10px]"
+                      />
+                    </th>
+                    <th className="p-1 text-left border-r font-medium">
+                      <TableSortHeader
+                        label="Senha"
+                        field={`sistema:${s.id}:pass`}
+                        currentField={sortField}
+                        currentOrder={sortOrder}
+                        onSort={handleSort}
+                        className="text-[10px]"
+                      />
+                    </th>
                   </Fragment>
                 ))}
               </tr>

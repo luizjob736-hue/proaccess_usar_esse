@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { TableSortHeader, SortOrder, sortData } from "@/components/ui/table-sort-header";
 import { useState, useMemo } from "react";
 import {
   History,
@@ -556,6 +557,28 @@ function Historico() {
     });
   }, [enrichedHistorico, entidade, acao, atorFiltro, periodo, q]);
 
+  const [sortField, setSortField] = useState<string>("criado_em");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      setSortOrder("asc");
+    }
+  };
+
+  const sortedData = useMemo(() => {
+    return sortData(filteredData, sortField, sortOrder, {
+      criado_em: (h: any) => h.criado_em || "",
+      actorName: (h: any) => h.actorName || "",
+      acao: (h: any) => h.acao || "",
+      entidade: (h: any) => h.entidade || "",
+      descricao: (h: any) => `${h.descricao || ""} ${h.target || ""}`,
+    });
+  }, [filteredData, sortField, sortOrder]);
+
   // Estatísticas calculadas
   const stats = useMemo(() => {
     let updates = 0;
@@ -927,17 +950,57 @@ function Historico() {
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/40 hover:bg-muted/40">
-                    <TableHead className="w-[170px]">Data e Hora</TableHead>
-                    <TableHead className="w-[210px]">Usuário / Autor</TableHead>
-                    <TableHead className="w-[110px]">Ação</TableHead>
-                    <TableHead className="w-[140px]">Entidade</TableHead>
-                    <TableHead className="min-w-[260px]">Descrição & Alvo</TableHead>
+                    <TableHead className="w-[170px]">
+                      <TableSortHeader
+                        label="Data e Hora"
+                        field="criado_em"
+                        currentField={sortField}
+                        currentOrder={sortOrder}
+                        onSort={handleSort}
+                      />
+                    </TableHead>
+                    <TableHead className="w-[210px]">
+                      <TableSortHeader
+                        label="Usuário / Autor"
+                        field="actorName"
+                        currentField={sortField}
+                        currentOrder={sortOrder}
+                        onSort={handleSort}
+                      />
+                    </TableHead>
+                    <TableHead className="w-[110px]">
+                      <TableSortHeader
+                        label="Ação"
+                        field="acao"
+                        currentField={sortField}
+                        currentOrder={sortOrder}
+                        onSort={handleSort}
+                      />
+                    </TableHead>
+                    <TableHead className="w-[140px]">
+                      <TableSortHeader
+                        label="Entidade"
+                        field="entidade"
+                        currentField={sortField}
+                        currentOrder={sortOrder}
+                        onSort={handleSort}
+                      />
+                    </TableHead>
+                    <TableHead className="min-w-[260px]">
+                      <TableSortHeader
+                        label="Descrição & Alvo"
+                        field="descricao"
+                        currentField={sortField}
+                        currentOrder={sortOrder}
+                        onSort={handleSort}
+                      />
+                    </TableHead>
                     <TableHead className="w-[180px]">Modificações</TableHead>
                     <TableHead className="w-[80px] text-right">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredData.map((h: any) => {
+                  {sortedData.map((h: any) => {
                     const dateObj = new Date(h.criado_em);
                     const formattedDate = dateObj.toLocaleDateString("pt-BR");
                     const formattedTime = dateObj.toLocaleTimeString("pt-BR");

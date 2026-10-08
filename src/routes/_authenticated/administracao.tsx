@@ -36,8 +36,10 @@ import {
   KeyRound,
   Trash2,
   Pencil,
+  Search,
 } from "lucide-react";
 import { toast } from "sonner";
+import { TableSortHeader, SortOrder, sortData } from "@/components/ui/table-sort-header";
 import {
   createUserAccount,
   resetUserPassword,
@@ -112,10 +114,22 @@ function UsuariosTab() {
   const [reveal, setReveal] = useState(false);
   const [resetFor, setResetFor] = useState<any | null>(null);
   const [editUser, setEditUser] = useState<any | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [sortField, setSortField] = useState<string>("nome");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
   const createFn = useServerFn(createUserAccount);
   const resetFn = useServerFn(resetUserPassword);
   const updateFn = useServerFn(updateUserAccount);
   const getUsersFn = useServerFn(getUsersList);
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      setSortOrder("asc");
+    }
+  };
 
   const { data = [] } = useQuery({
     queryKey: ["adm-users"],
@@ -131,9 +145,23 @@ function UsuariosTab() {
       return (profs ?? []).map((p: any) => ({
         ...p,
         roles: (roles ?? []).filter((r) => r.user_id === p.id).map((r) => r.role),
+        main_role: (roles ?? []).find((r) => r.user_id === p.id)?.role || "",
       }));
     },
   });
+
+  const filteredData = data.filter((u: any) => {
+    if (!searchTerm.trim()) return true;
+    const term = searchTerm.toLowerCase();
+    return (
+      (u.nome && u.nome.toLowerCase().includes(term)) ||
+      (u.email && u.email.toLowerCase().includes(term)) ||
+      (u.login && u.login.toLowerCase().includes(term)) ||
+      (u.cpf && u.cpf.toLowerCase().includes(term))
+    );
+  });
+
+  const sortedUsers = sortData(filteredData, sortField, sortOrder);
 
   const setRole = useMutation({
     mutationFn: async ({ userId, role }: any) => {
@@ -200,20 +228,29 @@ function UsuariosTab() {
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle>Usuários ({data.length})</CardTitle>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="relative w-64">
+            <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+            <Input
+              placeholder="Buscar por nome, e-mail, login..."
+              className="pl-8 h-8 text-xs"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
           <Button
             size="sm"
             variant="outline"
             onClick={() => setReveal((r) => !r)}
-            className="gap-2"
+            className="gap-2 h-8 text-xs"
           >
-            {reveal ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            {reveal ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
             {reveal ? "Ocultar senhas" : "Mostrar senhas"}
           </Button>
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-              <Button size="sm" className="gap-2">
-                <UserPlus className="h-4 w-4" /> Novo acesso
+              <Button size="sm" className="gap-2 h-8 text-xs">
+                <UserPlus className="h-3.5 w-3.5" /> Novo acesso
               </Button>
             </DialogTrigger>
             <DialogContent>
@@ -287,8 +324,38 @@ function UsuariosTab() {
         </div>
       </CardHeader>
       <CardContent className="p-0">
+        <div className="bg-muted/50 border-y px-4 py-2 flex items-center justify-between gap-3 text-xs font-semibold text-muted-foreground">
+          <div className="flex-1 min-w-[200px]">
+            <TableSortHeader
+              label="Nome do Usuário / E-mail / CPF"
+              field="nome"
+              currentSortField={sortField}
+              currentSortOrder={sortOrder}
+              onSort={handleSort}
+            />
+          </div>
+          <div className="w-32">
+            <TableSortHeader
+              label="Senha Provisória"
+              field="ultima_senha"
+              currentSortField={sortField}
+              currentSortOrder={sortOrder}
+              onSort={handleSort}
+            />
+          </div>
+          <div className="w-48">
+            <TableSortHeader
+              label="Hierarquia"
+              field="main_role"
+              currentSortField={sortField}
+              currentSortOrder={sortOrder}
+              onSort={handleSort}
+            />
+          </div>
+          <div className="w-48 text-right">Ações</div>
+        </div>
         <div className="divide-y">
-          {data.map((u: any) => (
+          {sortedUsers.map((u: any) => (
             <div key={u.id} className="flex items-center gap-3 p-4 flex-wrap">
               <div className="flex-1 min-w-[200px]">
                 <div className="flex items-center gap-2">

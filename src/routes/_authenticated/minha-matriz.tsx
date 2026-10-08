@@ -7,11 +7,23 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Eye, EyeOff, Copy, Grid3x3 } from "lucide-react";
 import { toast } from "sonner";
+import { TableSortHeader, SortOrder, sortData } from "@/components/ui/table-sort-header";
 
 export const Route = createFileRoute("/_authenticated/minha-matriz")({ component: MinhaMatriz });
 
 function MinhaMatriz() {
   const [reveal, setReveal] = useState(false);
+  const [sortField, setSortField] = useState<string>("sistema.nome");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      setSortOrder("asc");
+    }
+  };
 
   const { data: rows = [] } = useQuery({
     queryKey: ["minha-matriz"],
@@ -41,6 +53,10 @@ function MinhaMatriz() {
       return data ?? [];
     },
   });
+
+  const sortedRows = useMemo(() => {
+    return sortData(rows, sortField, sortOrder);
+  }, [rows, sortField, sortOrder]);
 
   const total = useMemo(() => rows.length, [rows]);
 
@@ -76,13 +92,37 @@ function MinhaMatriz() {
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
               <tr>
-                <th className="p-3 text-left">Sistema</th>
-                <th className="p-3 text-left">Usuário</th>
-                <th className="p-3 text-left">Senha</th>
+                <th className="p-3 text-left">
+                  <TableSortHeader
+                    label="Sistema"
+                    field="sistema.nome"
+                    currentSortField={sortField}
+                    currentSortOrder={sortOrder}
+                    onSort={handleSort}
+                  />
+                </th>
+                <th className="p-3 text-left">
+                  <TableSortHeader
+                    label="Usuário"
+                    field="login"
+                    currentSortField={sortField}
+                    currentSortOrder={sortOrder}
+                    onSort={handleSort}
+                  />
+                </th>
+                <th className="p-3 text-left">
+                  <TableSortHeader
+                    label="Senha"
+                    field="senha"
+                    currentSortField={sortField}
+                    currentSortOrder={sortOrder}
+                    onSort={handleSort}
+                  />
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y">
-              {rows.map((r: any) => (
+              {sortedRows.map((r: any) => (
                 <tr key={r.id} className="hover:bg-muted/30">
                   <td className="p-3 font-medium">{r.sistema?.nome ?? "—"}</td>
                   <td className="p-3">
@@ -109,7 +149,7 @@ function MinhaMatriz() {
                   </td>
                 </tr>
               ))}
-              {rows.length === 0 && (
+              {sortedRows.length === 0 && (
                 <tr>
                   <td colSpan={3} className="p-6 text-center text-muted-foreground">
                     Nenhum acesso vinculado ainda.

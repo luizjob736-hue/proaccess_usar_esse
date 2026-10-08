@@ -515,6 +515,10 @@ export const downloadNeonDumpServerFn = createServerFn({ method: "POST" })
   .middleware([requireDatabaseAuth])
   .inputValidator((d: { format: "sql" | "sql.gz" | "json" | "json.gz" }) => d)
   .handler(async ({ data }) => {
-    const { exportNeonDumpPayload } = await import("@/lib/neon-dump");
-    return await exportNeonDumpPayload(data.format);
+    const dateStr = new Date().toISOString().split("T")[0];
+    return {
+      success: true,
+      url: `/api/download-neon-dump?format=${data.format}`,
+      filename: `neon_database_dump_${dateStr}.${data.format}`,
+    };
   });

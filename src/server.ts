@@ -53,8 +53,11 @@ export default {
       if (url.pathname === "/api/download-neon-dump") {
         const cookie = request.headers.get("cookie") || "";
         const authHeader = request.headers.get("authorization") || "";
+        const urlToken = url.searchParams.get("token") || "";
         const hasSession =
-          cookie.includes("proaccess_neon_session") || authHeader.startsWith("Bearer neon_token_");
+          cookie.includes("proaccess_neon_session") ||
+          authHeader.startsWith("Bearer neon_token_") ||
+          urlToken.startsWith("neon_token_");
 
         if (!hasSession) {
           return new Response(
@@ -82,11 +85,13 @@ export default {
           });
         }
 
-        return new Response(payload.content, {
+        const buffer = Buffer.from(payload.content, "utf-8");
+        return new Response(buffer, {
           status: 200,
           headers: {
             "Content-Type": payload.mimeType,
             "Content-Disposition": `attachment; filename="${payload.filename}"`,
+            "Content-Length": String(buffer.length),
             "Cache-Control": "no-cache, no-store, must-revalidate",
           },
         });

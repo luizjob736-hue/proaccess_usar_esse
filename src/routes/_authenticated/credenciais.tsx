@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { TableSortHeader, SortOrder, sortData } from "@/components/ui/table-sort-header";
 import { Eye, EyeOff, Search, Copy, Table2, FileDown } from "lucide-react";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
@@ -15,6 +16,17 @@ export const Route = createFileRoute("/_authenticated/credenciais")({ component:
 function Credenciais() {
   const [q, setQ] = useState("");
   const [reveal, setReveal] = useState(false);
+  const [sortField, setSortField] = useState<string>("sistema.nome");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      setSortOrder("asc");
+    }
+  };
 
   const { data: rows = [], isLoading } = useQuery({
     queryKey: ["credenciais"],
@@ -32,22 +44,34 @@ function Credenciais() {
 
   const filtered = useMemo(() => {
     const t = q.trim().toLowerCase();
-    if (!t) return rows;
-    return rows.filter((r: any) =>
-      [
-        r.colaborador?.nome,
-        r.colaborador?.cpf,
-        r.colaborador?.email,
-        r.colaborador?.telefone,
-        r.sistema?.nome,
-        r.login,
-      ].some((v) =>
-        String(v ?? "")
-          .toLowerCase()
-          .includes(t),
-      ),
-    );
-  }, [rows, q]);
+    const list = !t
+      ? rows
+      : rows.filter((r: any) =>
+          [
+            r.colaborador?.nome,
+            r.colaborador?.cpf,
+            r.colaborador?.email,
+            r.colaborador?.telefone,
+            r.sistema?.nome,
+            r.login,
+          ].some((v) =>
+            String(v ?? "")
+              .toLowerCase()
+              .includes(t),
+          ),
+        );
+
+    return sortData(list, sortField, sortOrder, {
+      "sistema.nome": (r: any) => r.sistema?.nome || "",
+      "colaborador.nome": (r: any) => r.colaborador?.nome || "",
+      "colaborador.cpf": (r: any) => r.colaborador?.cpf || "",
+      "colaborador.telefone": (r: any) => r.colaborador?.telefone || "",
+      "colaborador.email": (r: any) => r.colaborador?.email || "",
+      "colaborador.email_senha": (r: any) => r.colaborador?.email_senha || "",
+      login: (r: any) => r.login || "",
+      senha: (r: any) => r.senha || "",
+    });
+  }, [rows, q, sortField, sortOrder]);
 
   function copy(value: string | null | undefined, label: string) {
     if (!value) return;
@@ -135,14 +159,78 @@ function Credenciais() {
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
               <tr>
-                <th className="p-3 text-left">Sistema</th>
-                <th className="p-3 text-left">Nome</th>
-                <th className="p-3 text-left">CPF</th>
-                <th className="p-3 text-left">Telefone</th>
-                <th className="p-3 text-left">E-mail</th>
-                <th className="p-3 text-left">Senha do E-mail</th>
-                <th className="p-3 text-left">Login</th>
-                <th className="p-3 text-left">Senha</th>
+                <th className="p-3 text-left">
+                  <TableSortHeader
+                    label="Sistema"
+                    field="sistema.nome"
+                    currentField={sortField}
+                    currentOrder={sortOrder}
+                    onSort={handleSort}
+                  />
+                </th>
+                <th className="p-3 text-left">
+                  <TableSortHeader
+                    label="Nome"
+                    field="colaborador.nome"
+                    currentField={sortField}
+                    currentOrder={sortOrder}
+                    onSort={handleSort}
+                  />
+                </th>
+                <th className="p-3 text-left">
+                  <TableSortHeader
+                    label="CPF"
+                    field="colaborador.cpf"
+                    currentField={sortField}
+                    currentOrder={sortOrder}
+                    onSort={handleSort}
+                  />
+                </th>
+                <th className="p-3 text-left">
+                  <TableSortHeader
+                    label="Telefone"
+                    field="colaborador.telefone"
+                    currentField={sortField}
+                    currentOrder={sortOrder}
+                    onSort={handleSort}
+                  />
+                </th>
+                <th className="p-3 text-left">
+                  <TableSortHeader
+                    label="E-mail"
+                    field="colaborador.email"
+                    currentField={sortField}
+                    currentOrder={sortOrder}
+                    onSort={handleSort}
+                  />
+                </th>
+                <th className="p-3 text-left">
+                  <TableSortHeader
+                    label="Senha do E-mail"
+                    field="colaborador.email_senha"
+                    currentField={sortField}
+                    currentOrder={sortOrder}
+                    onSort={handleSort}
+                  />
+                </th>
+                <th className="p-3 text-left">
+                  <TableSortHeader
+                    label="Login"
+                    field="login"
+                    currentField={sortField}
+                    currentOrder={sortOrder}
+                    onSort={handleSort}
+                  />
+                </th>
+                <th className="p-3 text-left">
+                  <TableSortHeader
+                    label="Senha"
+                    field="senha"
+                    currentField={sortField}
+                    currentOrder={sortOrder}
+                    onSort={handleSort}
+                  />
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y">

@@ -47,6 +47,7 @@ import { toast } from "sonner";
 import * as XLSX from "xlsx";
 import { db } from "@/integrations/database/client";
 import { NeonDatabaseBackupCard } from "@/components/backups/NeonDatabaseBackupCard";
+import { TableSortHeader, SortOrder, sortData } from "@/components/ui/table-sort-header";
 
 export const Route = createFileRoute("/_authenticated/backups")({
   component: BackupsPage,
@@ -71,6 +72,17 @@ function BackupsPage() {
   const [reveal, setReveal] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<number>(50);
+  const [sortField, setSortField] = useState<string>("nome");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      setSortOrder("asc");
+    }
+  };
 
   // Check admin
   const { data: me } = useQuery({
@@ -245,9 +257,10 @@ function BackupsPage() {
   };
 
   const filteredData = getFilteredGuiaData();
-  const totalPages = pageSize === 0 ? 1 : Math.ceil(filteredData.length / pageSize);
+  const sortedData = sortData(filteredData, sortField, sortOrder);
+  const totalPages = pageSize === 0 ? 1 : Math.ceil(sortedData.length / pageSize);
   const currentPageData =
-    pageSize === 0 ? filteredData : filteredData.slice((page - 1) * pageSize, page * pageSize);
+    pageSize === 0 ? sortedData : sortedData.slice((page - 1) * pageSize, page * pageSize);
 
   // 1. Export COMPLETE MULTI-TAB WORKBOOK (ALL GUIDES)
   const exportFullWorkbook = () => {
@@ -682,12 +695,60 @@ function BackupsPage() {
             <table className="w-full text-xs text-left border-collapse min-w-[1200px]">
               <thead className="bg-muted/70 uppercase text-[10px] font-semibold text-muted-foreground border-b border-border">
                 <tr>
-                  <th className="p-3 sticky left-0 bg-muted/90 z-10">Colaborador</th>
-                  <th className="p-3">CPF</th>
-                  <th className="p-3">Cargo</th>
-                  <th className="p-3">Operação</th>
-                  <th className="p-3">Status</th>
-                  <th className="p-3">E-mail Corporativo</th>
+                  <th className="p-3 sticky left-0 bg-muted/90 z-10">
+                    <TableSortHeader
+                      label="Colaborador"
+                      field="nome"
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                  </th>
+                  <th className="p-3">
+                    <TableSortHeader
+                      label="CPF"
+                      field="cpf"
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                  </th>
+                  <th className="p-3">
+                    <TableSortHeader
+                      label="Cargo"
+                      field="cargo"
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                  </th>
+                  <th className="p-3">
+                    <TableSortHeader
+                      label="Operação"
+                      field="operacao_nome"
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                  </th>
+                  <th className="p-3">
+                    <TableSortHeader
+                      label="Status"
+                      field="status"
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                  </th>
+                  <th className="p-3">
+                    <TableSortHeader
+                      label="E-mail Corporativo"
+                      field="email"
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                  </th>
                   {matrizSistemas.map((sis: any) => (
                     <th key={sis.id} className="p-3 text-center border-l border-border/50">
                       {sis.nome}
@@ -766,14 +827,78 @@ function BackupsPage() {
             <table className="w-full text-xs text-left border-collapse">
               <thead className="bg-muted/70 uppercase text-[10px] font-semibold text-muted-foreground border-b border-border">
                 <tr>
-                  <th className="p-3">Nome</th>
-                  <th className="p-3">CPF</th>
-                  <th className="p-3">E-mail</th>
-                  <th className="p-3">Telefone</th>
-                  <th className="p-3">Cargo</th>
-                  <th className="p-3">Operação</th>
-                  <th className="p-3">Status</th>
-                  <th className="p-3">Nascimento</th>
+                  <th className="p-3">
+                    <TableSortHeader
+                      label="Nome"
+                      field="nome"
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                  </th>
+                  <th className="p-3">
+                    <TableSortHeader
+                      label="CPF"
+                      field="cpf"
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                  </th>
+                  <th className="p-3">
+                    <TableSortHeader
+                      label="E-mail"
+                      field="email"
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                  </th>
+                  <th className="p-3">
+                    <TableSortHeader
+                      label="Telefone"
+                      field="telefone"
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                  </th>
+                  <th className="p-3">
+                    <TableSortHeader
+                      label="Cargo"
+                      field="cargo"
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                  </th>
+                  <th className="p-3">
+                    <TableSortHeader
+                      label="Operação"
+                      field="operacao"
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                  </th>
+                  <th className="p-3">
+                    <TableSortHeader
+                      label="Status"
+                      field="status"
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                  </th>
+                  <th className="p-3">
+                    <TableSortHeader
+                      label="Nascimento"
+                      field="data_nascimento"
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -801,11 +926,51 @@ function BackupsPage() {
             <table className="w-full text-xs text-left border-collapse">
               <thead className="bg-muted/70 uppercase text-[10px] font-semibold text-muted-foreground border-b border-border">
                 <tr>
-                  <th className="p-3">Nome do Sistema</th>
-                  <th className="p-3">Categoria</th>
-                  <th className="p-3">Criticidade</th>
-                  <th className="p-3">URL</th>
-                  <th className="p-3">Ativo</th>
+                  <th className="p-3">
+                    <TableSortHeader
+                      label="Nome do Sistema"
+                      field="nome"
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                  </th>
+                  <th className="p-3">
+                    <TableSortHeader
+                      label="Categoria"
+                      field="categoria"
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                  </th>
+                  <th className="p-3">
+                    <TableSortHeader
+                      label="Criticidade"
+                      field="criticidade"
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                  </th>
+                  <th className="p-3">
+                    <TableSortHeader
+                      label="URL"
+                      field="url"
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                  </th>
+                  <th className="p-3">
+                    <TableSortHeader
+                      label="Ativo"
+                      field="ativo"
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -832,12 +997,60 @@ function BackupsPage() {
             <table className="w-full text-xs text-left border-collapse">
               <thead className="bg-muted/70 uppercase text-[10px] font-semibold text-muted-foreground border-b border-border">
                 <tr>
-                  <th className="p-3">Colaborador</th>
-                  <th className="p-3">CPF</th>
-                  <th className="p-3">Sistema</th>
-                  <th className="p-3">Perfil</th>
-                  <th className="p-3">Login / Usuário</th>
-                  <th className="p-3">Status</th>
+                  <th className="p-3">
+                    <TableSortHeader
+                      label="Colaborador"
+                      field="colaborador_nome"
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                  </th>
+                  <th className="p-3">
+                    <TableSortHeader
+                      label="CPF"
+                      field="colaborador_cpf"
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                  </th>
+                  <th className="p-3">
+                    <TableSortHeader
+                      label="Sistema"
+                      field="sistema_nome"
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                  </th>
+                  <th className="p-3">
+                    <TableSortHeader
+                      label="Perfil"
+                      field="perfil_nome"
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                  </th>
+                  <th className="p-3">
+                    <TableSortHeader
+                      label="Login / Usuário"
+                      field="login"
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                  </th>
+                  <th className="p-3">
+                    <TableSortHeader
+                      label="Status"
+                      field="status"
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -865,14 +1078,78 @@ function BackupsPage() {
             <table className="w-full text-xs text-left border-collapse">
               <thead className="bg-muted/70 uppercase text-[10px] font-semibold text-muted-foreground border-b border-border">
                 <tr>
-                  <th className="p-3">Título</th>
-                  <th className="p-3">Colaborador</th>
-                  <th className="p-3">Sistema</th>
-                  <th className="p-3">Tipo</th>
-                  <th className="p-3">Prioridade</th>
-                  <th className="p-3">Status / Quadro</th>
-                  <th className="p-3">Data Início</th>
-                  <th className="p-3">SLA</th>
+                  <th className="p-3">
+                    <TableSortHeader
+                      label="Título"
+                      field="titulo"
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                  </th>
+                  <th className="p-3">
+                    <TableSortHeader
+                      label="Colaborador"
+                      field="colaborador_nome"
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                  </th>
+                  <th className="p-3">
+                    <TableSortHeader
+                      label="Sistema"
+                      field="sistema_nome"
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                  </th>
+                  <th className="p-3">
+                    <TableSortHeader
+                      label="Tipo"
+                      field="tipo"
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                  </th>
+                  <th className="p-3">
+                    <TableSortHeader
+                      label="Prioridade"
+                      field="prioridade"
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                  </th>
+                  <th className="p-3">
+                    <TableSortHeader
+                      label="Status / Quadro"
+                      field="status"
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                  </th>
+                  <th className="p-3">
+                    <TableSortHeader
+                      label="Data Início"
+                      field="data_inicio"
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                  </th>
+                  <th className="p-3">
+                    <TableSortHeader
+                      label="SLA"
+                      field="sla_em"
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -902,9 +1179,33 @@ function BackupsPage() {
             <table className="w-full text-xs text-left border-collapse">
               <thead className="bg-muted/70 uppercase text-[10px] font-semibold text-muted-foreground border-b border-border">
                 <tr>
-                  <th className="p-3">Nome da Operação</th>
-                  <th className="p-3">Descrição</th>
-                  <th className="p-3">Ativa</th>
+                  <th className="p-3">
+                    <TableSortHeader
+                      label="Nome da Operação"
+                      field="nome"
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                  </th>
+                  <th className="p-3">
+                    <TableSortHeader
+                      label="Descrição"
+                      field="descricao"
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                  </th>
+                  <th className="p-3">
+                    <TableSortHeader
+                      label="Ativa"
+                      field="ativo"
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -923,12 +1224,60 @@ function BackupsPage() {
             <table className="w-full text-xs text-left border-collapse">
               <thead className="bg-muted/70 uppercase text-[10px] font-semibold text-muted-foreground border-b border-border">
                 <tr>
-                  <th className="p-3">Título</th>
-                  <th className="p-3">Sistema</th>
-                  <th className="p-3">Operador</th>
-                  <th className="p-3">Tipo</th>
-                  <th className="p-3">Status</th>
-                  <th className="p-3">Criado em</th>
+                  <th className="p-3">
+                    <TableSortHeader
+                      label="Título"
+                      field="titulo"
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                  </th>
+                  <th className="p-3">
+                    <TableSortHeader
+                      label="Sistema"
+                      field="sistema_nome"
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                  </th>
+                  <th className="p-3">
+                    <TableSortHeader
+                      label="Operador"
+                      field="operador_nome"
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                  </th>
+                  <th className="p-3">
+                    <TableSortHeader
+                      label="Tipo"
+                      field="tipo"
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                  </th>
+                  <th className="p-3">
+                    <TableSortHeader
+                      label="Status"
+                      field="status"
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                  </th>
+                  <th className="p-3">
+                    <TableSortHeader
+                      label="Criado em"
+                      field="criado_em"
+                      currentSortField={sortField}
+                      currentSortOrder={sortOrder}
+                      onSort={handleSort}
+                    />
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
